@@ -7,13 +7,35 @@
 
 import SwiftUI
 import MusicKit
+import AVFoundation
+
+
 
 struct MusicButton: View {
+    @State private var importing = false
     var body: some View {
+        var content = Content()
         VStack {
-            Button("Request Music Access") {
-                Task {
-                    await requestMusicAuthorization()
+            //Button("Request Music Access") {
+            //    Task {
+            //        await requestMusicAuthorization()
+            //    }
+            //}
+            Button("Upload File(s?)") {
+                importing = true
+            }
+            .fileImporter (
+                isPresented: $importing,
+                allowedContentTypes: [.audio]
+            ) { result in
+                switch result {
+                case .success(let file):
+                    print(file.absoluteString)
+                    content.songs.append(AVURLAsset(url: file.absoluteURL))
+                    print(content.songs)
+                    
+                case .failure(let error):
+                    print(error.localizedDescription)
                 }
             }
         }

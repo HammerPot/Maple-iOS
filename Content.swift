@@ -6,10 +6,13 @@
 //
 
 import SwiftUI
+import AVFoundation
+import AVFAudio
 
-var content = ["Tracks", "Playlists", "Albums", "Artists"]
+
 
 struct Content: View {
+    var songs = [AVAsset]()
     var body: some View {
         Grid {
             GridRow {
