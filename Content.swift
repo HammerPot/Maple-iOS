@@ -12,29 +12,29 @@ import AVFAudio
 
 
 struct Content: View {
-    var songs = [AVAsset]()
+    @State private var localFiles: [URL] = []
     var body: some View {
-        Grid {
-            GridRow {
-                VStack {
-                    Image(systemName: "globe")
-                        .imageScale(.large)
-                    Text("Album")
-                    Text("Artist")
-                }
-                .padding(.bottom)
-            }
-            
-            GridRow {
-                VStack {
-                    Image(systemName: "globe")
-                    Text("Album")
-                    Text("Artist")
-                }
-                .padding(.bottom)
+        List {
+            ForEach(localFiles, id: \.self) { file in
+                Text(file.lastPathComponent)
             }
         }
+        .onAppear {
+            loadLocalFiles()
+        }
     }
+
+
+    private func loadLocalFiles() {
+        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        do {
+            let localFiles = try FileManager.default.contentsOfDirectory(at: documentsDirectory,
+                                                                    includingPropertiesForKeys: [.fileSizeKey])
+        } catch {
+            print("Error loading local files: \(error.localizedDescription)")
+        }
+	}
+
 }
 
 #Preview {
