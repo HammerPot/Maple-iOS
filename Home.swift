@@ -54,9 +54,9 @@ func extractMetadata(from url: URL) async -> (title: String, artist: String, alb
 	
 	do {
 		let metadata = try await asset.load(.metadata)
-		print("Metadata for \(url.lastPathComponent):")
-		print(metadata)
-		print("\n")
+		// print("Metadata for \(url.lastPathComponent):")
+		// print(metadata)
+		// print("\n")
 		
 		for item in metadata {
 			// // Print the identifier to help debug
@@ -86,7 +86,7 @@ func extractMetadata(from url: URL) async -> (title: String, artist: String, alb
 			
 			print("item: \(item.key)")
 			if "\(item.key)".lowercased().contains("tpa"){
-				print("tpa: \(item.value)")
+				// print("tpa: \(item.value)")
 				if let value = try await item.load(.stringValue) {
 						// print("value: \(value)")
 						let components = value.split(separator: "/")
@@ -96,7 +96,7 @@ func extractMetadata(from url: URL) async -> (title: String, artist: String, alb
 				}
 			}
 			if "\(item.key)".lowercased().contains("trk"){
-				print("trk: \(item.value)")
+				// print("trk: \(item.value)")
 					if let value = try await item.load(.stringValue) {
 						print("tpa: \(value)")
 						// Disc numbers might be in format "1/2" or just "1"
