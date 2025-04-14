@@ -84,18 +84,35 @@ func extractMetadata(from url: URL) async -> (title: String, artist: String, alb
 				break
 			}
 			
+			print("item: \(item.key)")
+			if "\(item.key)".lowercased().contains("tpa"){
+				print("tpa: \(item.value)")
+				if let value = try await item.load(.stringValue) {
+						// print("value: \(value)")
+						let components = value.split(separator: "/")
+						if let discNum = Int(components[0]) {
+							discNumber = discNum
+						}
+				}
+			}
+			if "\(item.key)".lowercased().contains("trk"){
+				print("trk: \(item.value)")
+					if let value = try await item.load(.stringValue) {
+						print("tpa: \(value)")
+						// Disc numbers might be in format "1/2" or just "1"
+						let components = value.split(separator: "/")
+						if let trackNum = Int(components[0]) {
+							trackNumber = trackNum
+						}
+					}
+			}
 			// Check for track number using string identifiers
 			if let identifier = item.identifier?.rawValue {
 				let identifierString = identifier.lowercased()
 				print("Identifier: \(identifierString)")
-				if identifierString.contains("trkn") {
-					print("BLAH")
-					if let value = try await item.load(.stringValue) {
-						print("Value: \(value)")
-					}
-				}
 				if identifierString.contains("track") || identifierString.contains("trck"){
 					if let value = try await item.load(.stringValue) {
+						// print("value: \(value)")
 						// Track numbers might be in format "1/10" or just "1"
 						let components = value.split(separator: "/")
 						if let trackNum = Int(components[0]) {
@@ -105,22 +122,41 @@ func extractMetadata(from url: URL) async -> (title: String, artist: String, alb
 				}
 				if identifierString.contains("trkn") {
 						if let value = try await item.load(.dataValue) {
+							// print("track: \(value)")
 						// Track numbers might be in format "1/10" or just "1"
 						let bytes = [UInt8](value)
+						for byte in bytes {
+							// print("\(title): Num: \(byte)")
+						}
 						let trackNum = ((Int)(bytes[2]) << 8) | (Int)(bytes[3])
-						print("Track Number: \(trackNum)")
+						// print("Track Number: \(trackNum)")
 						trackNumber = trackNum
 					}
 				}
 				
 				// Check for disc number using string identifiers
-				if identifierString.contains("disc") || identifierString.contains("disk") || identifierString.contains("part") || identifierString.contains("set") {
-					if let value = try await item.load(.stringValue) {
-						// Disc numbers might be in format "1/2" or just "1"
-						let components = value.split(separator: "/")
-						if let discNum = Int(components[0]) {
-							discNumber = discNum
+				// if identifierString.contains("tpa") {
+				// 	if let value = try await item.load(.stringValue) {
+				// 		print("tpa: \(value)")
+				// 		// Disc numbers might be in format "1/2" or just "1"
+				// 		let components = value.split(separator: "/")
+				// 		if let discNum = Int(components[0]) {
+				// 			discNumber = discNum
+				// 		}
+				// 	}
+				// }
+
+
+				if identifierString.contains("disk") {
+					if let value = try await item.load(.dataValue) {
+						// print("disk: \(value)")
+						let bytes = [UInt8](value)
+						for byte in bytes {
+							// print("\(title): Byte: \(byte)")
 						}
+						let discNum = ((Int)(bytes[2]) << 8) | (Int)(bytes[3])
+						// print("Disc Number: \(discNum)")
+						discNumber = discNum
 					}
 				}
 			}
