@@ -15,6 +15,7 @@ struct Song: Identifiable {
 	var title: String
 	var artist: String
 	var album: String
+	var artwork: UIImage?
 	var trackNumber: Int
 	var discNumber: Int
 }
@@ -23,6 +24,7 @@ struct Album: Identifiable {
 	let id = UUID()
 	let name: String
 	let artist: String
+	var artwork: UIImage?
 	var songs: [Song]
 }
 
@@ -44,19 +46,20 @@ func loadLocalFiles() -> [URL] {
 }
 
 // Global function to extract metadata from audio files
-func extractMetadata(from url: URL) async -> (title: String, artist: String, album: String, trackNumber: Int, discNumber: Int) {
+func extractMetadata(from url: URL) async -> (title: String, artist: String, album: String, artwork: UIImage?, trackNumber: Int, discNumber: Int) {
 	let asset = AVURLAsset(url: url)
 	var title = url.lastPathComponent
 	var artist = "Unknown Artist"
 	var album = "Unknown Album"
+	var artwork: UIImage? = nil
 	var trackNumber = 0
 	var discNumber = 0
 	
 	do {
 		let metadata = try await asset.load(.metadata)
-		// print("Metadata for \(url.lastPathComponent):")
-		// print(metadata)
-		// print("\n")
+		print("Metadata for \(url.lastPathComponent):")
+		print(metadata)
+		print("\n")
 		
 		for item in metadata {
 			// // Print the identifier to help debug
@@ -80,6 +83,11 @@ func extractMetadata(from url: URL) async -> (title: String, artist: String, alb
 				if let value = try await item.load(.stringValue) {
 					album = value
 				}
+			case .commonKeyArtwork?:
+				if let value = try await item.load(.dataValue) {
+					print("artwork: \(value)")
+					artwork = UIImage(data: value)
+				}
 			default:
 				break
 			}
@@ -98,7 +106,7 @@ func extractMetadata(from url: URL) async -> (title: String, artist: String, alb
 			if "\(item.key)".lowercased().contains("trk"){
 				// print("trk: \(item.value)")
 					if let value = try await item.load(.stringValue) {
-						print("tpa: \(value)")
+						// print("tpa: \(value)")
 						// Disc numbers might be in format "1/2" or just "1"
 						let components = value.split(separator: "/")
 						if let trackNum = Int(components[0]) {
@@ -109,7 +117,7 @@ func extractMetadata(from url: URL) async -> (title: String, artist: String, alb
 			// Check for track number using string identifiers
 			if let identifier = item.identifier?.rawValue {
 				let identifierString = identifier.lowercased()
-				print("Identifier: \(identifierString)")
+				// print("Identifier: \(identifierString)")
 				if identifierString.contains("track") || identifierString.contains("trck"){
 					if let value = try await item.load(.stringValue) {
 						// print("value: \(value)")
@@ -165,7 +173,7 @@ func extractMetadata(from url: URL) async -> (title: String, artist: String, alb
 		print("Error loading metadata for \(url.lastPathComponent): \(error.localizedDescription)")
 	}
 	
-	return (title, artist, album, trackNumber, discNumber)
+	return (title, artist, album, artwork, trackNumber, discNumber)
 }
 
 // Global function to load songs with metadata
@@ -178,6 +186,7 @@ func loadSongs(from urls: [URL]) async -> [Song] {
 						title: metadata.title, 
 						artist: metadata.artist, 
 						album: metadata.album,
+						artwork: metadata.artwork,
 						trackNumber: metadata.trackNumber,
 						discNumber: metadata.discNumber)
 		songs.append(song)
@@ -195,9 +204,12 @@ func groupSongsByAlbum(_ songs: [Song]) -> [Album] {
 		
 		if var album = albumDict[albumKey] {
 			album.songs.append(song)
+			if album.artwork == nil {
+				album.artwork = song.artwork
+			}
 			albumDict[albumKey] = album
 		} else {
-			let newAlbum = Album(name: song.album, artist: song.artist, songs: [song])
+			let newAlbum = Album(name: song.album, artist: song.artist, artwork: song.artwork, songs: [song])
 			albumDict[albumKey] = newAlbum
 		}
 	}
@@ -205,11 +217,18 @@ func groupSongsByAlbum(_ songs: [Song]) -> [Album] {
 	return Array(albumDict.values).sorted { $0.name < $1.name }
 }
 
+// func groupSongsByArtist(_ songs: [Song]) -> [Artist] {
+// 	var artistDict: [String: Artist] = [:]
+	
+// 	for song in songs {
+// 		let artistKey = song.artist
+// 	}
+// }
+
 struct Home: View {
 	@State private var localFiles: [URL] = []
 	var body: some View {
 	   NavigationStack {
-			// Content()
 		   List {
 			   NavigationLink("Tracks", value: "Tracks")
 			   NavigationLink("Playlists", value: "Playlists")
@@ -218,14 +237,13 @@ struct Home: View {
 		   }
 		   .navigationTitle("Home")
 		   .navigationDestination(for: String.self) { content in
-			//    Content()
 				switch content {
 				case "Tracks":
-					TrackView(localFiles: $localFiles)
+					Tracks(localFiles: $localFiles)
 				case "Playlists":
 					Text("Playlists View")
 				case "Albums":
-					AlbumView(localFiles: $localFiles)
+					Albums(localFiles: $localFiles)
 				case "Artists":
 					Text("Artists View")
 				default:
@@ -239,103 +257,87 @@ struct Home: View {
 	}
 }
 
-struct TrackView: View {
-	@Binding var localFiles: [URL]
+
+struct AlbumDetailView: View {
+	let album: Album
+	
 	var body: some View {
-		VStack {
-			// MusicButton()
-			
-			if localFiles.isEmpty {
-				Text("No music files found")
-					.font(.headline)
-					.foregroundColor(.gray)
-					.padding()
-			} else {
-				List {
-					ForEach(localFiles.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }), id: \.self) { file in
-						VStack(alignment: .leading) {
-							Text(file.lastPathComponent)
-						}
+		ScrollView {
+			VStack(alignment: .leading, spacing: 16) {
+				if let artwork = album.artwork {
+					Image(uiImage: artwork)
+						.resizable()
+						.aspectRatio(contentMode: .fit)
+						.frame(maxWidth: .infinity)
+						.cornerRadius(8)
+				}
+				
+				VStack(alignment: .leading, spacing: 8) {
+					Text(album.name)
+						.font(.title)
+						.bold()
+					
+					Text(album.artist)
+						.font(.title2)
+						.foregroundColor(.secondary)
+				}
+				.padding(.horizontal)
+				
+				ForEach(album.songs.sorted(by: { 
+					if $0.discNumber != $1.discNumber {
+						return $0.discNumber < $1.discNumber
+					} else {
+						return $0.trackNumber < $1.trackNumber
 					}
+				})) { song in
+					HStack {
+						Text("\(song.trackNumber).")
+							.font(.caption)
+							.foregroundColor(.secondary)
+							.frame(width: 25, alignment: .trailing)
+						
+						Text(song.title)
+							.font(.body)
+						
+						Spacer()
+						
+						Text("(Disc \(song.discNumber))")
+							.font(.caption)
+							.foregroundColor(.secondary)
+					}
+					.padding(.horizontal)
 				}
 			}
 		}
-		.onAppear {
-			localFiles = loadLocalFiles()
-		}
+		.navigationBarTitleDisplayMode(.inline)
 	}
 }
 
-struct AlbumView: View {
-	@Binding var localFiles: [URL]
-	@State private var albums: [Album] = []
-	@State private var isLoading = true
+// struct ArtistView: View {
+// 	@Binding var localFiles: [URL]
+// 	@State private var artists: [Artist] = []
+// 	@State private var isLoading = true
 	
-	var body: some View {
-		VStack {
-			if isLoading {
-				ProgressView("Loading albums...")
-			} else if albums.isEmpty {
-				Text("No albums found")
-					.font(.headline)
-					.foregroundColor(.gray)
-					.padding()
-			} else {
-				List {
-					ForEach(albums) { album in
-						Section(header: Text(album.name).font(.headline)) {
-							Text("Artist: \(album.artist)")
-								.font(.subheadline)
-								.foregroundColor(.secondary)
-							
-							ForEach(album.songs.sorted(by: { 
-								if $0.discNumber != $1.discNumber {
-									return $0.discNumber < $1.discNumber
-								} else {
-									return $0.trackNumber < $1.trackNumber
-								}
-							})) { song in
-								HStack {
-									Text("\(song.trackNumber).")
-										.font(.caption)
-										.foregroundColor(.secondary)
-										.frame(width: 25, alignment: .trailing)
-									
-									Text(song.title)
-										.font(.body)
-									
-									// if song.discNumber > 1 {
-										Text("(Disc \(song.discNumber))")
-											.font(.caption)
-											.foregroundColor(.secondary)
-									// }
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-		.onAppear {
-			localFiles = loadLocalFiles()
-			loadAlbums()
-		}
-	}
-	
-	private func loadAlbums() {
-		isLoading = true
-		
-		Task {
-			let songs = await loadSongs(from: localFiles)
-			let groupedAlbums = groupSongsByAlbum(songs)
-			
-			await MainActor.run {
-				albums = groupedAlbums
-				isLoading = false
-			}
-		}
-	}
-}
+// 	var body: some View {
+// 		VStack {
+// 			if isLoading {
+// 				ProgressView("Loading artists...")
+// 			} else if artists.isEmpty {
+// 				Text("No artists found")
+// 					.font(.headline)
+// 					.foregroundColor(.gray)
+// 					.padding()
+// 			} else {
+// 				List {
+// 					ForEach(artists) { artist in
+// 						Text(artist.name)
+// 					}
+// 				}
+// 			}
+// 		}
+// 	}
+// }
+
 
 #Preview {
 	Home()
