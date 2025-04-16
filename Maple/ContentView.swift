@@ -17,6 +17,7 @@ struct ContentView: View {
             Tab("Search", systemImage: "magnifyingglass") {
             }
             Tab("Account", systemImage: "person.crop.circle.fill") {
+                Account()
             }
         }
     }

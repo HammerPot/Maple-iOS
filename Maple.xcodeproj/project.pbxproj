@@ -10,6 +10,7 @@
 		691210DF2DAF1C0800E3AA06 /* Tracks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 691210DE2DAF1C0800E3AA06 /* Tracks.swift */; };
 		691210E12DAF1D2F00E3AA06 /* Albums.swift in Sources */ = {isa = PBXBuildFile; fileRef = 691210E02DAF1D2F00E3AA06 /* Albums.swift */; };
 		691210E32DAF1EC900E3AA06 /* Artists.swift in Sources */ = {isa = PBXBuildFile; fileRef = 691210E22DAF1EC900E3AA06 /* Artists.swift */; };
+		691211092DB01B9D00E3AA06 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = 691211082DB01B9D00E3AA06 /* Account.swift */; };
 		694C16B42D9468F300328F6D /* MusicButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694C16B32D9468F300328F6D /* MusicButton.swift */; };
 		695B297B2D910B2C00D24EF2 /* Home.swift in Sources */ = {isa = PBXBuildFile; fileRef = 695B297A2D910B2C00D24EF2 /* Home.swift */; };
 /* End PBXBuildFile section */
@@ -35,6 +36,7 @@
 		691210DE2DAF1C0800E3AA06 /* Tracks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tracks.swift; sourceTree = "<group>"; };
 		691210E02DAF1D2F00E3AA06 /* Albums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Albums.swift; sourceTree = "<group>"; };
 		691210E22DAF1EC900E3AA06 /* Artists.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Artists.swift; sourceTree = "<group>"; };
+		691211082DB01B9D00E3AA06 /* Account.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Account.swift; sourceTree = "<group>"; };
 		694C16B32D9468F300328F6D /* MusicButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicButton.swift; sourceTree = "<group>"; };
 		695B297A2D910B2C00D24EF2 /* Home.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Home.swift; sourceTree = "<group>"; };
 		69D91D162D90F84500456238 /* Maple.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Maple.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -101,6 +103,7 @@
 		69D91D0D2D90F84500456238 = {
 			isa = PBXGroup;
 			children = (
+				691211082DB01B9D00E3AA06 /* Account.swift */,
 				695B297A2D910B2C00D24EF2 /* Home.swift */,
 				691210E02DAF1D2F00E3AA06 /* Albums.swift */,
 				691210E22DAF1EC900E3AA06 /* Artists.swift */,
@@ -270,6 +273,7 @@
 				695B297B2D910B2C00D24EF2 /* Home.swift in Sources */,
 				694C16B42D9468F300328F6D /* MusicButton.swift in Sources */,
 				691210E32DAF1EC900E3AA06 /* Artists.swift in Sources */,
+				691211092DB01B9D00E3AA06 /* Account.swift in Sources */,
 				691210DF2DAF1C0800E3AA06 /* Tracks.swift in Sources */,
 				691210E12DAF1D2F00E3AA06 /* Albums.swift in Sources */,
 			);
