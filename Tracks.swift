@@ -34,7 +34,7 @@ struct Tracks: View {
 							// Text("songs: \(songs)")
 							ForEach(songs.sorted(by: { $0.title < $1.title })) { song in
 								// Text("song: \(song.title)")
-								NavigationLink(destination: AudioPlayerView(song: song)) {
+								NavigationLink(destination: AudioPlayerView(song: song, allSongs: songs.sorted(by: { $0.title < $1.title }))) {
 									HStack() {
 										Text(song.title)
 										Spacer()

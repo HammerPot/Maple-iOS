@@ -2,7 +2,7 @@ import SwiftUI
 import AVFoundation
 import MediaPlayer
 
-class AudioPlayerManager: ObservableObject {
+class AudioPlayerManager: NSObject, ObservableObject {
     private var audioPlayer: AVAudioPlayer?
     @Published var isPlaying = false
     @Published var currentTime: TimeInterval = 0
@@ -12,7 +12,12 @@ class AudioPlayerManager: ObservableObject {
     var currentSong: Song?
     private var isHandlingRemoteControl = false
     
-    init() {
+    // Queue management
+    private var queue: [Song] = []
+    private var currentIndex: Int = -1
+    
+    override init() {
+        super.init()
         setupAudioSession()
         setupRemoteTransportControls()
     }
@@ -58,6 +63,24 @@ class AudioPlayerManager: ObservableObject {
         }
     }
     
+    func setQueue(_ songs: [Song], startingAt index: Int = 0) {
+        queue = songs
+        currentIndex = index
+        if index < songs.count {
+            loadSong(songs[index])
+        }
+    }
+    
+    private func loadSong(_ song: Song) {
+        loadAudio(from: song.url)
+        updateNowPlayingInfo(
+            title: song.title,
+            artist: song.artist,
+            album: song.album,
+            artwork: song.artwork
+        )
+    }
+    
     func loadAudio(from url: URL) {
         // Don't load new audio if we're handling a remote control event
         guard !isHandlingRemoteControl else { return }
@@ -71,6 +94,9 @@ class AudioPlayerManager: ObservableObject {
             if let song = currentSong {
                 setupNowPlayingInfo(title: song.title, artist: song.artist, album: song.album, artwork: song.artwork)
             }
+            
+            // Set up completion handler
+            audioPlayer?.delegate = self
         } catch {
             print("Error loading audio: \(error.localizedDescription)")
         }
@@ -185,14 +211,41 @@ class AudioPlayerManager: ObservableObject {
     deinit {
         stopTimer()
     }
+    
+    func playNext() {
+        guard !queue.isEmpty else { return }
+        
+        currentIndex = (currentIndex + 1) % queue.count
+        loadSong(queue[currentIndex])
+        play()
+    }
+    
+    func playPrevious() {
+        guard !queue.isEmpty else { return }
+        
+        currentIndex = (currentIndex - 1 + queue.count) % queue.count
+        loadSong(queue[currentIndex])
+        play()
+    }
+}
+
+// Add AVAudioPlayerDelegate extension
+extension AudioPlayerManager: AVAudioPlayerDelegate {
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        if flag {
+            playNext()
+        }
+    }
 }
 
 struct AudioPlayerView: View {
     @StateObject private var audioManager = AudioPlayerManager()
     let song: Song
+    let allSongs: [Song]  // Add this property
     
-    init(song: Song) {
+    init(song: Song, allSongs: [Song]) {  // Update initializer
         self.song = song
+        self.allSongs = allSongs
     }
     
     var body: some View {
@@ -209,6 +262,13 @@ struct AudioPlayerView: View {
             // Playback Controls
             HStack(spacing: 30) {
                 Button(action: {
+                    audioManager.playPrevious()
+                }) {
+                    Image(systemName: "backward.circle.fill")
+                        .font(.system(size: 44))
+                }
+                
+                Button(action: {
                     if audioManager.isPlaying {
                         audioManager.pause()
                     } else {
@@ -216,6 +276,13 @@ struct AudioPlayerView: View {
                     }
                 }) {
                     Image(systemName: audioManager.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 44))
+                }
+                
+                Button(action: {
+                    audioManager.playNext()
+                }) {
+                    Image(systemName: "forward.circle.fill")
                         .font(.system(size: 44))
                 }
             }
@@ -238,15 +305,12 @@ struct AudioPlayerView: View {
         }
         .padding()
         .onAppear {
-            // Only load audio if it's not already loaded
-            if audioManager.currentSong?.url == nil {
-                audioManager.loadAudio(from: song.url)
-                audioManager.updateNowPlayingInfo(
-                    title: song.title,
-                    artist: song.artist,
-                    album: song.album,
-                    artwork: song.artwork
-                )
+            // Set up the queue with all songs, starting at the current song
+			print("allSongs titles: \(allSongs.map { $0.title })")
+			print("song: \(song.title)")
+			print("\(allSongs.firstIndex(where: { $0.url == song.url }))")
+            if let index = allSongs.firstIndex(where: { $0.url == song.url }) {
+                audioManager.setQueue(allSongs, startingAt: index)
             }
         }
     }
@@ -259,13 +323,16 @@ struct AudioPlayerView: View {
 }
 
 #Preview {
-    AudioPlayerView(song: Song(
-        url: URL(fileURLWithPath: ""),
-        title: "Sample Song",
-        artist: "Sample Artist",
-        album: "Sample Album",
-        artwork: nil,
-        trackNumber: 1,
-        discNumber: 1
-    ))
+    AudioPlayerView(
+        song: Song(
+            url: URL(fileURLWithPath: ""),
+            title: "Sample Song",
+            artist: "Sample Artist",
+            album: "Sample Album",
+            artwork: nil,
+            trackNumber: 1,
+            discNumber: 1
+        ),
+        allSongs: []
+    )
 } 
