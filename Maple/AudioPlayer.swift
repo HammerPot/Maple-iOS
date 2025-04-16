@@ -3,20 +3,22 @@ import AVFoundation
 import MediaPlayer
 
 class AudioPlayerManager: NSObject, ObservableObject {
+    static let shared = AudioPlayerManager()
+    
     private var audioPlayer: AVAudioPlayer?
     @Published var isPlaying = false
     @Published var currentTime: TimeInterval = 0
     @Published var duration: TimeInterval = 0
     private var timer: Timer?
     private var nowPlayingInfo = [String: Any]()
-    var currentSong: Song?
+    @Published var currentSong: Song?
     private var isHandlingRemoteControl = false
     
     // Queue management
     private var queue: [Song] = []
     private var currentIndex: Int = -1
     
-    override init() {
+    private override init() {
         super.init()
         setupAudioSession()
         setupRemoteTransportControls()
@@ -272,11 +274,12 @@ extension AudioPlayerManager: AVAudioPlayerDelegate {
 }
 
 struct AudioPlayerView: View {
-    @StateObject private var audioManager = AudioPlayerManager()
+    @ObservedObject private var audioManager = AudioPlayerManager.shared
     let song: Song
-    let allSongs: [Song]  // Add this property
+    let allSongs: [Song]
+    @State private var hasInitializedQueue = false
     
-    init(song: Song, allSongs: [Song]) {  // Update initializer
+    init(song: Song, allSongs: [Song]) {
         self.song = song
         self.allSongs = allSongs
     }
@@ -285,9 +288,9 @@ struct AudioPlayerView: View {
         VStack(spacing: 20) {
             // Song Info
             VStack(spacing: 8) {
-                Text(song.title)
+                Text(audioManager.currentSong?.title ?? song.title)
                     .font(.headline)
-                Text(song.artist)
+                Text(audioManager.currentSong?.artist ?? song.artist)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
@@ -338,12 +341,15 @@ struct AudioPlayerView: View {
         }
         .padding()
         .onAppear {
-            // Set up the queue with all songs, starting at the current song
-			print("allSongs titles: \(allSongs.map { $0.title })")
-			print("song: \(song.title)")
-			print("\(allSongs.firstIndex(where: { $0.url == song.url }))")
-            if let index = allSongs.firstIndex(where: { $0.url == song.url }) {
-                audioManager.setQueue(allSongs, startingAt: index)
+            // Only set up the queue if we haven't done so for this song
+            if !hasInitializedQueue {
+                print("allSongs titles: \(allSongs.map { $0.title })")
+                print("song: \(song.title)")
+                print("\(allSongs.firstIndex(where: { $0.url == song.url }))")
+                if let index = allSongs.firstIndex(where: { $0.url == song.url }) {
+                    audioManager.setQueue(allSongs, startingAt: index)
+                    hasInitializedQueue = true
+                }
             }
         }
     }

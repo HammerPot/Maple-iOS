@@ -9,7 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        // MusicButton()
+        MusicButton()
         TabView {
             Tab("Home", systemImage: "house") {
                 Home()

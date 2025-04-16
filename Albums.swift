@@ -87,54 +87,60 @@ struct Albums: View {
 struct AlbumDetailView: View {
 	let album: Album
 	
+	var sortedSongs: [Song] {
+		album.songs.sorted(by: { 
+			if $0.discNumber != $1.discNumber {
+				return $0.discNumber < $1.discNumber
+			} else {
+				return $0.trackNumber < $1.trackNumber
+			}
+		})
+	}
+	
 	var body: some View {
-		ScrollView {
-			VStack(alignment: .leading, spacing: 16) {
-				if let artwork = album.artwork {
-					Image(uiImage: artwork)
-						.resizable()
-						.aspectRatio(contentMode: .fit)
-						.frame(maxWidth: .infinity)
-						.cornerRadius(8)
-				}
-				
-				VStack(alignment: .leading, spacing: 8) {
-					Text(album.name)
-						.font(.title)
-						.bold()
-					
-					Text(album.artist)
-						.font(.title2)
-						.foregroundColor(.secondary)
-				}
-				.padding(.horizontal)
-				
-				ForEach(album.songs.sorted(by: { 
-					if $0.discNumber != $1.discNumber {
-						return $0.discNumber < $1.discNumber
-					} else {
-						return $0.trackNumber < $1.trackNumber
-					}
-				})) { song in
-					HStack {
-						Text("\(song.trackNumber).")
-							.font(.caption)
-							.foregroundColor(.secondary)
-							.frame(width: 25, alignment: .trailing)
-						
-						Text(song.title)
-							.font(.body)
-						
-						Spacer()
-						
-						Text("(Disc \(song.discNumber))")
-							.font(.caption)
-							.foregroundColor(.secondary)
-					}
+		VStack {
+			if let artwork = album.artwork {
+				Image(uiImage: artwork)
+					.resizable()
+					.aspectRatio(contentMode: .fit)
+					.frame(maxWidth: .infinity)
+					.cornerRadius(8)
 					.padding(.horizontal)
+			}
+			
+			VStack(alignment: .leading, spacing: 8) {
+				Text(album.name)
+					.font(.title)
+					.bold()
+				
+				Text(album.artist)
+					.font(.title2)
+					.foregroundColor(.secondary)
+			}
+			.frame(maxWidth: .infinity, alignment: .leading)
+			.padding(.horizontal)
+			
+			List {
+				ForEach(sortedSongs) { song in
+					NavigationLink(destination: AudioPlayerView(song: song, allSongs: sortedSongs)) {
+						HStack {
+							Text("\(song.trackNumber).")
+								.font(.caption)
+								.foregroundColor(.secondary)
+								.frame(width: 25, alignment: .trailing)
+							
+							Text(song.title)
+								.font(.body)
+							
+							Spacer()
+							
+							Text("(Disc \(song.discNumber))")
+								.font(.caption)
+								.foregroundColor(.secondary)
+						}
+					}
 				}
 			}
 		}
-		.navigationBarTitleDisplayMode(.inline)
 	}
 }

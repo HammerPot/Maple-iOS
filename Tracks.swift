@@ -6,47 +6,30 @@ struct Tracks: View {
 	@State private var songs: [Song] = []
     @State private var isLoading = true
 	var body: some View {
-        ScrollView {
+        VStack {
             if isLoading {
                 ProgressView("Loading tracks...")
             } else if songs.isEmpty {
-            Text("No music files found")
-                .font(.headline)
-                .foregroundColor(.gray)
-                .padding()
-			} else {
-				VStack {
-					// MusicButton()
-					
-					if localFiles.isEmpty {
-						Text("No music files found")
-							.font(.headline)
-							.foregroundColor(.gray)
-							.padding()
-					} else {
-						VStack(alignment: .leading, spacing: 16) {
-							VStack(alignment: .leading, spacing: 8) {
-								Text("Tracks")
-									.font(.title)
-									.bold()
-							}
-							// Text("songs: \(songs.count)")
-							// Text("songs: \(songs)")
-							ForEach(songs.sorted(by: { $0.title < $1.title })) { song in
-								// Text("song: \(song.title)")
-								NavigationLink(destination: AudioPlayerView(song: song, allSongs: songs.sorted(by: { $0.title < $1.title }))) {
-									HStack() {
-										Text(song.title)
-										Spacer()
-									}
-									.padding(.horizontal)
-								}
-							}
-						}
-					}
-				}
-			}
-		}
+                Text("No music files found")
+                    .font(.headline)
+                    .foregroundColor(.gray)
+                    .padding()
+            } else {
+                Text("Tracks")
+                    .font(.title)
+                    .bold()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                
+                List {
+                    ForEach(songs.sorted(by: { $0.title < $1.title })) { song in
+                        NavigationLink(destination: AudioPlayerView(song: song, allSongs: songs.sorted(by: { $0.title < $1.title }))) {
+                            Text(song.title)
+                        }
+                    }
+                }
+            }
+        }
 		.onAppear {
 			localFiles = loadLocalFiles()
 			loadSongsLocal()

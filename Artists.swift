@@ -17,23 +17,28 @@ struct Artists: View {
 					.foregroundColor(.gray)
 					.padding()
 			} else {
+				Text("Artists")
+					.font(.title)
+					.bold()
+					.frame(maxWidth: .infinity, alignment: .leading)
+					.padding(.horizontal)
+				
 				List {
-                    ForEach(artists) { artist in
-                        NavigationLink(destination: ArtistDetailView(artist: artist)) {
-                            Text(artist.name)
-                        }
-                    }
-                }
-            }
-        }
-        .onAppear {
-            localFiles = loadLocalFiles()
-            loadArtists()
-        }
+					ForEach(artists) { artist in
+						NavigationLink(destination: ArtistDetailView(artist: artist)) {
+							Text(artist.name)
+						}
+					}
+				}
+			}
+		}
+		.onAppear {
+			localFiles = loadLocalFiles()
+			loadArtists()
+		}
+	}
 
-    }
-
-    private func loadArtists() {
+	private func loadArtists() {
 		isLoading = true
 		
 		Task {
@@ -52,28 +57,25 @@ struct Artists: View {
 
 struct ArtistDetailView: View {
 	let artist: Artist
+    var sortedSongs: [Song] {
+        artist.songs.sorted(by: { $0.title < $1.title })
+    }
 	var body: some View {
-		ScrollView {
-			VStack(alignment: .leading, spacing: 16) {
-				VStack(alignment: .leading, spacing: 8) {
-					Text(artist.name)
-						.font(.title)
-						.bold()
-				}
+		VStack {
+			Text(artist.name)
+				.font(.title)
+				.bold()
+				.frame(maxWidth: .infinity, alignment: .leading)
 				.padding(.horizontal)
-				ForEach(artist.songs) { song in
-					HStack {
-					    Text(song.title)
+			
+			List {
+				ForEach(sortedSongs) { song in
+					NavigationLink(destination: AudioPlayerView(song: song, allSongs: sortedSongs)) {
+						Text(song.title)
 							.font(.body)
-						Spacer()
-                    }
-					.padding(.horizontal)
+					}
 				}
 			}
-		}
-		// .navigationBarTitleDisplayMode(.inline)
-		.onAppear {
-			// print("BLRH \(artist.songs)")
 		}
 	}
 }
