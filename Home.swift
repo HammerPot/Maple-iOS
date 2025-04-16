@@ -28,6 +28,12 @@ struct Album: Identifiable {
 	var songs: [Song]
 }
 
+struct Artist: Identifiable {
+	let id = UUID()
+	let name: String
+	var songs: [Song]
+}
+
 // Global function to load local music files
 func loadLocalFiles() -> [URL] {
 	let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -217,13 +223,20 @@ func groupSongsByAlbum(_ songs: [Song]) -> [Album] {
 	return Array(albumDict.values).sorted { $0.name < $1.name }
 }
 
-// func groupSongsByArtist(_ songs: [Song]) -> [Artist] {
-// 	var artistDict: [String: Artist] = [:]
-	
-// 	for song in songs {
-// 		let artistKey = song.artist
-// 	}
-// }
+func groupSongsByArtist(_ songs: [Song]) -> [Artist] {
+	var artistDict: [String: Artist] = [:]
+	for song in songs {
+		let artistKey = song.artist
+		if var artist = artistDict[artistKey] {
+			artist.songs.append(song)
+			artistDict[artistKey] = artist
+		} else {
+			let newArtist = Artist(name: song.artist, songs: [song])
+			artistDict[artistKey] = newArtist
+		}
+	}
+	return Array(artistDict.values).sorted { $0.name < $1.name }
+}
 
 struct Home: View {
 	@State private var localFiles: [URL] = []
@@ -245,7 +258,7 @@ struct Home: View {
 				case "Albums":
 					Albums(localFiles: $localFiles)
 				case "Artists":
-					Text("Artists View")
+					Artists(localFiles: $localFiles)
 				default:
 					Text("Invalid content")
 				}
@@ -258,85 +271,7 @@ struct Home: View {
 }
 
 
-struct AlbumDetailView: View {
-	let album: Album
-	
-	var body: some View {
-		ScrollView {
-			VStack(alignment: .leading, spacing: 16) {
-				if let artwork = album.artwork {
-					Image(uiImage: artwork)
-						.resizable()
-						.aspectRatio(contentMode: .fit)
-						.frame(maxWidth: .infinity)
-						.cornerRadius(8)
-				}
-				
-				VStack(alignment: .leading, spacing: 8) {
-					Text(album.name)
-						.font(.title)
-						.bold()
-					
-					Text(album.artist)
-						.font(.title2)
-						.foregroundColor(.secondary)
-				}
-				.padding(.horizontal)
-				
-				ForEach(album.songs.sorted(by: { 
-					if $0.discNumber != $1.discNumber {
-						return $0.discNumber < $1.discNumber
-					} else {
-						return $0.trackNumber < $1.trackNumber
-					}
-				})) { song in
-					HStack {
-						Text("\(song.trackNumber).")
-							.font(.caption)
-							.foregroundColor(.secondary)
-							.frame(width: 25, alignment: .trailing)
-						
-						Text(song.title)
-							.font(.body)
-						
-						Spacer()
-						
-						Text("(Disc \(song.discNumber))")
-							.font(.caption)
-							.foregroundColor(.secondary)
-					}
-					.padding(.horizontal)
-				}
-			}
-		}
-		.navigationBarTitleDisplayMode(.inline)
-	}
-}
 
-// struct ArtistView: View {
-// 	@Binding var localFiles: [URL]
-// 	@State private var artists: [Artist] = []
-// 	@State private var isLoading = true
-	
-// 	var body: some View {
-// 		VStack {
-// 			if isLoading {
-// 				ProgressView("Loading artists...")
-// 			} else if artists.isEmpty {
-// 				Text("No artists found")
-// 					.font(.headline)
-// 					.foregroundColor(.gray)
-// 					.padding()
-// 			} else {
-// 				List {
-// 					ForEach(artists) { artist in
-// 						Text(artist.name)
-// 					}
-// 				}
-// 			}
-// 		}
-// 	}
-// }
 
 
 #Preview {
