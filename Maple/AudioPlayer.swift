@@ -52,6 +52,24 @@ class AudioPlayerManager: NSObject, ObservableObject {
             return .success
         }
         
+        // Add handler for next track command
+        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            self.isHandlingRemoteControl = true
+            self.playNext()
+            self.isHandlingRemoteControl = false
+            return .success
+        }
+        
+        // Add handler for previous track command
+        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            self.isHandlingRemoteControl = true
+            self.playPrevious()
+            self.isHandlingRemoteControl = false
+            return .success
+        }
+        
         // Add handler for seek command
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let self = self,
@@ -72,6 +90,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
     
     private func loadSong(_ song: Song) {
+		print("loadSong: \(song.title)")
         loadAudio(from: song.url)
         updateNowPlayingInfo(
             title: song.title,
@@ -82,13 +101,15 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
     
     func loadAudio(from url: URL) {
-        // Don't load new audio if we're handling a remote control event
-        guard !isHandlingRemoteControl else { return }
-        
         do {
+            print("Loading audio from URL: \(url)")
+            print("Current audio player state - isPlaying: \(isPlaying), currentTime: \(currentTime)")
+            
             audioPlayer = try AVAudioPlayer(contentsOf: url)
             audioPlayer?.prepareToPlay()
             duration = audioPlayer?.duration ?? 0
+            
+            print("New audio player created - duration: \(duration)")
             
             // Setup now playing info
             if let song = currentSong {
@@ -97,6 +118,11 @@ class AudioPlayerManager: NSObject, ObservableObject {
             
             // Set up completion handler
             audioPlayer?.delegate = self
+            
+            // If we're handling a remote control event, automatically start playing
+            if isHandlingRemoteControl {
+                play()
+            }
         } catch {
             print("Error loading audio: \(error.localizedDescription)")
         }
@@ -157,6 +183,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
     
     func play() {
+        print("Play called - current audio player exists: \(audioPlayer != nil)")
         audioPlayer?.play()
         isPlaying = true
         startTimer()
@@ -166,6 +193,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
     
     func pause() {
+        print("Pause called - current audio player exists: \(audioPlayer != nil)")
         audioPlayer?.pause()
         isPlaying = false
         stopTimer()
@@ -175,6 +203,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
     
     func stop() {
+        print("Stop called - current audio player exists: \(audioPlayer != nil)")
         audioPlayer?.stop()
         audioPlayer?.currentTime = 0
         isPlaying = false
@@ -214,17 +243,21 @@ class AudioPlayerManager: NSObject, ObservableObject {
     
     func playNext() {
         guard !queue.isEmpty else { return }
-        
+        print("playNext")
         currentIndex = (currentIndex + 1) % queue.count
-        loadSong(queue[currentIndex])
+        let nextSong = queue[currentIndex]
+        print("Loading next song: \(nextSong.title)")
+        loadSong(nextSong)
         play()
     }
     
     func playPrevious() {
         guard !queue.isEmpty else { return }
-        
+        print("playPrevious")
         currentIndex = (currentIndex - 1 + queue.count) % queue.count
-        loadSong(queue[currentIndex])
+        let previousSong = queue[currentIndex]
+        print("Loading previous song: \(previousSong.title)")
+        loadSong(previousSong)
         play()
     }
 }
