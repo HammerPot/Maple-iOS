@@ -26,17 +26,23 @@ struct Login: View {
     @State private var isLoggedIn = false
     @State private var serverUsername: String = ""
     @State private var serverID: String = ""
+    @State private var userStatus: Int? = nil
     
-    // Load saved cookies on init
+    // Load saved cookies and serverID on init
     init() {
         if let savedCookies = loadCookies() {
             restoreCookies(savedCookies)
+        }
+        
+        // Load saved serverID
+        if let savedServerID = UserDefaults.standard.string(forKey: "savedServerID") {
+            _serverID = State(initialValue: savedServerID)
         }
     }
     
     var body: some View {
         if isLoggedIn {
-            LoggedIn(serverUsername: $serverUsername, serverID: $serverID)
+            LoggedIn()
         }
         else{
             VStack {
@@ -79,6 +85,11 @@ struct Login: View {
                 .disabled(isLoading)
             }
             .padding()
+            .onAppear {
+                Task {
+                    await fetchUserData()
+                }
+            }
         }
     }
     
@@ -90,6 +101,10 @@ struct Login: View {
             let response = try await login(username: username, password: password)
             serverUsername = response.serverUsername
             serverID = response.serverID
+            
+            // Save serverID to UserDefaults
+            UserDefaults.standard.set(serverID, forKey: "savedServerID")
+            
             print("Login successful: \(response)")
             isLoggedIn = response.success
             
@@ -104,7 +119,20 @@ struct Login: View {
         
         isLoading = false
     }
-    
+
+    private func fetchUserData() async {
+        guard let savedServerID = UserDefaults.standard.string(forKey: "savedServerID"), !savedServerID.isEmpty else { return }
+        
+        do {
+            let response = try await getUser(serverID: savedServerID)
+            userStatus = response.response
+            if userStatus == 200 {
+                isLoggedIn = true
+            }
+        } catch {
+            print("Error fetching user data: \(error)")
+        }
+    }
     // Save cookies to UserDefaults
     private func saveCookies(_ cookies: [HTTPCookie]) {
         let cookieData = cookies.map { cookie in
@@ -156,6 +184,15 @@ struct LoginResponse: Codable {
     let success: Bool
     let serverUsername: String
     let serverID: String
+    let response: Int
+}
+
+struct userResponse: Codable {
+    let name: String
+    let id: String
+    let username: String
+    let pfp: Data?
+    let response: Int
 }
 
 func login(username: String, password: String) async throws -> LoginResponse {
@@ -245,10 +282,10 @@ func login(username: String, password: String) async throws -> LoginResponse {
             print("Server ID: \(serverID)")
             print("Status: \(status)")
             if status.stringValue.lowercased() == "success" {
-                return LoginResponse(success: true, serverUsername: serverUsername.stringValue, serverID: serverID.stringValue)
+                return LoginResponse(success: true, serverUsername: serverUsername.stringValue, serverID: serverID.stringValue, response: httpResponse.statusCode)
             }
             else{
-                return LoginResponse(success: false, serverUsername: "", serverID: "")
+                return LoginResponse(success: false, serverUsername: "", serverID: "", response: httpResponse.statusCode)
             }
         } catch {
             print("Decoding error: \(error)")
@@ -263,14 +300,107 @@ func login(username: String, password: String) async throws -> LoginResponse {
     }
 }
 
+func getUser(serverID: String) async throws -> userResponse {
+    print("Getting user data for ID: \(serverID)")
+    guard let url = URL(string: "https://maple.kolf.pro:3000/get/user/\(serverID)") else {
+        throw URLError(.badURL)
+    }
+
+    var request = URLRequest(url: url)
+    request.httpMethod = "GET"
+    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+    
+    // Use the same session configuration as login
+    let config = URLSessionConfiguration.default
+    config.httpShouldSetCookies = true
+    config.httpCookieAcceptPolicy = .always
+    config.httpCookieStorage = .shared
+    let session = URLSession(configuration: config)
+
+    let (data, response) = try await session.data(for: request)
+
+    guard let httpResponse = response as? HTTPURLResponse else {
+        throw URLError(.badServerResponse)
+    }
+    
+    print("User data response status: \(httpResponse.statusCode)")
+    
+    switch httpResponse.statusCode {
+    case 200:
+        let json = try JSON(data: data)
+        print("User data JSON: \(json)")
+        let name = json["name"]
+        let id = json["id"]
+        let username = json["username"]
+        let pfpString = json["pfp"].stringValue
+        guard let pfpData = Data(base64Encoded: pfpString) else {
+            return userResponse(name: name.stringValue, id: id.stringValue, username: username.stringValue, pfp: nil, response: httpResponse.statusCode)
+        }
+
+        return userResponse(name: name.stringValue, id: id.stringValue, username: username.stringValue, pfp: pfpData, response: httpResponse.statusCode)
+    case 401:
+        throw NSError(domain: "Error", code: 401, userInfo: [NSLocalizedDescriptionKey: "Unauthorized"])
+    default:
+        throw NSError(domain: "Error", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Server error: \(httpResponse.statusCode)"])
+    }
+}
 
 struct LoggedIn: View {
-    @Binding var serverUsername: String
-    @Binding var serverID: String
+    @State private var isLoading = false
+    @State private var error: String? = nil
+    @State private var name: String = ""
+    @State private var id: String = ""
+    @State private var username: String = ""
+    @State private var pfp: Data? = nil
+    
     var body: some View {
-        Text("Logged in")
-        Text("Username: \(serverUsername)")
-        Text("ID: \(serverID)")
+        VStack {
+            if isLoading {
+                ProgressView()
+            } else if let error = error {
+                Text(error)
+                    .foregroundColor(.red)
+            } else {
+                Text("Name: \(name)")
+                Text("ID: \(id)")
+                Text("Username: \(username)")
+                if let pfp = pfp, let uiImage = UIImage(data: pfp) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 100, height: 100)
+                        .clipShape(Circle())
+                }
+            }
+        }
+        .onAppear {
+            Task {
+                await fetchUserData()
+            }
+        }
+    }
+    
+    private func fetchUserData() async {
+        guard let serverID = UserDefaults.standard.string(forKey: "savedServerID"), !serverID.isEmpty else { 
+            error = "No server ID found"
+            return 
+        }
+        
+        isLoading = true
+        error = nil
+        
+        do {
+            let response = try await getUser(serverID: serverID)
+            name = response.name
+            id = response.id
+            username = response.username
+            pfp = response.pfp
+        } catch {
+            self.error = "Error: \(error.localizedDescription)"
+            print("Error fetching user data: \(error)")
+        }
+        
+        isLoading = false
     }
 }
 
