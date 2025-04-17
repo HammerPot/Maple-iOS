@@ -11,6 +11,7 @@
 		691210E12DAF1D2F00E3AA06 /* Albums.swift in Sources */ = {isa = PBXBuildFile; fileRef = 691210E02DAF1D2F00E3AA06 /* Albums.swift */; };
 		691210E32DAF1EC900E3AA06 /* Artists.swift in Sources */ = {isa = PBXBuildFile; fileRef = 691210E22DAF1EC900E3AA06 /* Artists.swift */; };
 		691211092DB01B9D00E3AA06 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = 691211082DB01B9D00E3AA06 /* Account.swift */; };
+		6912110C2DB091B000E3AA06 /* SwiftyJSON in Frameworks */ = {isa = PBXBuildFile; productRef = 6912110B2DB091B000E3AA06 /* SwiftyJSON */; };
 		694C16B42D9468F300328F6D /* MusicButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694C16B32D9468F300328F6D /* MusicButton.swift */; };
 		695B297B2D910B2C00D24EF2 /* Home.swift in Sources */ = {isa = PBXBuildFile; fileRef = 695B297A2D910B2C00D24EF2 /* Home.swift */; };
 /* End PBXBuildFile section */
@@ -80,6 +81,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6912110C2DB091B000E3AA06 /* SwiftyJSON in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -146,6 +148,7 @@
 			);
 			name = Maple;
 			packageProductDependencies = (
+				6912110B2DB091B000E3AA06 /* SwiftyJSON */,
 			);
 			productName = Maple;
 			productReference = 69D91D162D90F84500456238 /* Maple.app */;
@@ -229,6 +232,9 @@
 			);
 			mainGroup = 69D91D0D2D90F84500456238;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				6912110A2DB091B000E3AA06 /* XCRemoteSwiftPackageReference "SwiftyJSON" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 69D91D172D90F84500456238 /* Products */;
 			projectDirPath = "";
@@ -604,6 +610,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		6912110A2DB091B000E3AA06 /* XCRemoteSwiftPackageReference "SwiftyJSON" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/SwiftyJSON/SwiftyJSON.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.0.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		6912110B2DB091B000E3AA06 /* SwiftyJSON */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6912110A2DB091B000E3AA06 /* XCRemoteSwiftPackageReference "SwiftyJSON" */;
+			productName = SwiftyJSON;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 69D91D0E2D90F84500456238 /* Project object */;
 }
