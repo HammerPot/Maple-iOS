@@ -9,6 +9,15 @@ import SwiftUI
 import Foundation
 import SwiftyJSON
 
+// Structure to store cookie data
+struct CookieData: Codable {
+    let name: String
+    let value: String
+    let domain: String
+    let path: String
+    let expiresDate: Date?
+}
+
 struct Login: View {
     @State private var username: String = ""
     @State private var password: String = ""
@@ -17,7 +26,13 @@ struct Login: View {
     @State private var isLoggedIn = false
     @State private var serverUsername: String = ""
     @State private var serverID: String = ""
-    @State private var cookies: [HTTPCookie] = []
+    
+    // Load saved cookies on init
+    init() {
+        if let savedCookies = loadCookies() {
+            restoreCookies(savedCookies)
+        }
+    }
     
     var body: some View {
         if isLoggedIn {
@@ -64,9 +79,6 @@ struct Login: View {
                 .disabled(isLoading)
             }
             .padding()
-            .onAppear {
-                loadCookies()
-            }
         }
     }
     
@@ -81,13 +93,62 @@ struct Login: View {
             print("Login successful: \(response)")
             isLoggedIn = response.success
             
-            // Handle successful login (e.g., navigate to another view)
+            // Save cookies after successful login
+            if let cookies = HTTPCookieStorage.shared.cookies(for: URL(string: "https://maple.kolf.pro:3000")!) {
+                saveCookies(cookies)
+            }
         } catch {
             errorMessage = "Login failed: \(error.localizedDescription)"
             print("Login error: \(error)")
         }
         
         isLoading = false
+    }
+    
+    // Save cookies to UserDefaults
+    private func saveCookies(_ cookies: [HTTPCookie]) {
+        let cookieData = cookies.map { cookie in
+            CookieData(
+                name: cookie.name,
+                value: cookie.value,
+                domain: cookie.domain,
+                path: cookie.path,
+                expiresDate: cookie.expiresDate
+            )
+        }
+        
+        if let encoded = try? JSONEncoder().encode(cookieData) {
+            UserDefaults.standard.set(encoded, forKey: "savedCookies")
+        }
+    }
+    
+    // Load cookies from UserDefaults
+    private func loadCookies() -> [CookieData]? {
+        guard let data = UserDefaults.standard.data(forKey: "savedCookies"),
+              let cookieData = try? JSONDecoder().decode([CookieData].self, from: data) else {
+            return nil
+        }
+        return cookieData
+    }
+    
+    // Restore cookies to HTTPCookieStorage
+    private func restoreCookies(_ cookieData: [CookieData]) {
+        for data in cookieData {
+            var properties: [HTTPCookiePropertyKey: Any] = [
+                .name: data.name,
+                .value: data.value,
+                .domain: data.domain,
+                .path: data.path
+            ]
+            
+            if let expiresDate = data.expiresDate {
+                properties[.expires] = expiresDate
+            }
+            
+            if let cookie = HTTPCookie(properties: properties) {
+                HTTPCookieStorage.shared.setCookie(cookie)
+            }
+        }
     }
 }
 
@@ -131,17 +192,33 @@ func login(username: String, password: String) async throws -> LoginResponse {
         //     print("\(key): \(value)")
         // }
         
-        // Print cookies after the request
-        // if let cookies = HTTPCookieStorage.shared.cookies(for: url) {
-        //     print("\nCookies after request:")
-        //     for cookie in cookies {
-        //         print("Cookie: \(cookie.name) = \(cookie.value)")
-        //         print("Domain: \(cookie.domain)")
-        //         print("Path: \(cookie.path)")
-        //         print("Expires: \(String(describing: cookie.expiresDate))")
-        //         print("---")
-        //     }
-        // }
+        // Print and save cookies after the request
+        if let cookies = HTTPCookieStorage.shared.cookies(for: url) {
+            // print("\nCookies after request:")
+            // for cookie in cookies {
+            //     print("Cookie: \(cookie.name) = \(cookie.value)")
+            //     print("Domain: \(cookie.domain)")
+            //     print("Path: \(cookie.path)")
+            //     print("Expires: \(String(describing: cookie.expiresDate))")
+            //     print("---")
+            // }
+            
+            // Save cookies to UserDefaults
+            let cookieData = cookies.map { cookie in
+                CookieData(
+                    name: cookie.name,
+                    value: cookie.value,
+                    domain: cookie.domain,
+                    path: cookie.path,
+                    expiresDate: cookie.expiresDate
+                )
+            }
+            
+            if let encoded = try? JSONEncoder().encode(cookieData) {
+                UserDefaults.standard.set(encoded, forKey: "savedCookies")
+                print("Cookies saved successfully")
+            }
+        }
     }
     
     // Check HTTP response
@@ -190,44 +267,10 @@ func login(username: String, password: String) async throws -> LoginResponse {
 struct LoggedIn: View {
     @Binding var serverUsername: String
     @Binding var serverID: String
-    @Environment(\.dismiss) private var dismiss
-    
     var body: some View {
-        VStack {
-            Text("Logged in")
-            Text("Username: \(serverUsername)")
-            Text("ID: \(serverID)")
-            
-            Button("Logout") {
-                if let loginView = dismiss as? Login {
-                    loginView.logout()
-                }
-            }
-            .padding()
-        }
-    }
-}
-
-// Add a function to clear cookies when logging out
-extension Login {
-    func logout() {
-        // Clear cookies from storage
-        if let url = URL(string: "https://maple.kolf.pro:3000/login") {
-            if let cookies = HTTPCookieStorage.shared.cookies(for: url) {
-                for cookie in cookies {
-                    HTTPCookieStorage.shared.deleteCookie(cookie)
-                }
-            }
-        }
-        
-        // Clear saved cookies from UserDefaults
-        UserDefaults.standard.removeObject(forKey: "savedCookies")
-        cookies = []
-        
-        // Reset login state
-        isLoggedIn = false
-        serverUsername = ""
-        serverID = ""
+        Text("Logged in")
+        Text("Username: \(serverUsername)")
+        Text("ID: \(serverID)")
     }
 }
 
