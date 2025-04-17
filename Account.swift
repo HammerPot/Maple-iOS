@@ -9,6 +9,8 @@ import SwiftUI
 import Foundation
 import SwiftyJSON
 
+// MARK: - Data Structures
+
 // Structure to store cookie data
 struct CookieData: Codable {
     let name: String
@@ -16,168 +18,6 @@ struct CookieData: Codable {
     let domain: String
     let path: String
     let expiresDate: Date?
-}
-
-struct Login: View {
-    @State private var username: String = ""
-    @State private var password: String = ""
-    @State private var isLoading = false
-    @State private var errorMessage: String? = nil
-    @State private var isLoggedIn = false
-    @State private var serverUsername: String = ""
-    @State private var serverID: String = ""
-    @State private var userStatus: Int? = nil
-    
-    // Load saved cookies and serverID on init
-    init() {
-        if let savedCookies = loadCookies() {
-            restoreCookies(savedCookies)
-        }
-        
-        // Load saved serverID
-        if let savedServerID = UserDefaults.standard.string(forKey: "savedServerID") {
-            _serverID = State(initialValue: savedServerID)
-        }
-    }
-    
-    var body: some View {
-        if isLoggedIn {
-            LoggedIn()
-        }
-        else{
-            VStack {
-                TextField("Username", text: $username)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .padding()
-                    .disableAutocorrection(true)
-                    .autocapitalization(.none)
-                
-                SecureField("Password", text: $password)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .padding()
-                    .disableAutocorrection(true)
-                    .onSubmit {
-                        Task {
-                            await handleLogin()
-                        }
-                    }
-                
-                if let errorMessage = errorMessage {
-                    Text(errorMessage)
-                        .foregroundColor(.red)
-                        .padding()
-                }
-                
-                Button(action: {
-                    Task {
-                        await handleLogin()
-                    }
-                }) {
-                    if isLoading {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle())
-                    } else {
-                        Text("Login")
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .padding()
-                .disabled(isLoading)
-            }
-            .padding()
-            .onAppear {
-                Task {
-                    await fetchUserData()
-                }
-            }
-        }
-    }
-    
-    private func handleLogin() async {
-        isLoading = true
-        errorMessage = nil
-        
-        do {
-            let response = try await login(username: username, password: password)
-            serverUsername = response.serverUsername
-            serverID = response.serverID
-            
-            // Save serverID to UserDefaults
-            UserDefaults.standard.set(serverID, forKey: "savedServerID")
-            
-            print("Login successful: \(response)")
-            isLoggedIn = response.success
-            
-            // Save cookies after successful login
-            if let cookies = HTTPCookieStorage.shared.cookies(for: URL(string: "https://maple.kolf.pro:3000")!) {
-                saveCookies(cookies)
-            }
-        } catch {
-            errorMessage = "Login failed: \(error.localizedDescription)"
-            print("Login error: \(error)")
-        }
-        
-        isLoading = false
-    }
-
-    private func fetchUserData() async {
-        guard let savedServerID = UserDefaults.standard.string(forKey: "savedServerID"), !savedServerID.isEmpty else { return }
-        
-        do {
-            let response = try await getUser(serverID: savedServerID)
-            userStatus = response.response
-            if userStatus == 200 {
-                isLoggedIn = true
-            }
-        } catch {
-            print("Error fetching user data: \(error)")
-        }
-    }
-    // Save cookies to UserDefaults
-    private func saveCookies(_ cookies: [HTTPCookie]) {
-        let cookieData = cookies.map { cookie in
-            CookieData(
-                name: cookie.name,
-                value: cookie.value,
-                domain: cookie.domain,
-                path: cookie.path,
-                expiresDate: cookie.expiresDate
-            )
-        }
-        
-        if let encoded = try? JSONEncoder().encode(cookieData) {
-            UserDefaults.standard.set(encoded, forKey: "savedCookies")
-        }
-    }
-    
-    // Load cookies from UserDefaults
-    private func loadCookies() -> [CookieData]? {
-        guard let data = UserDefaults.standard.data(forKey: "savedCookies"),
-              let cookieData = try? JSONDecoder().decode([CookieData].self, from: data) else {
-            return nil
-        }
-        return cookieData
-    }
-    
-    // Restore cookies to HTTPCookieStorage
-    private func restoreCookies(_ cookieData: [CookieData]) {
-        for data in cookieData {
-            var properties: [HTTPCookiePropertyKey: Any] = [
-                .name: data.name,
-                .value: data.value,
-                .domain: data.domain,
-                .path: data.path
-            ]
-            
-            if let expiresDate = data.expiresDate {
-                properties[.expires] = expiresDate
-            }
-            
-            if let cookie = HTTPCookie(properties: properties) {
-                HTTPCookieStorage.shared.setCookie(cookie)
-            }
-        }
-    }
 }
 
 struct LoginResponse: Codable {
@@ -194,6 +34,8 @@ struct userResponse: Codable {
     let pfp: Data?
     let response: Int
 }
+
+// MARK: - API Functions
 
 func login(username: String, password: String) async throws -> LoginResponse {
     guard let url = URL(string: "https://maple.kolf.pro:3000/login") else {
@@ -345,6 +187,171 @@ func getUser(serverID: String) async throws -> userResponse {
     }
 }
 
+// MARK: - Views
+
+struct Login: View {
+    @State private var username: String = ""
+    @State private var password: String = ""
+    @State private var isLoading = false
+    @State private var errorMessage: String? = nil
+    @State private var isLoggedIn = false
+    @State private var serverUsername: String = ""
+    @State private var serverID: String = ""
+    @State private var userStatus: Int? = nil
+    
+    // Load saved cookies and serverID on init
+    init() {
+        if let savedCookies = loadCookies() {
+            restoreCookies(savedCookies)
+        }
+        
+        // Load saved serverID
+        if let savedServerID = UserDefaults.standard.string(forKey: "savedServerID") {
+            _serverID = State(initialValue: savedServerID)
+        }
+    }
+    
+    var body: some View {
+        if isLoggedIn {
+            LoggedIn()
+        }
+        else{
+            VStack {
+                TextField("Username", text: $username)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding()
+                    .disableAutocorrection(true)
+                    .autocapitalization(.none)
+                
+                SecureField("Password", text: $password)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding()
+                    .disableAutocorrection(true)
+                    .onSubmit {
+                        Task {
+                            await handleLogin()
+                        }
+                    }
+                
+                if let errorMessage = errorMessage {
+                    Text(errorMessage)
+                        .foregroundColor(.red)
+                        .padding()
+                }
+                
+                Button(action: {
+                    Task {
+                        await handleLogin()
+                    }
+                }) {
+                    if isLoading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                    } else {
+                        Text("Login")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding()
+                .disabled(isLoading)
+            }
+            .padding()
+            .onAppear {
+                Task {
+                    await fetchUserData()
+                }
+            }
+        }
+    }
+    
+    private func handleLogin() async {
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            let response = try await login(username: username, password: password)
+            serverUsername = response.serverUsername
+            serverID = response.serverID
+            
+            // Save serverID to UserDefaults
+            UserDefaults.standard.set(serverID, forKey: "savedServerID")
+            
+            print("Login successful: \(response)")
+            isLoggedIn = response.success
+            
+            // Save cookies after successful login
+            if let cookies = HTTPCookieStorage.shared.cookies(for: URL(string: "https://maple.kolf.pro:3000")!) {
+                saveCookies(cookies)
+            }
+        } catch {
+            errorMessage = "Login failed: \(error.localizedDescription)"
+            print("Login error: \(error)")
+        }
+        
+        isLoading = false
+    }
+    
+    // Save cookies to UserDefaults
+    private func saveCookies(_ cookies: [HTTPCookie]) {
+        let cookieData = cookies.map { cookie in
+            CookieData(
+                name: cookie.name,
+                value: cookie.value,
+                domain: cookie.domain,
+                path: cookie.path,
+                expiresDate: cookie.expiresDate
+            )
+        }
+        
+        if let encoded = try? JSONEncoder().encode(cookieData) {
+            UserDefaults.standard.set(encoded, forKey: "savedCookies")
+        }
+    }
+    
+    // Load cookies from UserDefaults
+    private func loadCookies() -> [CookieData]? {
+        guard let data = UserDefaults.standard.data(forKey: "savedCookies"),
+              let cookieData = try? JSONDecoder().decode([CookieData].self, from: data) else {
+            return nil
+        }
+        return cookieData
+    }
+    
+    // Restore cookies to HTTPCookieStorage
+    private func restoreCookies(_ cookieData: [CookieData]) {
+        for data in cookieData {
+            var properties: [HTTPCookiePropertyKey: Any] = [
+                .name: data.name,
+                .value: data.value,
+                .domain: data.domain,
+                .path: data.path
+            ]
+            
+            if let expiresDate = data.expiresDate {
+                properties[.expires] = expiresDate
+            }
+            
+            if let cookie = HTTPCookie(properties: properties) {
+                HTTPCookieStorage.shared.setCookie(cookie)
+            }
+        }
+    }
+    
+    private func fetchUserData() async {
+        guard let savedServerID = UserDefaults.standard.string(forKey: "savedServerID"), !savedServerID.isEmpty else { return }
+        
+        do {
+            let response = try await getUser(serverID: savedServerID)
+            userStatus = response.response
+            if userStatus == 200 {
+                isLoggedIn = true
+            }
+        } catch {
+            print("Error fetching user data: \(error)")
+        }
+    }
+}
+
 struct LoggedIn: View {
     @State private var isLoading = false
     @State private var error: String? = nil
@@ -371,6 +378,13 @@ struct LoggedIn: View {
                         .frame(width: 100, height: 100)
                         .clipShape(Circle())
                 }
+                Button(action: {
+                    Task {
+                        await setAlbumArt()
+                    }
+                }) {
+                    Text("Album Art Test")
+                }
             }
         }
         .onAppear {
@@ -378,6 +392,10 @@ struct LoggedIn: View {
                 await fetchUserData()
             }
         }
+    }
+    
+    private func setAlbumArt() async {
+        print("Setting album art")
     }
     
     private func fetchUserData() async {
@@ -402,5 +420,11 @@ struct LoggedIn: View {
         
         isLoading = false
     }
+}
+
+// MARK: - Preview
+
+#Preview {
+    Login()
 }
 
