@@ -188,13 +188,16 @@ func loadSongs(from urls: [URL]) async -> [Song] {
 	
 	for url in urls {
 		let metadata = await extractMetadata(from: url)
-		let song = Song(url: url, 
+		var song = Song(url: url, 
 						title: metadata.title, 
 						artist: metadata.artist, 
 						album: metadata.album,
 						artwork: metadata.artwork,
 						trackNumber: metadata.trackNumber,
 						discNumber: metadata.discNumber)
+		if song.artwork == nil {
+			song.artwork = UIImage(named: "Maple")
+		}
 		songs.append(song)
 	}
 	

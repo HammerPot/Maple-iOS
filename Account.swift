@@ -8,6 +8,7 @@
 import SwiftUI
 import Foundation
 import SwiftyJSON
+import Alamofire
 
 // MARK: - Data Structures
 
@@ -158,7 +159,8 @@ func getUser(serverID: String) async throws -> userResponse {
     config.httpCookieAcceptPolicy = .always
     config.httpCookieStorage = .shared
     let session = URLSession(configuration: config)
-
+    print("Request: \(request)")
+    print("Request Headers: \(request.allHTTPHeaderFields)")
     let (data, response) = try await session.data(for: request)
 
     guard let httpResponse = response as? HTTPURLResponse else {
@@ -170,7 +172,7 @@ func getUser(serverID: String) async throws -> userResponse {
     switch httpResponse.statusCode {
     case 200:
         let json = try JSON(data: data)
-        print("User data JSON: \(json)")
+        // print("User data JSON: \(json)")
         let name = json["name"]
         let id = json["id"]
         let username = json["username"]
@@ -185,6 +187,163 @@ func getUser(serverID: String) async throws -> userResponse {
     default:
         throw NSError(domain: "Error", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Server error: \(httpResponse.statusCode)"])
     }
+}
+
+// func setAlbumArt(serverID: String, albumArt: String) async throws -> String {
+//     let url = "https://maple.kolf.pro:3000/user/manage/setAlbumArt/\(serverID)/"
+    
+//     // Print current cookies for debugging
+//     print("\nCurrent cookies before request:")
+//     if let cookies = HTTPCookieStorage.shared.cookies {
+//         for cookie in cookies {
+//             print("Cookie: \(cookie.name) = \(cookie.value)")
+//             print("Domain: \(cookie.domain)")
+//             print("Path: \(cookie.path)")
+//             print("---")
+//         }
+//     } else {
+//         print("No cookies found in storage")
+//     }
+    
+//     // Create a session configuration with cookie handling
+//     let configuration = URLSessionConfiguration.default
+//     configuration.httpShouldSetCookies = true
+//     configuration.httpCookieAcceptPolicy = .always
+//     configuration.httpCookieStorage = .shared
+    
+//     // Create a custom session with the configuration
+//     let session = Session(configuration: configuration)
+    
+//     return try await withCheckedThrowingContinuation { continuation in
+//         // Create headers
+//         var headers: HTTPHeaders = [:]
+        
+//         // Add cookies to headers
+//         if let cookies = HTTPCookieStorage.shared.cookies {
+//             let cookieString = cookies.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
+//             print("Cookie String: \(cookieString)")
+//             headers.add(name: "Cookie", value: cookieString)
+//         }
+        
+//         session.upload(multipartFormData: { multipartFormData in
+//             // Add the album art data to the form
+//             if let imageData = Data(base64Encoded: albumArt) {
+//                 print("Album Art Data Size: \(imageData.count) bytes")
+//                 multipartFormData.append(imageData, withName: "albumArt", fileName: "albumArt.jpg", mimeType: "image/jpeg")
+//             } else {
+//                 print("Failed to decode album art from base64")
+//             }
+//             multipartFormData.append(Data(serverID.utf8), withName: "id")
+//             print()
+//             // Log the server ID
+//             let serverIDData = Data(serverID.utf8)
+//             print(Data(serverID.utf8))
+//             multipartFormData.append(serverIDData, withName: "id")
+//         }, to: url, method: .post, headers: headers)
+//         .response { response in
+//             // Print request headers
+//             if let request = response.request {
+//                 print("\nRequest Headers:")
+//                 for (key, value) in request.allHTTPHeaderFields ?? [:] {
+//                     print("\(key): \(value)")
+//                 }
+//                 print("--------")
+//             }
+            
+//             // Print response headers for debugging
+//             if let httpResponse = response.response {
+//                 print("\nResponse Headers:")
+//                 for (key, value) in httpResponse.allHeaderFields {
+//                     print("\(key): \(value)")
+//                 }
+//             }
+            
+//             switch response.result {
+//             case .success(let data):
+//                 if let data = data,
+//                    let responseString = String(data: data, encoding: .utf8) {
+//                     continuation.resume(returning: responseString)
+//                     print("Album art set successfully: \(responseString)")
+//                 } else {
+//                     continuation.resume(throwing: NSError(domain: "Error", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to decode response"]))
+//                 }
+//             case .failure(let error):
+//                 print("Error setting album art: \(error)")
+//                 continuation.resume(throwing: error)
+//             }
+//         }
+//     }
+// }
+
+func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
+    guard let url = URL(string: "https://maple.kolf.pro:3000/user/manage/setAlbumArt/\(serverID)") else {
+        throw URLError(.badURL)
+    }
+    print("URL: \(url)")
+    var request = URLRequest(url: url)
+    print("url: \(request)")
+    request.httpMethod = "POST"
+    let boundary = UUID().uuidString
+    request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+    var body = Data()
+    let boundaryStart = "--\(boundary)\r\n"
+    let boundaryEnd = "--\(boundary)--\r\n"
+    print("Album Art: \(albumArt)")
+    print(albumArt)
+
+    print("Boundary Start: \(boundaryStart)")
+    print("BSData: \(boundaryStart.data(using: .utf8)!)")
+    body.append(boundaryStart.data(using: .utf8)!)
+    body.append("Content-Disposition: form-data; name=\"albumArt\"; filename=\"albumArt.jpg\"\r\n".data(using: .utf8)!)
+    body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+    body.append(albumArt)
+    body.append("\r\n".data(using: .utf8)!)
+    body.append(boundaryStart.data(using: .utf8)!)
+    body.append("Content-Disposition: form-data; name=\"id\"\r\n\r\n".data(using: .utf8)!)
+    body.append("\(serverID)\r\n".data(using: .utf8)!)
+    body.append(boundaryEnd.data(using: .utf8)!)
+
+
+    print("Body: \(body.count)")
+        // Print the body as a string
+    if let bodyString = String(data: body, encoding: .utf8) {
+        print("Request Body: \n--------\n\(bodyString)\n--------")
+    } else {
+        print("Failed to convert body to string.")
+    }
+    request.httpBody = body
+
+    print("Request Headers: \(request.allHTTPHeaderFields)")
+    print("Request Body: \(request.httpBody)")
+
+    let config = URLSessionConfiguration.default
+    config.httpShouldSetCookies = true
+    config.httpCookieAcceptPolicy = .always
+    config.httpCookieStorage = .shared
+    let session = URLSession(configuration: config)
+
+    // if let cookies = HTTPCookieStorage.shared.cookies {
+    //     let cookieString = cookies.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
+    //     print("Cookie String: \(cookieString)")
+    //     request.addValue(cookieString, forHTTPHeaderField: "Cookie")
+    // }
+    request.addValue("\(body.count)", forHTTPHeaderField: "Content-Length")
+    print("Request Headers: \(request.allHTTPHeaderFields)")
+
+    let (data, response) = try await session.data(for: request)
+    guard let httpResponse = response as? HTTPURLResponse else {
+        throw URLError(.badServerResponse)
+    }
+    print("BLAH TEXT")
+    print("Album Art Response: Code \(httpResponse.statusCode)")
+    print("Album Art Response Data: \(String(data: data, encoding: .utf8))")
+    print("Album Art Response Headers: \(httpResponse.allHeaderFields)")
+    return "\(httpResponse.statusCode)"
+    
+    
+
+    
 }
 
 // MARK: - Views
@@ -206,16 +365,15 @@ struct Login: View {
         }
         
         // Load saved serverID
-        if let savedServerID = UserDefaults.standard.string(forKey: "savedServerID") {
+      if let savedServerID = UserDefaults.standard.string(forKey: "savedServerID") {
             _serverID = State(initialValue: savedServerID)
-        }
+        }  
     }
     
     var body: some View {
         if isLoggedIn {
-            LoggedIn()
-        }
-        else{
+            LoggedIn(isLoggedIn: $isLoggedIn)
+        } else {
             VStack {
                 TextField("Username", text: $username)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -292,51 +450,6 @@ struct Login: View {
     }
     
     // Save cookies to UserDefaults
-    private func saveCookies(_ cookies: [HTTPCookie]) {
-        let cookieData = cookies.map { cookie in
-            CookieData(
-                name: cookie.name,
-                value: cookie.value,
-                domain: cookie.domain,
-                path: cookie.path,
-                expiresDate: cookie.expiresDate
-            )
-        }
-        
-        if let encoded = try? JSONEncoder().encode(cookieData) {
-            UserDefaults.standard.set(encoded, forKey: "savedCookies")
-        }
-    }
-    
-    // Load cookies from UserDefaults
-    private func loadCookies() -> [CookieData]? {
-        guard let data = UserDefaults.standard.data(forKey: "savedCookies"),
-              let cookieData = try? JSONDecoder().decode([CookieData].self, from: data) else {
-            return nil
-        }
-        return cookieData
-    }
-    
-    // Restore cookies to HTTPCookieStorage
-    private func restoreCookies(_ cookieData: [CookieData]) {
-        for data in cookieData {
-            var properties: [HTTPCookiePropertyKey: Any] = [
-                .name: data.name,
-                .value: data.value,
-                .domain: data.domain,
-                .path: data.path
-            ]
-            
-            if let expiresDate = data.expiresDate {
-                properties[.expires] = expiresDate
-            }
-            
-            if let cookie = HTTPCookie(properties: properties) {
-                HTTPCookieStorage.shared.setCookie(cookie)
-            }
-        }
-    }
-    
     private func fetchUserData() async {
         guard let savedServerID = UserDefaults.standard.string(forKey: "savedServerID"), !savedServerID.isEmpty else { return }
         
@@ -359,6 +472,7 @@ struct LoggedIn: View {
     @State private var id: String = ""
     @State private var username: String = ""
     @State private var pfp: Data? = nil
+    @Binding var isLoggedIn: Bool
     
     var body: some View {
         VStack {
@@ -380,10 +494,24 @@ struct LoggedIn: View {
                 }
                 Button(action: {
                     Task {
-                        await setAlbumArt()
+                        do {
+                            if let pfp = pfp {
+                                try await setAlbumArt(serverID: id, albumArt: pfp)
+                            }
+                        } catch {
+                            print("Error setting album art: \(error)")
+                        }
                     }
                 }) {
                     Text("Album Art Test")
+                }
+                Button(action: {
+                    Task {
+                        await deleteCookies()
+                        isLoggedIn = false
+                    }
+                }) {
+                    Text("Logout")
                 }
             }
         }
@@ -394,9 +522,6 @@ struct LoggedIn: View {
         }
     }
     
-    private func setAlbumArt() async {
-        print("Setting album art")
-    }
     
     private func fetchUserData() async {
         guard let serverID = UserDefaults.standard.string(forKey: "savedServerID"), !serverID.isEmpty else { 
@@ -421,6 +546,66 @@ struct LoggedIn: View {
         isLoading = false
     }
 }
+
+
+
+func saveCookies(_ cookies: [HTTPCookie]) {
+    let cookieData = cookies.map { cookie in
+        CookieData(
+            name: cookie.name,
+            value: cookie.value,
+            domain: cookie.domain,
+            path: cookie.path,
+            expiresDate: cookie.expiresDate
+        )
+    }
+    
+    if let encoded = try? JSONEncoder().encode(cookieData) {
+        UserDefaults.standard.set(encoded, forKey: "savedCookies")
+    }
+}
+
+// Load cookies from UserDefaults
+func loadCookies() -> [CookieData]? {
+    guard let data = UserDefaults.standard.data(forKey: "savedCookies"),
+            let cookieData = try? JSONDecoder().decode([CookieData].self, from: data) else {
+        return nil
+    }
+    return cookieData
+}
+
+// Restore cookies to HTTPCookieStorage
+func restoreCookies(_ cookieData: [CookieData]) {
+    for data in cookieData {
+        var properties: [HTTPCookiePropertyKey: Any] = [
+            .name: data.name,
+            .value: data.value,
+            .domain: data.domain,
+            .path: data.path
+        ]
+        
+        if let expiresDate = data.expiresDate {
+            properties[.expires] = expiresDate
+        }
+        
+        if let cookie = HTTPCookie(properties: properties) {
+            HTTPCookieStorage.shared.setCookie(cookie)
+        }
+    }
+}
+
+func deleteCookies() async {
+    // Delete all cookies
+    if let cookies = HTTPCookieStorage.shared.cookies {
+        for cookie in cookies {
+            HTTPCookieStorage.shared.deleteCookie(cookie)
+        }
+    }
+    UserDefaults.standard.removeObject(forKey: "savedCookies")
+}
+
+
+
 
 // MARK: - Preview
 

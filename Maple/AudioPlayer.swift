@@ -1,6 +1,11 @@
 import SwiftUI
 import AVFoundation
 import MediaPlayer
+import SocketIO
+
+
+
+
 
 class AudioPlayerManager: NSObject, ObservableObject {
     static let shared = AudioPlayerManager()
@@ -13,6 +18,9 @@ class AudioPlayerManager: NSObject, ObservableObject {
     private var nowPlayingInfo = [String: Any]()
     @Published var currentSong: Song?
     private var isHandlingRemoteControl = false
+    @State private var serverID: String = ""
+
+    
     
     // Queue management
     private var queue: [Song] = []
@@ -191,7 +199,36 @@ class AudioPlayerManager: NSObject, ObservableObject {
         startTimer()
         if let song = currentSong {
             updateNowPlayingInfo(title: song.title, artist: song.artist, album: song.album, artwork: song.artwork)
+
+            
+
+            if let savedServerID = UserDefaults.standard.string(forKey: "savedServerID") {
+                if let artwork = song.artwork {
+                    Task { 
+                        do {
+                            try await setAlbumArt(serverID: savedServerID, albumArt: artwork.pngData()!)
+                        } catch {
+                            print("Error setting album art: \(error)")
+                        }
+                    }
+                }
+                else {
+                    print("No artwork found for song: \(song.title)")
+                    Task {
+                        do {
+                            try await setAlbumArt(serverID: savedServerID, albumArt: UIImage(named: "Maple")!.pngData()!)
+                        } catch {
+                            print("Error setting album art: \(error)")
+                        }
+                    }
+                }
+                AppSocketManager.shared.nowPlaying(song: song, id: savedServerID, discord: true)
+            }
+            else {
+                AppSocketManager.shared.nowPlaying(song: song, id: serverID, discord: true)
+            }
         }
+        
     }
     
     func pause() {
@@ -286,6 +323,27 @@ struct AudioPlayerView: View {
     
     var body: some View {
         VStack(spacing: 20) {
+            // Album Art
+            if let artworkData = audioManager.currentSong?.artwork {
+                Image(uiImage: artworkData)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 160, height: 160) // Adjust size as needed
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding()
+            } else {
+                // Placeholder image if no artwork is available
+                Rectangle()
+                .fill(Color.gray.opacity(0.2))
+                .frame(width: 160, height: 160)
+                .cornerRadius(8)
+                .overlay(
+                    Image(systemName: "music.note")
+                        .font(.system(size: 40))
+                        .foregroundColor(.gray)
+                )
+            }
+
             // Song Info
             VStack(spacing: 8) {
                 Text(audioManager.currentSong?.title ?? song.title)

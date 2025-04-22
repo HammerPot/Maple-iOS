@@ -12,7 +12,11 @@
 		691210E32DAF1EC900E3AA06 /* Artists.swift in Sources */ = {isa = PBXBuildFile; fileRef = 691210E22DAF1EC900E3AA06 /* Artists.swift */; };
 		691211092DB01B9D00E3AA06 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = 691211082DB01B9D00E3AA06 /* Account.swift */; };
 		6912110C2DB091B000E3AA06 /* SwiftyJSON in Frameworks */ = {isa = PBXBuildFile; productRef = 6912110B2DB091B000E3AA06 /* SwiftyJSON */; };
+		6912110F2DB14E3000E3AA06 /* Alamofire in Frameworks */ = {isa = PBXBuildFile; productRef = 6912110E2DB14E3000E3AA06 /* Alamofire */; };
 		694C16B42D9468F300328F6D /* MusicButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694C16B32D9468F300328F6D /* MusicButton.swift */; };
+		695459992DB69EB300A3DB11 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 695459982DB69EB300A3DB11 /* SocketIO */; };
+		6954599B2DB6A10400A3DB11 /* SocketIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6954599A2DB6A10400A3DB11 /* SocketIO.swift */; };
+		6954599D2DB74F5A00A3DB11 /* mapleDefault.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6954599C2DB74F5A00A3DB11 /* mapleDefault.xcassets */; };
 		695B297B2D910B2C00D24EF2 /* Home.swift in Sources */ = {isa = PBXBuildFile; fileRef = 695B297A2D910B2C00D24EF2 /* Home.swift */; };
 /* End PBXBuildFile section */
 
@@ -39,6 +43,8 @@
 		691210E22DAF1EC900E3AA06 /* Artists.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Artists.swift; sourceTree = "<group>"; };
 		691211082DB01B9D00E3AA06 /* Account.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Account.swift; sourceTree = "<group>"; };
 		694C16B32D9468F300328F6D /* MusicButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicButton.swift; sourceTree = "<group>"; };
+		6954599A2DB6A10400A3DB11 /* SocketIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocketIO.swift; sourceTree = "<group>"; };
+		6954599C2DB74F5A00A3DB11 /* mapleDefault.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = mapleDefault.xcassets; sourceTree = "<group>"; };
 		695B297A2D910B2C00D24EF2 /* Home.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Home.swift; sourceTree = "<group>"; };
 		69D91D162D90F84500456238 /* Maple.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Maple.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		69D91D262D90F84700456238 /* MapleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MapleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -82,6 +88,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				6912110C2DB091B000E3AA06 /* SwiftyJSON in Frameworks */,
+				6912110F2DB14E3000E3AA06 /* Alamofire in Frameworks */,
+				695459992DB69EB300A3DB11 /* SocketIO in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -105,6 +113,8 @@
 		69D91D0D2D90F84500456238 = {
 			isa = PBXGroup;
 			children = (
+				6954599A2DB6A10400A3DB11 /* SocketIO.swift */,
+				6954599C2DB74F5A00A3DB11 /* mapleDefault.xcassets */,
 				691211082DB01B9D00E3AA06 /* Account.swift */,
 				695B297A2D910B2C00D24EF2 /* Home.swift */,
 				691210E02DAF1D2F00E3AA06 /* Albums.swift */,
@@ -149,6 +159,8 @@
 			name = Maple;
 			packageProductDependencies = (
 				6912110B2DB091B000E3AA06 /* SwiftyJSON */,
+				6912110E2DB14E3000E3AA06 /* Alamofire */,
+				695459982DB69EB300A3DB11 /* SocketIO */,
 			);
 			productName = Maple;
 			productReference = 69D91D162D90F84500456238 /* Maple.app */;
@@ -234,6 +246,8 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				6912110A2DB091B000E3AA06 /* XCRemoteSwiftPackageReference "SwiftyJSON" */,
+				6912110D2DB14E3000E3AA06 /* XCRemoteSwiftPackageReference "Alamofire" */,
+				695459972DB69EB300A3DB11 /* XCRemoteSwiftPackageReference "socket" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 69D91D172D90F84500456238 /* Products */;
@@ -252,6 +266,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6954599D2DB74F5A00A3DB11 /* mapleDefault.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -279,6 +294,7 @@
 				695B297B2D910B2C00D24EF2 /* Home.swift in Sources */,
 				694C16B42D9468F300328F6D /* MusicButton.swift in Sources */,
 				691210E32DAF1EC900E3AA06 /* Artists.swift in Sources */,
+				6954599B2DB6A10400A3DB11 /* SocketIO.swift in Sources */,
 				691211092DB01B9D00E3AA06 /* Account.swift in Sources */,
 				691210DF2DAF1C0800E3AA06 /* Tracks.swift in Sources */,
 				691210E12DAF1D2F00E3AA06 /* Albums.swift in Sources */,
@@ -620,6 +636,22 @@
 				minimumVersion = 5.0.2;
 			};
 		};
+		6912110D2DB14E3000E3AA06 /* XCRemoteSwiftPackageReference "Alamofire" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Alamofire/Alamofire.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.10.2;
+			};
+		};
+		695459972DB69EB300A3DB11 /* XCRemoteSwiftPackageReference "socket" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/socketio/socket.io-client-swift";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -627,6 +659,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 6912110A2DB091B000E3AA06 /* XCRemoteSwiftPackageReference "SwiftyJSON" */;
 			productName = SwiftyJSON;
+		};
+		6912110E2DB14E3000E3AA06 /* Alamofire */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6912110D2DB14E3000E3AA06 /* XCRemoteSwiftPackageReference "Alamofire" */;
+			productName = Alamofire;
+		};
+		695459982DB69EB300A3DB11 /* SocketIO */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 695459972DB69EB300A3DB11 /* XCRemoteSwiftPackageReference "socket" */;
+			productName = SocketIO;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
