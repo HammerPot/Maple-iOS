@@ -12,7 +12,7 @@ import SwiftyJSON
 class AppSocketManager: ObservableObject {
     static let shared = AppSocketManager()
 
-    
+
     private var manager: SocketManager
     var socket: SocketIOClient
 
@@ -21,10 +21,10 @@ class AppSocketManager: ObservableObject {
 
         // print(cookies)
         // let cookieString = cookies.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
-
+        
         let config: SocketIOClientConfiguration = [
             .log(true), // Enable logging
-            .cookies([cookies[0]])
+            .cookies(cookies)
         ]
         // Initialize the SocketManager with the server URL
         manager = SocketManager(socketURL: URL(string: "https://maple.kolf.pro:3000")!, config: config)

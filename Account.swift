@@ -441,6 +441,7 @@ struct Login: View {
             if let cookies = HTTPCookieStorage.shared.cookies(for: URL(string: "https://maple.kolf.pro:3000")!) {
                 saveCookies(cookies)
             }
+            await AppSocketManager.shared.connect()
         } catch {
             errorMessage = "Login failed: \(error.localizedDescription)"
             print("Login error: \(error)")
@@ -508,6 +509,7 @@ struct LoggedIn: View {
                 Button(action: {
                     Task {
                         await deleteCookies()
+                        await AppSocketManager.shared.disconnect()
                         isLoggedIn = false
                     }
                 }) {
