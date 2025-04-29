@@ -210,6 +210,11 @@ class AudioPlayerManager: NSObject, ObservableObject {
                         } catch {
                             print("Error setting album art: \(error)")
                         }
+                        do {
+                            try await sendWebhook(song: song, serverID: savedServerID)
+                        } catch {
+                            print("Error sending webhook: \(error)")
+                        }
                     }
                 }
                 else {
@@ -219,6 +224,11 @@ class AudioPlayerManager: NSObject, ObservableObject {
                             try await setAlbumArt(serverID: savedServerID, albumArt: UIImage(named: "Maple")!.pngData()!)
                         } catch {
                             print("Error setting album art: \(error)")
+                        }
+                        do {
+                            try await sendWebhook(song: song, serverID: savedServerID)
+                        } catch {
+                            print("Error sending webhook: \(error)")
                         }
                     }
                 }

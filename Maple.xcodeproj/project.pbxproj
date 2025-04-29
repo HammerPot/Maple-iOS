@@ -17,6 +17,7 @@
 		695459992DB69EB300A3DB11 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 695459982DB69EB300A3DB11 /* SocketIO */; };
 		6954599B2DB6A10400A3DB11 /* SocketIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6954599A2DB6A10400A3DB11 /* SocketIO.swift */; };
 		6954599D2DB74F5A00A3DB11 /* mapleDefault.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6954599C2DB74F5A00A3DB11 /* mapleDefault.xcassets */; };
+		695459A22DB9D1A200A3DB11 /* SwiftVibrantium in Frameworks */ = {isa = PBXBuildFile; productRef = 695459A12DB9D1A200A3DB11 /* SwiftVibrantium */; };
 		695B297B2D910B2C00D24EF2 /* Home.swift in Sources */ = {isa = PBXBuildFile; fileRef = 695B297A2D910B2C00D24EF2 /* Home.swift */; };
 /* End PBXBuildFile section */
 
@@ -88,6 +89,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6912110C2DB091B000E3AA06 /* SwiftyJSON in Frameworks */,
+				695459A22DB9D1A200A3DB11 /* SwiftVibrantium in Frameworks */,
 				6912110F2DB14E3000E3AA06 /* Alamofire in Frameworks */,
 				695459992DB69EB300A3DB11 /* SocketIO in Frameworks */,
 			);
@@ -161,6 +163,7 @@
 				6912110B2DB091B000E3AA06 /* SwiftyJSON */,
 				6912110E2DB14E3000E3AA06 /* Alamofire */,
 				695459982DB69EB300A3DB11 /* SocketIO */,
+				695459A12DB9D1A200A3DB11 /* SwiftVibrantium */,
 			);
 			productName = Maple;
 			productReference = 69D91D162D90F84500456238 /* Maple.app */;
@@ -248,6 +251,7 @@
 				6912110A2DB091B000E3AA06 /* XCRemoteSwiftPackageReference "SwiftyJSON" */,
 				6912110D2DB14E3000E3AA06 /* XCRemoteSwiftPackageReference "Alamofire" */,
 				695459972DB69EB300A3DB11 /* XCRemoteSwiftPackageReference "socket" */,
+				695459A02DB9D1A200A3DB11 /* XCRemoteSwiftPackageReference "swift-vibrantium" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 69D91D172D90F84500456238 /* Products */;
@@ -652,6 +656,14 @@
 				kind = branch;
 			};
 		};
+		695459A02DB9D1A200A3DB11 /* XCRemoteSwiftPackageReference "swift-vibrantium" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jasval/swift-vibrantium";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -669,6 +681,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 695459972DB69EB300A3DB11 /* XCRemoteSwiftPackageReference "socket" */;
 			productName = SocketIO;
+		};
+		695459A12DB9D1A200A3DB11 /* SwiftVibrantium */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 695459A02DB9D1A200A3DB11 /* XCRemoteSwiftPackageReference "swift-vibrantium" */;
+			productName = SwiftVibrantium;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

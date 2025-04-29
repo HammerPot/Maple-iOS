@@ -9,7 +9,7 @@ import SwiftUI
 import Foundation
 import SwiftyJSON
 import Alamofire
-
+import SwiftVibrantium
 // MARK: - Data Structures
 
 // Structure to store cookie data
@@ -140,6 +140,40 @@ func login(username: String, password: String) async throws -> LoginResponse {
         throw NSError(domain: "LoginError", code: 400, userInfo: [NSLocalizedDescriptionKey: "Bad request"])
     default:
         throw NSError(domain: "LoginError", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Server error: \(httpResponse.statusCode)"])
+    }
+}
+
+func register(username: String, password: String) async throws -> String {
+    guard let url = URL(string: "https://maple.kolf.pro:3000/login/create") else {
+        throw URLError(.badURL)
+    }
+
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+    let parameters: [String: Any] = [
+        "username": username,
+        "password": password
+    ]
+
+    request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
+
+    let (data, response) = try await URLSession.shared.data(for: request)
+
+    guard let httpResponse = response as? HTTPURLResponse else {
+        throw URLError(.badServerResponse)
+    }
+
+    print("Register Response: \(httpResponse.statusCode)")
+    print("Register Response Data: \(String(data: data, encoding: .utf8))")
+    print("Register Response Headers: \(httpResponse.allHeaderFields)")
+
+    switch httpResponse.statusCode {
+    case 200:
+        return "Success! Please login using your new account: \(username)"
+    default:
+        throw NSError(domain: "RegisterError", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Server error: \(httpResponse.statusCode)"])
     }
 }
 
@@ -279,9 +313,9 @@ func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
     guard let url = URL(string: "https://maple.kolf.pro:3000/user/manage/setAlbumArt/\(serverID)") else {
         throw URLError(.badURL)
     }
-    print("URL: \(url)")
+    // print("URL: \(url)")
     var request = URLRequest(url: url)
-    print("url: \(request)")
+    // print("url: \(request)")
     request.httpMethod = "POST"
     let boundary = UUID().uuidString
     request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -289,11 +323,11 @@ func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
     var body = Data()
     let boundaryStart = "--\(boundary)\r\n"
     let boundaryEnd = "--\(boundary)--\r\n"
-    print("Album Art: \(albumArt)")
-    print(albumArt)
+    // print("Album Art: \(albumArt)")
+    // print(albumArt)
 
-    print("Boundary Start: \(boundaryStart)")
-    print("BSData: \(boundaryStart.data(using: .utf8)!)")
+    // print("Boundary Start: \(boundaryStart)")
+    // print("BSData: \(boundaryStart.data(using: .utf8)!)")
     body.append(boundaryStart.data(using: .utf8)!)
     body.append("Content-Disposition: form-data; name=\"albumArt\"; filename=\"albumArt.jpg\"\r\n".data(using: .utf8)!)
     body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
@@ -305,7 +339,7 @@ func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
     body.append(boundaryEnd.data(using: .utf8)!)
 
 
-    print("Body: \(body.count)")
+    // print("Body: \(body.count)")
         // Print the body as a string
     if let bodyString = String(data: body, encoding: .utf8) {
         print("Request Body: \n--------\n\(bodyString)\n--------")
@@ -314,8 +348,8 @@ func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
     }
     request.httpBody = body
 
-    print("Request Headers: \(request.allHTTPHeaderFields)")
-    print("Request Body: \(request.httpBody)")
+    // print("Request Headers: \(request.allHTTPHeaderFields)")
+    // print("Request Body: \(request.httpBody)")
 
     let config = URLSessionConfiguration.default
     config.httpShouldSetCookies = true
@@ -329,21 +363,109 @@ func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
     //     request.addValue(cookieString, forHTTPHeaderField: "Cookie")
     // }
     request.addValue("\(body.count)", forHTTPHeaderField: "Content-Length")
-    print("Request Headers: \(request.allHTTPHeaderFields)")
+    // print("Request Headers: \(request.allHTTPHeaderFields)")
 
     let (data, response) = try await session.data(for: request)
     guard let httpResponse = response as? HTTPURLResponse else {
         throw URLError(.badServerResponse)
     }
-    print("BLAH TEXT")
-    print("Album Art Response: Code \(httpResponse.statusCode)")
-    print("Album Art Response Data: \(String(data: data, encoding: .utf8))")
-    print("Album Art Response Headers: \(httpResponse.allHeaderFields)")
+    // print("BLAH TEXT")
+    // print("Album Art Response: Code \(httpResponse.statusCode)")
+    // print("Album Art Response Data: \(String(data: data, encoding: .utf8))")
+    // print("Album Art Response Headers: \(httpResponse.allHeaderFields)")
     return "\(httpResponse.statusCode)"
     
     
 
     
+}
+
+func sendWebhook(song: Song, serverID: String) async throws -> String {
+    let webhookURL = "https://discord.com/api/webhooks/1359887799628726453/qKNbOjF4KQ-ccv8JKpINPnDeUwUtGOKON83ZMsnbOoEkSQr8Na9ChcSrBr-wKIISa3A4"
+    
+    var artwork: UIImage = UIImage(named: "Maple")!
+    if let songArtwork = song.artwork {
+        artwork = songArtwork
+    }
+    
+    guard let artworkData = artwork.pngData() else {
+        throw NSError(domain: "ArtworkError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to get artwork data"])
+    }
+    
+    let albumData: [String: Any] = [
+        "name": "Album",
+        "value": song.album
+    ]
+    let yearData: [String: Any] = [
+        "name": "Year",
+        "value": "N/A"
+    ]
+    let trackNumberData: [String: Any] = [
+        "name": "Track Number",
+        "value": song.trackNumber ?? "N/A"
+    ]
+    let fields = [albumData, yearData, trackNumberData]
+    let artURL: [String : Any] = ["url": "attachment://albumArt.jpg"]
+    let embeds: [String: Any] = [
+        "title": "Now Playing",
+        "description": "**\(song.title)** by \(song.artist)",
+        "color": "000000",
+        "fields": fields,
+        "image": artURL
+    ]
+    let payloadJSON: [String : Any] = [
+        "embeds": [embeds],
+        "username": "Maple-iOS",
+        "avatar_url": "https://maple.kolf.pro:3000/public/get/pfp/\(serverID)"
+    ]
+
+    let songData = try JSONSerialization.data(withJSONObject: payloadJSON, options: [])
+    
+    guard let url = URL(string: webhookURL) else {
+        throw URLError(.badURL)
+    }
+
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    let boundary = UUID().uuidString
+    request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+    
+    var body = Data()
+    let boundaryStart = "--\(boundary)\r\n"
+    let boundaryEnd = "--\(boundary)--\r\n"
+
+    // Append the image data
+    body.append(boundaryStart.data(using: .utf8)!)
+    body.append("Content-Disposition: form-data; name=\"file\"; filename=\"albumArt.jpg\"\r\n".data(using: .utf8)!)
+    body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+    body.append(artworkData)
+    body.append("\r\n".data(using: .utf8)!)
+
+    // Append the payload JSON
+    body.append(boundaryStart.data(using: .utf8)!)
+    body.append("Content-Disposition: form-data; name=\"payload_json\"\r\n\r\n".data(using: .utf8)!)
+    body.append(songData)
+    body.append("\r\n".data(using: .utf8)!)
+    body.append(boundaryEnd.data(using: .utf8)!)
+
+    request.httpBody = body
+    request.setValue("\(body.count)", forHTTPHeaderField: "Content-Length")
+
+    let config = URLSessionConfiguration.default
+    config.httpShouldSetCookies = true
+    config.httpCookieAcceptPolicy = .always
+    config.httpCookieStorage = .shared
+    let session = URLSession(configuration: config)
+
+    let (data, response) = try await session.data(for: request)
+    guard let httpResponse = response as? HTTPURLResponse else {
+        throw URLError(.badServerResponse)
+    }
+    
+    print("Webhook Status Code: \(httpResponse.statusCode)")
+    print("Webhook Response Data: \(String(data: data, encoding: .utf8) ?? "No response data")")
+    
+    return "Webhook Moment"
 }
 
 // MARK: - Views
@@ -412,6 +534,19 @@ struct Login: View {
                 }
                 .padding()
                 .disabled(isLoading)
+
+                Button(action: {
+                    Task {
+                        do {
+                            let response = try await register(username: username, password: password)
+                            print("Register Response: \(response)")
+                        } catch {
+                            print("Error registering: \(error)")
+                        }
+                    }
+                }) {
+                    Text("Register")
+                }
             }
             .padding()
             .onAppear {
