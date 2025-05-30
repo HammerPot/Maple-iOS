@@ -19,6 +19,7 @@
 		6954599D2DB74F5A00A3DB11 /* mapleDefault.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6954599C2DB74F5A00A3DB11 /* mapleDefault.xcassets */; };
 		695459A22DB9D1A200A3DB11 /* SwiftVibrantium in Frameworks */ = {isa = PBXBuildFile; productRef = 695459A12DB9D1A200A3DB11 /* SwiftVibrantium */; };
 		695B297B2D910B2C00D24EF2 /* Home.swift in Sources */ = {isa = PBXBuildFile; fileRef = 695B297A2D910B2C00D24EF2 /* Home.swift */; };
+		695B2DD02DC1721B00D3862A /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 695B2DCF2DC1721B00D3862A /* Settings.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -47,6 +48,7 @@
 		6954599A2DB6A10400A3DB11 /* SocketIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocketIO.swift; sourceTree = "<group>"; };
 		6954599C2DB74F5A00A3DB11 /* mapleDefault.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = mapleDefault.xcassets; sourceTree = "<group>"; };
 		695B297A2D910B2C00D24EF2 /* Home.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Home.swift; sourceTree = "<group>"; };
+		695B2DCF2DC1721B00D3862A /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
 		69D91D162D90F84500456238 /* Maple.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Maple.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		69D91D262D90F84700456238 /* MapleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MapleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		69D91D302D90F84700456238 /* MapleUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MapleUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -115,6 +117,7 @@
 		69D91D0D2D90F84500456238 = {
 			isa = PBXGroup;
 			children = (
+				695B2DCF2DC1721B00D3862A /* Settings.swift */,
 				6954599A2DB6A10400A3DB11 /* SocketIO.swift */,
 				6954599C2DB74F5A00A3DB11 /* mapleDefault.xcassets */,
 				691211082DB01B9D00E3AA06 /* Account.swift */,
@@ -301,6 +304,7 @@
 				6954599B2DB6A10400A3DB11 /* SocketIO.swift in Sources */,
 				691211092DB01B9D00E3AA06 /* Account.swift in Sources */,
 				691210DF2DAF1C0800E3AA06 /* Tracks.swift in Sources */,
+				695B2DD02DC1721B00D3862A /* Settings.swift in Sources */,
 				691210E12DAF1D2F00E3AA06 /* Albums.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -16,11 +16,22 @@ struct Albums: View {
 				ProgressView("Loading albums...")
 					.padding()
 			} else if albums.isEmpty {
+				Text("Albums")
+                    .font(.title)
+                    .bold()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
 				Text("No albums found")
 					.font(.headline)
 					.foregroundColor(.gray)
 					.padding()
 			} else {
+				Text("Albums")
+                    .font(.title)
+                    .bold()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+				// List {
 				LazyVGrid(columns: columns, spacing: 16) {
 					ForEach(albums) { album in
 						NavigationLink(destination: AlbumDetailView(album: album)) {
@@ -60,6 +71,7 @@ struct Albums: View {
 						}
 					}
 				}
+				// }
 				.padding()
 			}
 		}
@@ -99,16 +111,16 @@ struct AlbumDetailView: View {
 	
 	var body: some View {
 		VStack {
-			if let artwork = album.artwork {
-				Image(uiImage: artwork)
-					.resizable()
-					.aspectRatio(contentMode: .fit)
-					.frame(maxWidth: .infinity)
-					.cornerRadius(8)
-					.padding(.horizontal)
-			}
-			
 			VStack(alignment: .leading, spacing: 8) {
+				if let artwork = album.artwork {
+					Image(uiImage: artwork)
+						.resizable()
+						.aspectRatio(contentMode: .fit)
+						.frame(maxWidth: .infinity)
+						.cornerRadius(8)
+						.padding(.horizontal)
+				}
+			
 				Text(album.name)
 					.font(.title)
 					.bold()
