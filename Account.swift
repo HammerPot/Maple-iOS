@@ -398,12 +398,13 @@ func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
 func sendWebhook(song: Song, serverID: String) async throws -> String {
     let webhookURL = "https://discord.com/api/webhooks/1359887799628726453/qKNbOjF4KQ-ccv8JKpINPnDeUwUtGOKON83ZMsnbOoEkSQr8Na9ChcSrBr-wKIISa3A4"
     
-    var artwork: UIImage = UIImage(named: "Maple")!
+    var uiImage: UIImage? = UIImage(named: "Maple")
+    var artwork: Data? = uiImage?.pngData()
     if let songArtwork = song.artwork {
         artwork = songArtwork
     }
     
-    guard let artworkData = artwork.pngData() else {
+    guard let artworkData = artwork else {
         throw NSError(domain: "ArtworkError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to get artwork data"])
     }
     

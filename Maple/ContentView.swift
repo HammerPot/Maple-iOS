@@ -14,7 +14,7 @@ struct ContentView: View {
         // socketManager.connect()
     }
     var body: some View {
-        // MusicButton()
+        MusicButton()
         // Button(action: {
         //         // Example of sending now playing data
         //         let song = Song(url: URL(string: "https://example.com/song.mp3")!, title: "Song Title", artist: "Artist Name", album: "Album Name", artwork: nil, trackNumber: 1, discNumber: 1) // Replace with your Song model

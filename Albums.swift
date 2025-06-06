@@ -37,11 +37,13 @@ struct Albums: View {
 						NavigationLink(destination: AlbumDetailView(album: album)) {
 							VStack(alignment: .leading) {
 								if let artwork = album.artwork {
-									Image(uiImage: artwork)
-										.resizable()
-										.aspectRatio(contentMode: .fill)
-										.frame(width: 160, height: 160)
-										.cornerRadius(8)
+									if let uiImage = UIImage(data: artwork) {
+										Image(uiImage: uiImage)
+											.resizable()
+											.aspectRatio(contentMode: .fill)
+											.frame(width: 160, height: 160)
+											.cornerRadius(8)
+									}
 								} else {
 									Rectangle()
 										.fill(Color.gray.opacity(0.2))
@@ -76,16 +78,26 @@ struct Albums: View {
 			}
 		}
 		.onAppear {
-			localFiles = loadLocalFiles()
+			// localFiles = loadLocalFiles()
 			loadAlbums()
 		}
 	}
 	
+	private func loadAlbumsJ() {
+		isLoading = true 
+		Task {
+			albums = await loadAlbumsFromJson()
+		}
+		isLoading = false
+	}
+
+
+
 	private func loadAlbums() {
 		isLoading = true
 		
 		Task {
-			let songs = await loadSongs(from: localFiles)
+			let songs = await loadSongsFromJson()
 			let groupedAlbums = groupSongsByAlbum(songs)
 			
 			await MainActor.run {
@@ -113,12 +125,14 @@ struct AlbumDetailView: View {
 		VStack {
 			VStack(alignment: .leading, spacing: 8) {
 				if let artwork = album.artwork {
-					Image(uiImage: artwork)
-						.resizable()
-						.aspectRatio(contentMode: .fit)
-						.frame(maxWidth: .infinity)
-						.cornerRadius(8)
-						.padding(.horizontal)
+					if let uiImage = UIImage(data: artwork) {
+						Image(uiImage: uiImage)
+							.resizable()
+							.aspectRatio(contentMode: .fit)
+							.frame(maxWidth: .infinity)
+							.cornerRadius(8)
+							.padding(.horizontal)
+					}
 				}
 			
 				Text(album.name)

@@ -102,12 +102,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     private func loadSong(_ song: Song) {
 		print("loadSong: \(song.title)")
         loadAudio(from: song.url)
-        updateNowPlayingInfo(
-            title: song.title,
-            artist: song.artist,
-            album: song.album,
-            artwork: song.artwork
-        )
+        updateNowPlayingInfo(song: song)
     }
     
     func loadAudio(from url: URL) {
@@ -123,7 +118,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
             
             // Setup now playing info
             if let song = currentSong {
-                setupNowPlayingInfo(title: song.title, artist: song.artist, album: song.album, artwork: song.artwork)
+                setupNowPlayingInfo(song: song)
             }
             
             // Set up completion handler
@@ -138,20 +133,22 @@ class AudioPlayerManager: NSObject, ObservableObject {
         }
     }
     
-    private func setupNowPlayingInfo(title: String, artist: String, album: String, artwork: UIImage?) {
-        currentSong = Song(url: audioPlayer?.url ?? URL(fileURLWithPath: ""), title: title, artist: artist, album: album, artwork: artwork, trackNumber: 1, discNumber: 1)
+    private func setupNowPlayingInfo(song: Song) {
+        currentSong = song
         
         // Create artwork
         var mediaArtwork: MPMediaItemArtwork?
-        if let artwork = artwork {
-            mediaArtwork = MPMediaItemArtwork(boundsSize: artwork.size) { _ in artwork }
+        if let artwork = song.artwork {
+            if let uiImage = UIImage(data: artwork){
+                mediaArtwork = MPMediaItemArtwork(boundsSize: uiImage.size) { _ in uiImage }
+            }
         }
         
         // Setup now playing info
         nowPlayingInfo = [
-            MPMediaItemPropertyTitle: title,
-            MPMediaItemPropertyArtist: artist,
-            MPMediaItemPropertyAlbumTitle: album,
+            MPMediaItemPropertyTitle: song.title,
+            MPMediaItemPropertyArtist: song.artist,
+            MPMediaItemPropertyAlbumTitle: song.album,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
             MPMediaItemPropertyPlaybackDuration: duration,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
@@ -165,20 +162,22 @@ class AudioPlayerManager: NSObject, ObservableObject {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
     
-    func updateNowPlayingInfo(title: String, artist: String, album: String, artwork: UIImage?) {
-        currentSong = Song(url: audioPlayer?.url ?? URL(fileURLWithPath: ""), title: title, artist: artist, album: album, artwork: artwork, trackNumber: 1, discNumber: 1)
+    func updateNowPlayingInfo(song: Song) {
+        currentSong = song
         
         // Create artwork
         var mediaArtwork: MPMediaItemArtwork?
-        if let artwork = artwork {
-            mediaArtwork = MPMediaItemArtwork(boundsSize: artwork.size) { _ in artwork }
+        if let artwork = song.artwork {
+            if let uiImage = UIImage(data: artwork){
+                mediaArtwork = MPMediaItemArtwork(boundsSize: uiImage.size) { _ in uiImage }
+            }
         }
         
         // Setup now playing info
         nowPlayingInfo = [
-            MPMediaItemPropertyTitle: title,
-            MPMediaItemPropertyArtist: artist,
-            MPMediaItemPropertyAlbumTitle: album,
+            MPMediaItemPropertyTitle: song.title,
+            MPMediaItemPropertyArtist: song.artist,
+            MPMediaItemPropertyAlbumTitle: song.album,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
             MPMediaItemPropertyPlaybackDuration: duration,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
@@ -198,7 +197,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
         isPlaying = true
         startTimer()
         if let song = currentSong {
-            updateNowPlayingInfo(title: song.title, artist: song.artist, album: song.album, artwork: song.artwork)
+            updateNowPlayingInfo(song: song)
 
             
 
@@ -206,7 +205,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
                 if let artwork = song.artwork {
                     Task { 
                         do {
-                            try await setAlbumArt(serverID: savedServerID, albumArt: artwork.pngData()!)
+                            try await setAlbumArt(serverID: savedServerID, albumArt: artwork)
                         } catch {
                             print("Error setting album art: \(error)")
                         }
@@ -247,7 +246,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
         isPlaying = false
         stopTimer()
         if let song = currentSong {
-            updateNowPlayingInfo(title: song.title, artist: song.artist, album: song.album, artwork: song.artwork)
+            updateNowPlayingInfo(song: song)
         }
     }
     
@@ -259,7 +258,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
         currentTime = 0
         stopTimer()
         if let song = currentSong {
-            updateNowPlayingInfo(title: song.title, artist: song.artist, album: song.album, artwork: song.artwork)
+            updateNowPlayingInfo(song: song)
         }
     }
     
@@ -267,7 +266,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
         audioPlayer?.currentTime = time
         currentTime = time
         if let song = currentSong {
-            updateNowPlayingInfo(title: song.title, artist: song.artist, album: song.album, artwork: song.artwork)
+            updateNowPlayingInfo(song: song)
         }
     }
     
@@ -276,7 +275,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
             guard let self = self, let player = self.audioPlayer else { return }
             self.currentTime = player.currentTime
             if let song = self.currentSong {
-                self.updateNowPlayingInfo(title: song.title, artist: song.artist, album: song.album, artwork: song.artwork)
+                self.updateNowPlayingInfo(song: song)
             }
         }
     }
@@ -335,12 +334,14 @@ struct AudioPlayerView: View {
         VStack(spacing: 20) {
             // Album Art
             if let artworkData = audioManager.currentSong?.artwork {
-                Image(uiImage: artworkData)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 160, height: 160) // Adjust size as needed
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .padding()
+                if let uiImage = UIImage(data:artworkData){
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 160, height: 160) // Adjust size as needed
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .padding()
+                }
             } else {
                 // Placeholder image if no artwork is available
                 Rectangle()
@@ -430,16 +431,16 @@ struct AudioPlayerView: View {
 }
 
 #Preview {
-    AudioPlayerView(
-        song: Song(
-            url: URL(fileURLWithPath: ""),
-            title: "Sample Song",
-            artist: "Sample Artist",
-            album: "Sample Album",
-            artwork: nil,
-            trackNumber: 1,
-            discNumber: 1
-        ),
-        allSongs: []
-    )
+    // AudioPlayerView(
+    //     song: Song(
+    //         url: URL(fileURLWithPath: ""),
+    //         title: "Sample Song",
+    //         artist: "Sample Artist",
+    //         album: "Sample Album",
+    //         artwork: nil,
+    //         trackNumber: 1,
+    //         discNumber: 1
+    //     ),
+    //     allSongs: []
+    // )
 } 

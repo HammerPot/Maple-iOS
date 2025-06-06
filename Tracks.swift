@@ -31,10 +31,23 @@ struct Tracks: View {
             }
         }
 		.onAppear {
-			localFiles = loadLocalFiles()
-			loadSongsLocal()
+			// localFiles = loadLocalFiles()
+			// loadSongsLocal()
+            Task{
+                // songs = await loadSongsFromJson()
+                // print("thg: \(songs)")
+                loadSongsJ()
+            }
 		}
 	}
+
+    private func loadSongsJ(){
+        isLoading = true
+        Task {
+            songs = await loadSongsFromJson()
+        }
+        isLoading = false
+    }
 
 
     private func loadSongsLocal() {

@@ -42,7 +42,7 @@ struct Artists: View {
 		isLoading = true
 		
 		Task {
-			let songs = await loadSongs(from: localFiles)
+			let songs = await loadSongsFromJson()
 			let groupedArtists = groupSongsByArtist(songs)
 			
 			await MainActor.run {
