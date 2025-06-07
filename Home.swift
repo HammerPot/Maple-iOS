@@ -360,14 +360,18 @@ func loadAlbums(song: Song) async -> [Album] {
 	let jsonURL = albumsFolder.appendingPathComponent("albums.json")
 	var didWrite = false
 	do {
-		let jsonData = try Data(contentsOf: jsonURL)
 		let jsonDecoder = JSONDecoder()
 		let jsonEncoder = JSONEncoder()
-		var albums: [Album] = try jsonDecoder.decode([Album].self, from: jsonData) 
-		if albums.count > 0 {
+		if FileManager.default.fileExists(atPath: jsonURL.path) {
+			let jsonData = try Data(contentsOf: jsonURL)
+			var albums: [Album] = try jsonDecoder.decode([Album].self, from: jsonData) 
 			for (index, album) in albums.enumerated() {
 				if song.album == album.name {
-					albums[index].tracks.append(song.url.lastPathComponent)
+					let fileName = song.url.lastPathComponent
+					let fileExt = song.url.pathExtension
+					let pathPre = song.url.deletingPathExtension().lastPathComponent
+					print("HALB: \(pathPre)")
+					albums[index].tracks.append(pathPre)
 					albums[index].songs.append(song)
 					didWrite = true
 					let albumData = try jsonEncoder.encode(albums)
@@ -378,7 +382,11 @@ func loadAlbums(song: Song) async -> [Album] {
 			}
 			if !didWrite {
 				var newAlbum = Album(name: song.album, artist: song.artist, year: song.year, genre: song.genre, artwork: song.artwork, tracks: [], songs: [])
-				newAlbum.tracks.append(song.url.lastPathComponent)
+				let fileName = song.url.lastPathComponent
+				let fileExt = song.url.pathExtension
+				let pathPre = song.url.deletingPathExtension().lastPathComponent
+				print("HALB: \(pathPre)")
+				newAlbum.tracks.append(pathPre)
 				newAlbum.songs.append(song)
 				albums.append(newAlbum)
 				didWrite = true
@@ -389,11 +397,16 @@ func loadAlbums(song: Song) async -> [Album] {
 			}
 		}
 		else {
+			var albums: [Album] = []
 			var newAlbum = Album(name: song.album, artist: song.artist, year: song.year, genre: song.genre, artwork: song.artwork, tracks: [], songs: [])
-			newAlbum.tracks.append(song.url.lastPathComponent)
+			let fileName = song.url.lastPathComponent
+			let fileExt = song.url.pathExtension
+			let pathPre = song.url.deletingPathExtension().lastPathComponent
+			print("HALB: \(pathPre)")
+			newAlbum.tracks.append(pathPre)
 			newAlbum.songs.append(song)
 			albums.append(newAlbum)
-			didWrite = true
+			// didWrite = true
 			let albumData = try jsonEncoder.encode(albums)
 			try albumData.write(to: jsonURL)
 			return albums.sorted { $0.name < $1.name }
