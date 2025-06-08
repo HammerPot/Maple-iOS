@@ -33,9 +33,18 @@ struct Artists: View {
 			}
 		}
 		.onAppear {
-			localFiles = loadLocalFiles()
-			loadArtists()
+			// localFiles = loadLocalFiles()
+			// loadArtists()
+			loadArtistsJ()
 		}
+	}
+
+	private func loadArtistsJ() {
+		isLoading = true 
+		Task {
+			artists = await loadArtistsFromJson()
+		}
+		isLoading = false
 	}
 
 	private func loadArtists() {

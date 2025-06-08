@@ -17,7 +17,8 @@ struct Song: Identifiable, Codable {
 	var year: Int
 	var genre: String
 	let duration: Double
-	var artwork: Data?
+	// var artwork: Data?
+	var artwork: String?
 	// var artwork: URL
 	var trackNumber: Int
 	var discNumber: Int
@@ -31,14 +32,17 @@ struct Album: Identifiable, Codable {
 	var artist: String
 	var year: Int
 	var genre: String
-	var artwork: Data?
+	// var artwork: Data?
+	var artwork: String?
 	var tracks: [String]
 	var songs: [Song]
 }
 
-struct Artist: Identifiable {
+struct Artist: Identifiable, Codable {
 	let id = UUID()
 	var name: String
+	var tracks: [String]
+	var albums: [String]
 	var songs: [Song]
 }
 
@@ -60,7 +64,9 @@ func loadLocalFiles() -> [URL] {
 }
 
 // Global function to extract metadata from audio files
-func extractMetadata(from url: URL) async -> (title: String, artist: String, album: String, year: Int, genre: String, duration: Double, artwork: Data?, trackNumber: Int, discNumber: Int, ext: String) {
+func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: String, album: String, year: Int, genre: String, duration: Double, artwork: String, trackNumber: Int, discNumber: Int, ext: String) {
+	let documentDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+
 	let asset = AVURLAsset(url: url)
 	var title = url.lastPathComponent
 	var artist = "Unknown Artist"
@@ -68,7 +74,9 @@ func extractMetadata(from url: URL) async -> (title: String, artist: String, alb
 	var year = 0000
 	var genre = "Unknown Genre"
 	var duration: Double = 0
-	var artwork: Data? = UIImage(named: "Maple")?.pngData()
+	// var artwork: Data? = UIImage(named: "Maple")?.pngData()
+	var artwork = ""
+	var _artwork: Data? = UIImage(named: "Maple")?.pngData()
 	var trackNumber = 0
 	var discNumber = 0
 	var ext = "unknown"
@@ -106,7 +114,7 @@ func extractMetadata(from url: URL) async -> (title: String, artist: String, alb
 			case .commonKeyArtwork?:
 				if let value = try await item.load(.dataValue) {
 					print("artwork: \(value)")
-					artwork = value
+					_artwork = value
 				}
 			case .commonKeyType?:
 				if let value = try await item.load(.stringValue) {
@@ -235,6 +243,18 @@ func extractMetadata(from url: URL) async -> (title: String, artist: String, alb
 		print("Error in the audio player for duration calculation: \(error)")
 	}
 	ext = url.pathExtension
+	let imagePath = documentDirectory.appendingPathComponent("images")
+	let artworkPath = imagePath.appendingPathComponent("\(id.uuidString).image")
+	artwork = "/images/\(artworkPath.lastPathComponent)"
+	do {
+		if !FileManager.default.fileExists(atPath: imagePath.path){
+			try FileManager.default.createDirectory(at: imagePath, withIntermediateDirectories: true, attributes: nil)
+			try UIImage(named: "Maple")?.pngData()?.write(to: imagePath.appendingPathComponent("maple.image"))
+		}
+		try _artwork?.write(to: artworkPath)
+	} catch{
+		print("Error trying to save artwork: \(error)")
+	}
 	print("item \(url.lastPathComponent)\ntitle: \("title"), artist: \(artist), album: \(album), year: \(year), genre: \(genre), duration: \(duration), artwork: \(artwork), trackNumber: \(trackNumber), discNumber: \(discNumber), ext: \(ext)\n")
 	return (title, artist, album, year, genre, duration, artwork, trackNumber, discNumber, ext)
 }
@@ -244,8 +264,9 @@ func loadSongs(from urls: [URL]) async -> [Song] {
 	var songs: [Song] = []
 	
 	for url in urls {
-		let metadata = await extractMetadata(from: url)
-		var song = Song(id: UUID(),
+		let uuid = UUID()
+		let metadata = await extractMetadata(from: url, id: uuid)
+		var song = Song(id: uuid,
 						title: metadata.title, 
 						artist: metadata.artist, 
 						album: metadata.album,
@@ -257,9 +278,9 @@ func loadSongs(from urls: [URL]) async -> [Song] {
 						discNumber: metadata.discNumber,
 						ext: metadata.ext,
 						url: url)
-		if song.artwork == nil {
-			song.artwork = UIImage(named: "Maple")?.pngData()
-		}
+		// if song.artwork == nil {
+		// 	song.artwork = UIImage(named: "Maple")?.pngData()
+		// }
 		print(song)
 		songs.append(song)
 	}
@@ -340,14 +361,100 @@ func loadAlbumsFromJson() async -> [Album]  {
 			return albums.sorted { $0.name < $1.name }
 		}
 	} catch {
-		print("Error loading songs from JSON: \(error)")
+		print("Error loading albums from JSON: \(error)")
 		return []
 	}
 
 	return []
 }
 
-func loadAlbums(song: Song) async -> [Album] {
+func loadArtistsFromJson() async -> [Artist] {
+	let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+	let artistFolder = documentsDirectory.appendingPathComponent("artists")
+	let jsonURL = artistFolder.appendingPathComponent("artists.json")
+	do {
+		let jsonDecoder = JSONDecoder()
+
+		if FileManager.default.fileExists(atPath: jsonURL.path) {
+			let jsonData = try Data(contentsOf: jsonURL)
+			let artists = try jsonDecoder.decode([Artist].self, from: jsonData)
+			return artists
+		}
+	} catch {
+		print("Error loading artists from JSON: \(error)")
+		return []
+	}
+
+	return []
+}
+
+func loadArtist(song: Song) -> [Artist] {
+	let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+	let artistsFolder = documentsDirectory.appendingPathComponent("artists")
+	do {
+		if !FileManager.default.fileExists(atPath: artistsFolder.path) {
+			try FileManager.default.createDirectory(at: artistsFolder, withIntermediateDirectories: true, attributes: nil)
+		}
+	} catch {
+		print("Error creating artist folder: \(error.localizedDescription)")
+	}
+	let jsonURL = artistsFolder.appendingPathComponent("artists.json")
+	var didWrite = false
+	do {
+		let jsonDecoder = JSONDecoder()
+		let jsonEncoder = JSONEncoder()
+		if FileManager.default.fileExists(atPath: jsonURL.path) {
+			let jsonData = try Data(contentsOf: jsonURL)
+			var artists: [Artist] = try jsonDecoder.decode([Artist].self, from: jsonData) 
+			for (index, artist) in artists.enumerated() {
+				if song.artist == artist.name {
+					let fileName = song.url.lastPathComponent
+					let fileExt = song.url.pathExtension
+					let pathPre = song.url.deletingPathExtension().lastPathComponent
+					artists[index].tracks.append(pathPre)
+					artists[index].albums.append(song.album)
+					artists[index].songs.append(song)
+					let artistData = try jsonEncoder.encode(artists)
+					try artistData.write(to: jsonURL)
+					return artists
+				}
+			}
+			if !didWrite {
+				var newArtist = Artist(name: song.artist, tracks: [], albums: [], songs: [])
+				let fileName = song.url.lastPathComponent
+				let fileExt = song.url.pathExtension
+				let pathPre = song.url.deletingPathExtension().lastPathComponent
+				newArtist.tracks.append(pathPre)
+				newArtist.albums.append(song.album)
+				newArtist.songs.append(song)
+				artists.append(newArtist)
+				let artistData = try jsonEncoder.encode(artists)
+				try artistData.write(to: jsonURL)
+				return artists
+			}
+		}
+		else {
+			var artists: [Artist] = []
+			var newArtist = Artist(name: song.artist, tracks: [], albums: [], songs: [])
+			let fileName = song.url.lastPathComponent
+			let fileExt = song.url.pathExtension
+			let pathPre = song.url.deletingPathExtension().lastPathComponent
+			newArtist.tracks.append(pathPre)
+			newArtist.albums.append(song.album)
+			newArtist.songs.append(song)
+			artists.append(newArtist)
+			let artistData = try jsonEncoder.encode(artists)
+			try artistData.write(to: jsonURL)
+			return artists
+		}
+	} catch {
+		print("Error loading/pushing artists with JSON: \(error)")
+		return []
+	}
+	return []
+}
+
+func loadAlbums(song: Song)  -> [Album] {
 	let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
 	let albumsFolder = documentsDirectory.appendingPathComponent("albums")
 	do {
@@ -355,7 +462,7 @@ func loadAlbums(song: Song) async -> [Album] {
 			try FileManager.default.createDirectory(at: albumsFolder, withIntermediateDirectories: true, attributes: nil)
 		}
 	} catch {
-		print("Error creating song folder: \(error.localizedDescription)")
+		print("Error creating album folder: \(error.localizedDescription)")
 	}
 	let jsonURL = albumsFolder.appendingPathComponent("albums.json")
 	var didWrite = false
@@ -406,7 +513,7 @@ func loadAlbums(song: Song) async -> [Album] {
 			newAlbum.tracks.append(pathPre)
 			newAlbum.songs.append(song)
 			albums.append(newAlbum)
-			// didWrite = true
+			didWrite = true
 			let albumData = try jsonEncoder.encode(albums)
 			try albumData.write(to: jsonURL)
 			return albums.sorted { $0.name < $1.name }
@@ -429,7 +536,7 @@ func groupSongsByArtist(_ songs: [Song]) -> [Artist] {
 			artist.songs.append(song)
 			artistDict[artistKey] = artist
 		} else {
-			let newArtist = Artist(name: song.artist, songs: [song])
+			let newArtist = Artist(name: song.artist, tracks: [], albums: [], songs: [song])
 			artistDict[artistKey] = newArtist
 		}
 	}

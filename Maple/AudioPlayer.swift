@@ -139,7 +139,8 @@ class AudioPlayerManager: NSObject, ObservableObject {
         // Create artwork
         var mediaArtwork: MPMediaItemArtwork?
         if let artwork = song.artwork {
-            if let uiImage = UIImage(data: artwork){
+            let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artwork)
+            if let uiImage = UIImage(contentsOfFile: artworkPath.path){
                 mediaArtwork = MPMediaItemArtwork(boundsSize: uiImage.size) { _ in uiImage }
             }
         }
@@ -168,7 +169,8 @@ class AudioPlayerManager: NSObject, ObservableObject {
         // Create artwork
         var mediaArtwork: MPMediaItemArtwork?
         if let artwork = song.artwork {
-            if let uiImage = UIImage(data: artwork){
+            let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artwork)
+            if let uiImage = UIImage(contentsOfFile: artworkPath.path){
                 mediaArtwork = MPMediaItemArtwork(boundsSize: uiImage.size) { _ in uiImage }
             }
         }
@@ -202,17 +204,20 @@ class AudioPlayerManager: NSObject, ObservableObject {
             
 
             if let savedServerID = UserDefaults.standard.string(forKey: "savedServerID") {
-                if let artwork = song.artwork {
-                    Task { 
-                        do {
-                            try await setAlbumArt(serverID: savedServerID, albumArt: artwork)
-                        } catch {
-                            print("Error setting album art: \(error)")
-                        }
-                        do {
-                            try await sendWebhook(song: song, serverID: savedServerID)
-                        } catch {
-                            print("Error sending webhook: \(error)")
+                if let _artwork = song.artwork {
+                    let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(_artwork)
+                    if let artwork = UIImage(contentsOfFile: artworkPath.path)?.pngData(){
+                        Task { 
+                            do {
+                                try await setAlbumArt(serverID: savedServerID, albumArt: artwork)
+                            } catch {
+                                print("Error setting album art: \(error)")
+                            }
+                            do {
+                                try await sendWebhook(song: song, serverID: savedServerID)
+                            } catch {
+                                print("Error sending webhook: \(error)")
+                            }
                         }
                     }
                 }
@@ -334,7 +339,8 @@ struct AudioPlayerView: View {
         VStack(spacing: 20) {
             // Album Art
             if let artworkData = audioManager.currentSong?.artwork {
-                if let uiImage = UIImage(data:artworkData){
+                let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artworkData)
+                if let uiImage = UIImage(contentsOfFile: artworkPath.path){
                     Image(uiImage: uiImage)
                         .resizable()
                         .scaledToFit()

@@ -37,7 +37,8 @@ struct Albums: View {
 						NavigationLink(destination: AlbumDetailView(album: album)) {
 							VStack(alignment: .leading) {
 								if let artwork = album.artwork {
-									if let uiImage = UIImage(data: artwork) {
+									let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artwork)
+                					if let uiImage = UIImage(contentsOfFile: artworkPath.path){
 										Image(uiImage: uiImage)
 											.resizable()
 											.aspectRatio(contentMode: .fill)
@@ -79,7 +80,7 @@ struct Albums: View {
 		}
 		.onAppear {
 			// localFiles = loadLocalFiles()
-			loadAlbums()
+			loadAlbumsJ()
 		}
 	}
 	
@@ -125,7 +126,8 @@ struct AlbumDetailView: View {
 		VStack {
 			VStack(alignment: .leading, spacing: 8) {
 				if let artwork = album.artwork {
-					if let uiImage = UIImage(data: artwork) {
+					let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artwork)
+					if let uiImage = UIImage(contentsOfFile: artworkPath.path){
 						Image(uiImage: uiImage)
 							.resizable()
 							.aspectRatio(contentMode: .fit)

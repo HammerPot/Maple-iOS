@@ -18,6 +18,7 @@ struct MusicButton: View {
 		VStack {
 			Button("Upload Music") {
 				importing = true
+				print("La Button")
 			}
 			.fileImporter(
 				isPresented: $importing,
@@ -64,7 +65,7 @@ struct MusicButton: View {
 								// print("Le Task")
 								do {
 									// print("Le Do")
-									let metadata = await extractMetadata(from: destinationURL)
+									let metadata = await extractMetadata(from: destinationURL, id: UUID)
 									// print("metaMom: \(metadata)")
 									var song = Song(id: UUID,
 										title: metadata.title, 
@@ -98,10 +99,12 @@ struct MusicButton: View {
 										// print("jData: \(String(data: _jsonData, encoding: .utf8))")
 										try _jsonData.write(to: jsonURL)
 									}
-									await loadAlbums(song: song)
+									loadAlbums(song: song)
+									loadArtist(song: song)
+									print("Song \(destinationURL.lastPathComponent) has finished doing its last do-task in theory")
 								}
 							}
-
+							print("Song \(destinationURL.lastPathComponent) this print should be AFTER do-task's")
 							
 							
 							// Create asset from the local copy

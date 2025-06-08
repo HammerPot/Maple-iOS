@@ -400,7 +400,9 @@ func sendWebhook(song: Song, serverID: String) async throws -> String {
     
     var uiImage: UIImage? = UIImage(named: "Maple")
     var artwork: Data? = uiImage?.pngData()
-    if let songArtwork = song.artwork {
+    let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(song.artwork ?? "images/maple.image")
+    var songArtData  = UIImage(contentsOfFile: artworkPath.path)?.pngData()
+    if let songArtwork = songArtData {
         artwork = songArtwork
     }
     
