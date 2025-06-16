@@ -8,16 +8,70 @@
 import SwiftUI
 
 struct Settings: View {
-    @State private var webhookURL = ""
+    @State private var webhookURL = UserDefaults.standard.string(forKey: "webhookURL") ?? ""
+    @State private var mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC") ?? false
+    @State private var socketIO = UserDefaults.standard.bool(forKey: "socketIO") ?? false
+    @State private var showingAlert = false
+
     var body: some View {
-        VStack{
-            VStack{
-                Text("Webhook URL")
-                TextField("\("https://discord.com/api/webhooks/...")", text: $webhookURL)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .padding()
-                    .disableAutocorrection(true)
-                    .autocapitalization(.none)
+        List{
+            Section{
+                VStack{
+                    Text("Webhook URL")
+                    TextField(webhookURL == "" ? "https://discord.com/api/webhooks/..." : webhookURL, text: $webhookURL)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .padding()
+                        .disableAutocorrection(true)
+                        .autocapitalization(.none)
+                        .onSubmit{
+                            UserDefaults.standard.set(webhookURL, forKey: "webhookURL")
+                        }
+                        
+                }
+                VStack{
+                    Toggle("Enable SocketIO?", isOn: $socketIO)
+                    .onChange(of: self.socketIO) {
+                            UserDefaults.standard.set(socketIO, forKey: "socketIO")
+                    }
+                }
+                VStack{
+                    Toggle("Enable MapleRPC for Discord?", isOn: $mapleRPC)
+                    .onChange(of: self.mapleRPC) {
+                            UserDefaults.standard.set(mapleRPC, forKey: "mapleRPC")
+                    }
+                }
+            } header: {
+                Text("Social Features")
+            } footer: {
+                Text("Toggling SocketIO will require restarting the app to take effect. You must have SocketIO enabled to use MapleRPC")
+            }
+            Section{
+                MusicButton()
+                Button(action: { 
+                    showingAlert = true
+                }) {
+                    Text("Clear Documents")
+                    .foregroundStyle(.red)
+                }
+                .alert("Warning!", isPresented: $showingAlert, actions: { 
+                        /// A destructive button that appears in red.
+                        Button(role: .destructive) {
+                            clearDocumentsDirectory()
+                            // Perform the deletion
+                        } label: {
+                            Text("Delete")
+                            .foregroundStyle(.red)
+                        }
+                        
+                        /// A cancellation button that appears with bold text.
+                        Button("Cancel", role: .cancel) {
+                            // Perform cancellation
+                        }
+                }, message: {
+                    Text("This will delete all data saved in the Maple directory. This is irreversible! (This will not log you out of Maple nor will it change any settings)")
+                })
+            } header: {
+                Text("File Management")
             }
         }
     }

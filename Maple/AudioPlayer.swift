@@ -18,12 +18,14 @@ class AudioPlayerManager: NSObject, ObservableObject {
     private var nowPlayingInfo = [String: Any]()
     @Published var currentSong: Song?
     private var isHandlingRemoteControl = false
-    @State private var serverID: String = ""
+    private var serverID: String = ""
+    private var mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC") ?? false
+    private var rpcTask = false
 
     
     
     // Queue management
-    private var queue: [Song] = []
+    public var queue: [Song] = []
     private var currentIndex: Int = -1
     
     private override init() {
@@ -101,7 +103,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     
     private func loadSong(_ song: Song) {
 		print("loadSong: \(song.title)")
-        loadAudio(from: song.url)
+        loadAudio(from: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("tracks").appendingPathComponent(song.url.lastPathComponent))
         updateNowPlayingInfo(song: song)
     }
     
@@ -197,19 +199,36 @@ class AudioPlayerManager: NSObject, ObservableObject {
         print("Play called - current audio player exists: \(audioPlayer != nil)")
         audioPlayer?.play()
         isPlaying = true
+        mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC") ?? false
         startTimer()
         if let song = currentSong {
             updateNowPlayingInfo(song: song)
 
-            
-
-            if let savedServerID = UserDefaults.standard.string(forKey: "savedServerID") {
-                if let _artwork = song.artwork {
-                    let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(_artwork)
-                    if let artwork = UIImage(contentsOfFile: artworkPath.path)?.pngData(){
-                        Task { 
+            print("rpcTask: \(rpcTask)")
+            if !rpcTask {
+                if let savedServerID = UserDefaults.standard.string(forKey: "savedServerID") {
+                    if let _artwork = song.artwork {
+                        let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(_artwork)
+                        if let artwork = UIImage(contentsOfFile: artworkPath.path)?.pngData(){
+                            Task { 
+                                do {
+                                    try await setAlbumArt(serverID: savedServerID, albumArt: artwork)
+                                } catch {
+                                    print("Error setting album art: \(error)")
+                                }
+                                do {
+                                    try await sendWebhook(song: song, serverID: savedServerID)
+                                } catch {
+                                    print("Error sending webhook: \(error)")
+                                }
+                            }
+                        }
+                    }
+                    else {
+                        print("No artwork found for song: \(song.title)")
+                        Task {
                             do {
-                                try await setAlbumArt(serverID: savedServerID, albumArt: artwork)
+                                try await setAlbumArt(serverID: savedServerID, albumArt: UIImage(named: "Maple")!.pngData()!)
                             } catch {
                                 print("Error setting album art: \(error)")
                             }
@@ -220,27 +239,15 @@ class AudioPlayerManager: NSObject, ObservableObject {
                             }
                         }
                     }
+                    AppSocketManager.shared.nowPlaying(song: song, id: savedServerID, discord: mapleRPC)
                 }
                 else {
-                    print("No artwork found for song: \(song.title)")
-                    Task {
-                        do {
-                            try await setAlbumArt(serverID: savedServerID, albumArt: UIImage(named: "Maple")!.pngData()!)
-                        } catch {
-                            print("Error setting album art: \(error)")
-                        }
-                        do {
-                            try await sendWebhook(song: song, serverID: savedServerID)
-                        } catch {
-                            print("Error sending webhook: \(error)")
-                        }
-                    }
+                    AppSocketManager.shared.nowPlaying(song: song, id: serverID, discord: mapleRPC)
                 }
-                AppSocketManager.shared.nowPlaying(song: song, id: savedServerID, discord: true)
+                rpcTask = true
+                print("inner rpcTask: \(rpcTask)")
             }
-            else {
-                AppSocketManager.shared.nowPlaying(song: song, id: serverID, discord: true)
-            }
+            print("end rpcTask: \(rpcTask)")
         }
         
     }
@@ -301,6 +308,9 @@ class AudioPlayerManager: NSObject, ObservableObject {
         let nextSong = queue[currentIndex]
         print("Loading next song: \(nextSong.title)")
         loadSong(nextSong)
+
+        rpcTask = false
+            
         play()
     }
     
@@ -326,8 +336,8 @@ extension AudioPlayerManager: AVAudioPlayerDelegate {
 
 struct AudioPlayerView: View {
     @ObservedObject private var audioManager = AudioPlayerManager.shared
-    let song: Song
-    let allSongs: [Song]
+    public let song: Song
+    public let allSongs: [Song]
     @State private var hasInitializedQueue = false
     
     init(song: Song, allSongs: [Song]) {
@@ -426,6 +436,118 @@ struct AudioPlayerView: View {
                     hasInitializedQueue = true
                 }
             }
+        }
+    }
+    
+    private func formatTime(_ time: TimeInterval) -> String {
+        let minutes = Int(time) / 60
+        let seconds = Int(time) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+struct MediaPlayerView: View {
+    @ObservedObject private var audioManager = AudioPlayerManager.shared
+    public let song: Song
+    public let allSongs: [Song]
+    @State private var hasInitializedQueue = false
+    
+    init(song: Song, allSongs: [Song]) {
+        self.song = song
+        self.allSongs = allSongs
+    }
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            // Album Art
+            if let artworkData = audioManager.currentSong?.artwork {
+                let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artworkData)
+                if let uiImage = UIImage(contentsOfFile: artworkPath.path){
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 160, height: 160) // Adjust size as needed
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .padding()
+                }
+            } else {
+                // Placeholder image if no artwork is available
+                Rectangle()
+                .fill(Color.gray.opacity(0.2))
+                .frame(width: 160, height: 160)
+                .cornerRadius(8)
+                .overlay(
+                    Image(systemName: "music.note")
+                        .font(.system(size: 40))
+                        .foregroundColor(.gray)
+                )
+            }
+
+            // Song Info
+            VStack(spacing: 8) {
+                Text(audioManager.currentSong?.title ?? song.title)
+                    .font(.headline)
+                Text(audioManager.currentSong?.artist ?? song.artist)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            
+            // Playback Controls
+            HStack(spacing: 30) {
+                Button(action: {
+                    audioManager.playPrevious()
+                }) {
+                    Image(systemName: "backward.circle.fill")
+                        .font(.system(size: 44))
+                }
+                
+                Button(action: {
+                    if audioManager.isPlaying {
+                        audioManager.pause()
+                    } else {
+                        audioManager.play()
+                    }
+                }) {
+                    Image(systemName: audioManager.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 44))
+                }
+                
+                Button(action: {
+                    audioManager.playNext()
+                }) {
+                    Image(systemName: "forward.circle.fill")
+                        .font(.system(size: 44))
+                }
+            }
+            
+            // Progress Bar
+            VStack {
+                Slider(value: Binding(
+                    get: { audioManager.currentTime },
+                    set: { audioManager.seek(to: $0) }
+                ), in: 0...audioManager.duration)
+                
+                HStack {
+                    Text(formatTime(audioManager.currentTime))
+                        .font(.caption)
+                    Spacer()
+                    Text(formatTime(audioManager.duration))
+                        .font(.caption)
+                }
+            }
+        }
+        .padding()
+        .onAppear {
+            // // Only set up the queue if we haven't done so for this song
+            // if !hasInitializedQueue {
+            //     print("allSongs titles: \(allSongs.map { $0.title })")
+            //     print("song: \(song.title)")
+            //     print("\(allSongs.firstIndex(where: { $0.url == song.url }))")
+            //     if let index = allSongs.firstIndex(where: { $0.url == song.url }) {
+            //         audioManager.setQueue(allSongs, startingAt: index)
+            //         hasInitializedQueue = true
+            //     }
+            // }
         }
     }
     

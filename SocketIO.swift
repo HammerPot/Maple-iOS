@@ -11,7 +11,7 @@ import SwiftyJSON
 
 class AppSocketManager: ObservableObject {
     static let shared = AppSocketManager()
-
+    let enabled = UserDefaults.standard.bool(forKey: "socketIO") ?? false
 
     private var manager: SocketManager
     var socket: SocketIOClient
@@ -30,7 +30,9 @@ class AppSocketManager: ObservableObject {
         manager = SocketManager(socketURL: URL(string: "https://maple.kolf.pro:3000")!, config: config)
         socket = manager.defaultSocket
 
-        connect()
+        if enabled{
+            connect()
+        }
 
     }
 

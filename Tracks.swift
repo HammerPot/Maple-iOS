@@ -2,7 +2,7 @@ import SwiftUI
 import AVFoundation
 
 struct Tracks: View {
-	@Binding var localFiles: [URL]
+	// @Binding var localFiles: [URL]
 	@State private var songs: [Song] = []
     @State private var isLoading = true
 	var body: some View {
@@ -50,18 +50,18 @@ struct Tracks: View {
     }
 
 
-    private func loadSongsLocal() {
-		isLoading = true
-		print("Loading songs local")
-		Task {
-			let songsList = await loadSongs(from: localFiles)
-			print("Songs loaded: \(songsList.count)")
+    // private func loadSongsLocal() {
+	// 	isLoading = true
+	// 	print("Loading songs local")
+	// 	Task {
+	// 		let songsList = await loadSongs(from: localFiles)
+	// 		print("Songs loaded: \(songsList.count)")
 			
-			await MainActor.run {
-				songs = songsList
-				isLoading = false
-                print("isloading: \(isLoading)")
-			}
-		}
-	}
+	// 		await MainActor.run {
+	// 			songs = songsList
+	// 			isLoading = false
+    //             print("isloading: \(isLoading)")
+	// 		}
+	// 	}
+	// }
 }

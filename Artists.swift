@@ -3,7 +3,7 @@ import AVFoundation
 
 
 struct Artists: View {
-	@Binding var localFiles: [URL]
+	// @Binding var localFiles: [URL]
 	@State private var artists: [Artist] = []
 	@State private var isLoading = true
 	

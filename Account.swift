@@ -238,91 +238,6 @@ func getUser(serverID: String) async throws -> userResponse {
     }
 }
 
-// func setAlbumArt(serverID: String, albumArt: String) async throws -> String {
-//     let url = "https://maple.kolf.pro:3000/user/manage/setAlbumArt/\(serverID)/"
-    
-//     // Print current cookies for debugging
-//     print("\nCurrent cookies before request:")
-//     if let cookies = HTTPCookieStorage.shared.cookies {
-//         for cookie in cookies {
-//             print("Cookie: \(cookie.name) = \(cookie.value)")
-//             print("Domain: \(cookie.domain)")
-//             print("Path: \(cookie.path)")
-//             print("---")
-//         }
-//     } else {
-//         print("No cookies found in storage")
-//     }
-    
-//     // Create a session configuration with cookie handling
-//     let configuration = URLSessionConfiguration.default
-//     configuration.httpShouldSetCookies = true
-//     configuration.httpCookieAcceptPolicy = .always
-//     configuration.httpCookieStorage = .shared
-    
-//     // Create a custom session with the configuration
-//     let session = Session(configuration: configuration)
-    
-//     return try await withCheckedThrowingContinuation { continuation in
-//         // Create headers
-//         var headers: HTTPHeaders = [:]
-        
-//         // Add cookies to headers
-//         if let cookies = HTTPCookieStorage.shared.cookies {
-//             let cookieString = cookies.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
-//             print("Cookie String: \(cookieString)")
-//             headers.add(name: "Cookie", value: cookieString)
-//         }
-        
-//         session.upload(multipartFormData: { multipartFormData in
-//             // Add the album art data to the form
-//             if let imageData = Data(base64Encoded: albumArt) {
-//                 print("Album Art Data Size: \(imageData.count) bytes")
-//                 multipartFormData.append(imageData, withName: "albumArt", fileName: "albumArt.jpg", mimeType: "image/jpeg")
-//             } else {
-//                 print("Failed to decode album art from base64")
-//             }
-//             multipartFormData.append(Data(serverID.utf8), withName: "id")
-//             print()
-//             // Log the server ID
-//             let serverIDData = Data(serverID.utf8)
-//             print(Data(serverID.utf8))
-//             multipartFormData.append(serverIDData, withName: "id")
-//         }, to: url, method: .post, headers: headers)
-//         .response { response in
-//             // Print request headers
-//             if let request = response.request {
-//                 print("\nRequest Headers:")
-//                 for (key, value) in request.allHTTPHeaderFields ?? [:] {
-//                     print("\(key): \(value)")
-//                 }
-//                 print("--------")
-//             }
-            
-//             // Print response headers for debugging
-//             if let httpResponse = response.response {
-//                 print("\nResponse Headers:")
-//                 for (key, value) in httpResponse.allHeaderFields {
-//                     print("\(key): \(value)")
-//                 }
-//             }
-            
-//             switch response.result {
-//             case .success(let data):
-//                 if let data = data,
-//                    let responseString = String(data: data, encoding: .utf8) {
-//                     continuation.resume(returning: responseString)
-//                     print("Album art set successfully: \(responseString)")
-//                 } else {
-//                     continuation.resume(throwing: NSError(domain: "Error", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to decode response"]))
-//                 }
-//             case .failure(let error):
-//                 print("Error setting album art: \(error)")
-//                 continuation.resume(throwing: error)
-//             }
-//         }
-//     }
-// }
 
 func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
     guard let url = URL(string: "https://maple.kolf.pro:3000/user/manage/setAlbumArt/\(serverID)") else {
@@ -396,7 +311,7 @@ func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
 }
 
 func sendWebhook(song: Song, serverID: String) async throws -> String {
-    let webhookURL = "https://discord.com/api/webhooks/1359887799628726453/qKNbOjF4KQ-ccv8JKpINPnDeUwUtGOKON83ZMsnbOoEkSQr8Na9ChcSrBr-wKIISa3A4"
+    let webhookURL = UserDefaults.standard.string(forKey: "webhookURL") ?? ""
     
     var uiImage: UIImage? = UIImage(named: "Maple")
     var artwork: Data? = uiImage?.pngData()
@@ -986,6 +901,8 @@ struct LoggedIn: View {
     @State private var username: String = ""
     @State private var pfp: Data? = nil
     @Binding var isLoggedIn: Bool
+    @State private var showingAlert = false
+
     // @State private var userInfoArray: [[String : JSON]] = []
     // @State private var userInfoArrayReq: [[String : JSON]] = []
     // @State private var pfpArray: [Data?] = []
@@ -1016,161 +933,11 @@ struct LoggedIn: View {
                     .font(.title2)
                 Text("\(id)")
                     .font(.subheadline)
-                // Button(action: {
-                //     Task {
-                //         do {
-                //             if let pfp = pfp {
-                //                 try await setAlbumArt(serverID: id, albumArt: pfp)
-                //             }
-                //         } catch {
-                //             print("Error setting album art: \(error)")
-                //         }
-                //     }
-                // }) {
-                //     Text("Album Art Test")
-                // }
+
                 Spacer()
-
                 
-                // List {
-                //     Section{
-                //         HStack {
-                //             Text("Add Friend:")
-                //             TextField("username", text: $fUsername)
-                //             .onSubmit {
-                //             Task {
-                //                 // let response: String = try await addFriend(username: fUsername)
-                //                 await addF(username: fUsername)
-                //                 // print ("AddFriend Response: \(response)")
-                //                 await friendMoment()
-                //             }
-                //     }
-                //         }
-                //     } header: {
-                //         Text("Manage")
-                //     }
-                    
-                //     Section{
-                //         ForEach(requests) { friend in
-                //             HStack {
-                //                 // if let pfpData = friend["pfp"]?.stringValue.data(using: .utf8),
-                //                 if let pfp = friend.pfp, let uiImage = UIImage(data: pfp) {
-                //                     Image(uiImage: uiImage)
-                //                         .resizable()
-                //                         .scaledToFit()
-                //                         .frame(width: 40, height: 40)
-                //                         .clipShape(Circle())
-                //                 }
-                //                 VStack(alignment: .leading) {
-                                    
-                //                 Text(friend.name)
-                //                     .font(.headline)
-                //                 Text("@" + friend.username)
-                //                     .font(.subheadline)
-                //                     .foregroundColor(.secondary)
-                //                 Text(friend.nowPlaying.song + " - " + friend.nowPlaying.artist)
-                //                     .font(.subheadline)
-                //                     .foregroundColor(.secondary)
-                //                 }
-                //                 Spacer()
-                //                 Button(action: {
-                //                     Task {
-                //                         // let response: String = try await addFriend(id: friend.id)
-                //                         await acceptF(id: friend.id)
-                //                         await friendMoment()
-                //                     }
-                //                 }) {
-                //                     Image(systemName: "checkmark.circle.fill")
-                //                         .resizable()
-                //                         .scaledToFit()
-                //                         .frame(width: 25, height: 25)
-                //                     }
-                //                     .buttonStyle(.borderless)
-                //                 // Divider()
-                //                 Button(action: {
-                //                     Task {
-                //                         // let response = try await rejectFriend(id: friend.id)
-                //                         await rejectF(id: friend.id)
-                //                         await friendMoment()
-                //                     }
-                //                 }) {
-                //                     Image(systemName: "x.circle.fill")
-                //                         .resizable()
-                //                         .scaledToFit()
-                //                         .frame(width: 25, height: 25)
-                //                     }
-                //                     .buttonStyle(.borderless)
-                //             }
-                //             .padding(.vertical, 4)
-                //         }
-                //     } header: {
-                //         Text("Requests")
-                //     }
-                //     // Spacer()
-                //     // Divider()
-                //     Section{
-                //         ForEach(friends) { friend in
-                //             HStack {
-                //                 // if let pfpData = friend["pfp"]?.stringValue.data(using: .utf8),
-                //                 if let pfp = friend.pfp, let uiImage = UIImage(data: pfp) {
-                //                     Image(uiImage: uiImage)
-                //                         .resizable()
-                //                         .scaledToFit()
-                //                         .frame(width: 40, height: 40)
-                //                         .clipShape(Circle())
-                //                 }
-                //                 VStack(alignment: .leading) {
-                                    
-                //                 Text(friend.name)
-                //                     .font(.headline)
-                //                 Text("@" + friend.username)
-                //                     .font(.subheadline)
-                //                     .foregroundColor(.secondary)
-                //                 Text(friend.nowPlaying.song + " - " + friend.nowPlaying.artist)
-                //                     .font(.subheadline)
-                //                     .foregroundColor(.secondary)
-                //                 }
-                                    
-                //             }
-                //             .onDelete(perform: {
-                //                 Task {
-                //                     await removeF(id: friend.id)
-                //                 }
-                //             })
-                //             .padding(.vertical, 4)
-                //         }
-                //     } header: {
-                //         Text("Friends")
-                //     }
-                // }
-                // .refreshable {
-                //     // friends.removeAll()
-                //     // requests.removeAll()
-                //     // Task {
-                //     //     await friendList()
-                //     //     await reqList()
-                //     //     // await fetchUserData()
-                //     // }
-                //     await friendMoment()
-                // }
-                // .onAppear {
-                //     // friends.removeAll()
-                //     Task {
-                //         // await friendList()
-                //     }
-                // }
-                
-                FriendList()
+                FriendList(isLoggedIn: $isLoggedIn, showingAlert: $showingAlert)
 
-                Button(action: {
-                    Task {
-                        await deleteCookies()
-                        await AppSocketManager.shared.disconnect()
-                        isLoggedIn = false
-                    }
-                }) {
-                    Text("Logout")
-                }
             }
         }
         .onAppear {
@@ -1208,105 +975,6 @@ struct LoggedIn: View {
         
         isLoading = false
     }
-
-    // private func friendList() async {
-    //     guard let savedServerID = UserDefaults.standard.string(forKey: "savedServerID"), !savedServerID.isEmpty else { return }
-
-    //     do {
-    //         let (response, pfps) = try await getFriendList(serverID: savedServerID)
-
-    //         print("Friend List: \(response)")
-    //         userInfoArray = response
-    //         pfpArray = pfps
-    //         for (index, friend) in userInfoArray.enumerated() {
-    //             // let nowPlaying = NowPlaying(id: "", song: "", album: "", artist: "", discord: false)
-    //             let nowPlayingDict = friend["nowPlaying"]?.dictionaryValue
-    //             // let nowPlaying = NowPlaying(id: friend["id"].stringValue ?? "", song: friend["nowPlaying"]["title"].stringValue ?? "Unknown Song", album: friend["nowPlaying"]["album"].stringValue ?? "Unknown Album", artist: friend["nowPlaying"]["artist"].stringValue ?? "Unknown Artist", discord: friend["nowPlaying"]["discord"].boolValue ?? false)
-    //             let nowPlaying = NowPlaying(id: nowPlayingDict?["id"]?.stringValue ?? "", song: nowPlayingDict?["title"]?.stringValue ?? "Unknown Song", album: nowPlayingDict?["album"]?.stringValue ?? "Unknown Album", artist: nowPlayingDict?["artist"]?.stringValue ?? "Unknown Artist", discord: nowPlayingDict?["discord"]?.boolValue ?? false)
-    //             // let nowPlayingSong = friend["nowPlaying"]["title"]?.stringValue
-    //             // let nowPlayingArtist = friend["nowPlaying"]["artist"]?.stringValue
-    //             // let nowPlaying = nowPlayingSong + " - " + nowPlayingArtist
-    //             // if let 
-    //             friends.append(Friend(id: friend["id"]?.stringValue ?? "", name: friend["name"]?.stringValue ?? "", username: friend["username"]?.stringValue ?? "", pfp: pfpArray[index], nowPlaying: nowPlaying))
-    //         }
-    //     } catch {
-    //         print("Error getting friend list: \(error)")
-    //     }
-    // }
-
-    // private func reqList() async {
-    //     guard let savedServerID = UserDefaults.standard.string(forKey: "savedServerID"), !savedServerID.isEmpty else { return }
-
-    //     do {
-    //         let (response, pfps) = try await getReqList(serverID: savedServerID)
-
-    //         print("Friend List: \(response)")
-    //         userInfoArrayReq = response
-    //         pfpArrayReq = pfps
-    //         for (index, friend) in userInfoArrayReq.enumerated() {
-    //             // let nowPlaying = NowPlaying(id: "", song: "", album: "", artist: "", discord: false)
-    //             let nowPlayingDict = friend["nowPlaying"]?.dictionaryValue
-    //             // let nowPlaying = NowPlaying(id: friend["id"].stringValue ?? "", song: friend["nowPlaying"]["title"].stringValue ?? "Unknown Song", album: friend["nowPlaying"]["album"].stringValue ?? "Unknown Album", artist: friend["nowPlaying"]["artist"].stringValue ?? "Unknown Artist", discord: friend["nowPlaying"]["discord"].boolValue ?? false)
-    //             let nowPlaying = NowPlaying(id: nowPlayingDict?["id"]?.stringValue ?? "", song: nowPlayingDict?["title"]?.stringValue ?? "Unknown Song", album: nowPlayingDict?["album"]?.stringValue ?? "Unknown Album", artist: nowPlayingDict?["artist"]?.stringValue ?? "Unknown Artist", discord: nowPlayingDict?["discord"]?.boolValue ?? false)
-    //             // let nowPlayingSong = friend["nowPlaying"]["title"]?.stringValue
-    //             // let nowPlayingArtist = friend["nowPlaying"]["artist"]?.stringValue
-    //             // let nowPlaying = nowPlayingSong + " - " + nowPlayingArtist
-    //             // if let 
-    //             requests.append(Friend(id: friend["id"]?.stringValue ?? "", name: friend["name"]?.stringValue ?? "", username: friend["username"]?.stringValue ?? "", pfp: pfpArrayReq[index], nowPlaying: nowPlaying))
-    //         }
-    //     } catch {
-    //         print("Error getting friend list: \(error)")
-    //     }
-    // }
-
-    // private func acceptF(id: String) async {
-    //     do {
-    //         let response = try await acceptFriend(id: id)
-    //         print("acceptF: \(response)")
-    //     } catch {
-    //         print("acceptF E: \(error)")
-    //     }
-    // }
-
-    // private func rejectF(id: String) async {
-    //     do {
-    //         let response = try await rejectFriend(id: id)
-    //         print("rejectF: \(response)")
-    //     } catch {
-    //         print("rejectF E: \(error)")
-    //     }
-    // }
-
-    // private func addF(username: String) async {
-    //     do {
-    //         let response = try await addFriend(username: username)
-    //         print("addF: \(response)")
-    //     }
-    //     catch {
-    //         print("addF E: \(error)")
-    //     }
-    // }
-
-    // private func removeF(id: String, at offsets: IndexSet) async {
-    //     do {
-    //         let response = try await removeFriend(id: id)
-    //         print("removeF: \(response)")
-    //     } catch {
-    //         print("removeF E: \(error)")
-    //     }
-    // }
-
-
-
-    // private func friendMoment() async {
-    //     friends.removeAll()
-    //     requests.removeAll()
-    //     Task {
-    //         await friendList()
-    //         await reqList()
-    //         // await fetchUserData()
-    //     }
-    // }
 }
 
 
@@ -1370,7 +1038,8 @@ func deleteCookies() async {
 
 
 struct FriendList: View {
-
+    @Binding var isLoggedIn: Bool
+    @Binding var showingAlert: Bool
         @State private var userInfoArray: [[String : JSON]] = []
         @State private var userInfoArrayReq: [[String : JSON]] = []
         @State private var pfpArray: [Data?] = []
@@ -1488,6 +1157,35 @@ struct FriendList: View {
                 // .onDelete(perform: removeF)
             } header: {
                 Text("Friends")
+            }
+            Section{
+                Button(action: {
+                        showingAlert = true
+                    }) {
+                        Text("Logout")
+                        .foregroundStyle(.red)
+                    }
+                    .alert("Warning!", isPresented: $showingAlert, actions: { 
+                        /// A destructive button that appears in red.
+                        Button(role: .destructive) {
+                            Task {
+                                await deleteCookies()
+                                await AppSocketManager.shared.disconnect()
+                                isLoggedIn = false
+                            }
+
+                        } label: {
+                            Text("Logout")
+                            .foregroundColor(.red)
+                        }
+                        
+
+                        Button("Cancel", role: .cancel) {
+
+                        }
+                }, message: {
+                    Text("This will log you out of Maple and delete all saved cookies within the app. This will not modify your library in any way!")
+                })
             }
         }
         .refreshable {

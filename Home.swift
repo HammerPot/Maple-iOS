@@ -23,7 +23,7 @@ struct Song: Identifiable, Codable {
 	var trackNumber: Int
 	var discNumber: Int
 	let ext: String
-	let url: URL
+	var url: URL
 }
 
 struct Album: Identifiable, Codable {
@@ -43,6 +43,15 @@ struct Artist: Identifiable, Codable {
 	var name: String
 	var tracks: [String]
 	var albums: [String]
+	var songs: [Song]
+}
+
+struct Playlist: Identifiable, Codable {
+	let id = UUID()
+	var name: String
+	var description: String
+	var artwork: String?
+	var tracks: [String]
 	var songs: [Song]
 }
 
@@ -549,7 +558,7 @@ struct Home: View {
 	   NavigationStack {
 		   List {
 			   NavigationLink("Tracks", value: "Tracks")
-			   NavigationLink("Playlists", value: "Playlists")
+			//    NavigationLink("Playlists", value: "Playlists")
 			   NavigationLink("Albums", value: "Albums")
 			   NavigationLink("Artists", value: "Artists")
 		   }
@@ -557,20 +566,20 @@ struct Home: View {
 		   .navigationDestination(for: String.self) { content in
 				switch content {
 				case "Tracks":
-					Tracks(localFiles: $localFiles)
+					Tracks()
 				case "Playlists":
-					Text("Playlists View")
+					Playlists()
 				case "Albums":
-					Albums(localFiles: $localFiles)
+					Albums()
 				case "Artists":
-					Artists(localFiles: $localFiles)
+					Artists()
 				default:
 					Text("Invalid content")
 				}
 			}
 		}
 		.onAppear {
-			localFiles = loadLocalFiles()
+
 		}
 	}
 }

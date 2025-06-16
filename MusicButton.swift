@@ -15,7 +15,7 @@ struct MusicButton: View {
 	@State private var localFiles: [URL] = []
 	
 	var body: some View {
-		VStack {
+		// VStack {
 			Button("Upload Music") {
 				importing = true
 				print("La Button")
@@ -169,13 +169,13 @@ struct MusicButton: View {
 			// 		}
 			// 	}
 			// }
-		Button("Clear Documents Directory") {
-			clearDocumentsDirectory()
-		}
-		}
-		.onAppear {
-			loadLocalFiles()
-		}
+		// Button("Clear Documents Directory") {
+		// 	clearDocumentsDirectory()
+		// }
+		// }
+		// .onAppear {
+		// 	loadLocalFiles()
+		// }
 	}
 	// private func loadLocalFiles() {
 	// 	let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -190,20 +190,20 @@ struct MusicButton: View {
 	// 	}
 	// }
 	
-	private func clearDocumentsDirectory() {
-		let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-		do {
-			let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsDirectory,
-																	includingPropertiesForKeys: nil)
-			for fileURL in fileURLs {
-				try FileManager.default.removeItem(at: fileURL)
-			}
-			// Refresh the local files list after clearing
-			localFiles = []
-		} catch {
-			print("Error clearing documents directory: \(error.localizedDescription)")
-		}
-	}
+	// private func clearDocumentsDirectory() {
+	// 	let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+	// 	do {
+	// 		let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsDirectory,
+	// 																includingPropertiesForKeys: nil)
+	// 		for fileURL in fileURLs {
+	// 			try FileManager.default.removeItem(at: fileURL)
+	// 		}
+	// 		// Refresh the local files list after clearing
+	// 		localFiles = []
+	// 	} catch {
+	// 		print("Error clearing documents directory: \(error.localizedDescription)")
+	// 	}
+	// }
 
 	private func formatFileSize(file: URL) -> String {
 		do {
@@ -236,6 +236,27 @@ struct MusicButton: View {
 //         }
 //     }
 // }
+
+
+
+
+
+
+func clearDocumentsDirectory() {
+	let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+	do {
+		let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsDirectory,
+																includingPropertiesForKeys: nil)
+		for fileURL in fileURLs {
+			try FileManager.default.removeItem(at: fileURL)
+		}
+		// Refresh the local files list after clearing
+		// localFiles = []
+	} catch {
+		print("Error clearing documents directory: \(error.localizedDescription)")
+	}
+}
+
 
 #Preview {
 	MusicButton()

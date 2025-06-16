@@ -2,7 +2,7 @@ import SwiftUI
 import AVFoundation
 
 struct Albums: View {
-	@Binding var localFiles: [URL]
+	// @Binding var localFiles: [URL]
 	@State private var albums: [Album] = []
 	@State private var isLoading = true
 	
