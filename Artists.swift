@@ -17,11 +17,11 @@ struct Artists: View {
 					.foregroundColor(.gray)
 					.padding()
 			} else {
-				Text("Artists")
-					.font(.title)
-					.bold()
-					.frame(maxWidth: .infinity, alignment: .leading)
-					.padding(.horizontal)
+				// Text("Artists")
+				// 	.font(.title)
+				// 	.bold()
+				// 	.frame(maxWidth: .infinity, alignment: .leading)
+				// 	.padding(.horizontal)
 				
 				List {
 					ForEach(artists) { artist in
@@ -32,6 +32,7 @@ struct Artists: View {
 				}
 			}
 		}
+		.navigationTitle("Artists")
 		.onAppear {
 			// localFiles = loadLocalFiles()
 			// loadArtists()
@@ -71,11 +72,11 @@ struct ArtistDetailView: View {
     }
 	var body: some View {
 		VStack {
-			Text(artist.name)
-				.font(.title)
-				.bold()
-				.frame(maxWidth: .infinity, alignment: .leading)
-				.padding(.horizontal)
+			// Text(artist.name)
+			// 	.font(.title)
+			// 	.bold()
+			// 	.frame(maxWidth: .infinity, alignment: .leading)
+			// 	.padding(.horizontal)
 			
 			List {
 				ForEach(sortedSongs) { song in
@@ -86,5 +87,6 @@ struct ArtistDetailView: View {
 				}
 			}
 		}
+		.navigationTitle(artist.name)
 	}
 }

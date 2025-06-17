@@ -37,6 +37,7 @@ struct ContentView: View {
         //         Text("Send Now Playing")
         //     }
         
+        if #available(iOS 26.0, *) {
             TabView {
                 Tab("Home", systemImage: "house") {
                     Home()
@@ -59,12 +60,39 @@ struct ContentView: View {
                 MediaPlayerView(
                     song: audioManager.currentSong ?? Song(
                         id: UUID(), title: "No Song", artist: "No Artist", album: "No Album",
-                        year: 2024, genre: "Unknown", duration: 0.0, artwork: nil,
+                        year: Int(Calendar(identifier: .gregorian).dateComponents([.year], from: .now).year ?? 2025), genre: "Unknown", duration: 0.0, artwork: nil,
                         trackNumber: 0, discNumber: 0, ext: "", url: URL(fileURLWithPath: "")
                     ),
                     allSongs: audioManager.queue
                 )
             }
+        } else {
+            // Fallback on earlier versions
+                        TabView {
+                Tab("Home", systemImage: "house") {
+                    Home()
+                }
+                Tab("Now Playing", systemImage: "play.circle.fill"){
+                    MediaPlayerView(
+                        song: audioManager.currentSong ?? Song(
+                            id: UUID(), title: "No Song", artist: "No Artist", album: "No Album",
+                            year: Int(Calendar(identifier: .gregorian).dateComponents([.year], from: .now).year ?? 2025), genre: "Unknown", duration: 0.0, artwork: nil,
+                            trackNumber: 0, discNumber: 0, ext: "", url: URL(fileURLWithPath: "")
+                        ),
+                        allSongs: audioManager.queue
+                    )
+                }
+                Tab("Search", systemImage: "magnifyingglass", role: .search) {
+                    Search()
+                }
+                Tab("Account", systemImage: "person.crop.circle") {
+                    Login()
+                }
+                Tab("Settings", systemImage: "gear") {
+                    Settings()
+                }
+            }
+        }
     }
 
     // let manager = SocketManager(socketURL: URL(string: "https://maple.kolf.pro:3000")!, config: [.log(true)])
@@ -160,7 +188,7 @@ struct NowPlayingBar: View {
             ZStack {
                 // Transparent NavigationLink (see previous step)
                 NavigationLink(
-                    destination: MediaPlayerView(song: audioManager.currentSong ?? Song(id: UUID(), title: "No Song", artist: "No Artist", album: "No Album", year: Int(Calendar(identifier: .gregorian).dateComponents([.year], from: .now).year ?? 2024), genre: "Unknown", duration: 0.0, artwork: nil, trackNumber: 0, discNumber: 0, ext: "", url: URL(fileURLWithPath: "")), allSongs: audioManager.queue),
+                    destination: MediaPlayerView(song: audioManager.currentSong ?? Song(id: UUID(), title: "No Song", artist: "No Artist", album: "No Album", year: Int(Calendar(identifier: .gregorian).dateComponents([.year], from: .now).year ?? 2025), genre: "Unknown", duration: 0.0, artwork: nil, trackNumber: 0, discNumber: 0, ext: "", url: URL(fileURLWithPath: "")), allSongs: audioManager.queue),
                     isActive: $showPlayer
                 ) { EmptyView() }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

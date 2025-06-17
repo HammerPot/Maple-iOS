@@ -26,11 +26,11 @@ struct Albums: View {
 					.foregroundColor(.gray)
 					.padding()
 			} else {
-				Text("Albums")
-                    .font(.title)
-                    .bold()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
+				// Text("Albums")
+                //     .font(.title)
+                //     .bold()
+                //     .frame(maxWidth: .infinity, alignment: .leading)
+                //     .padding(.horizontal)
 				// List {
 				LazyVGrid(columns: columns, spacing: 16) {
 					ForEach(albums) { album in
@@ -78,6 +78,7 @@ struct Albums: View {
 				.padding()
 			}
 		}
+		.navigationTitle("Albums")
 		.onAppear {
 			// localFiles = loadLocalFiles()
 			loadAlbumsJ()

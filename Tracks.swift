@@ -15,11 +15,11 @@ struct Tracks: View {
                     .foregroundColor(.gray)
                     .padding()
             } else {
-                Text("Tracks")
-                    .font(.title)
-                    .bold()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
+                // Text("Tracks")
+                //     .font(.title)
+                //     .bold()
+                //     .frame(maxWidth: .infinity, alignment: .leading)
+                //     .padding(.horizontal)
                 
                 List {
                     ForEach(songs.sorted(by: { $0.title < $1.title })) { song in
@@ -30,6 +30,7 @@ struct Tracks: View {
                 }
             }
         }
+        .navigationTitle("Tracks")
 		.onAppear {
 			// localFiles = loadLocalFiles()
 			// loadSongsLocal()
