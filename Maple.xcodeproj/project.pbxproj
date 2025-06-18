@@ -14,6 +14,7 @@
 		6912110C2DB091B000E3AA06 /* SwiftyJSON in Frameworks */ = {isa = PBXBuildFile; productRef = 6912110B2DB091B000E3AA06 /* SwiftyJSON */; };
 		6912110F2DB14E3000E3AA06 /* Alamofire in Frameworks */ = {isa = PBXBuildFile; productRef = 6912110E2DB14E3000E3AA06 /* Alamofire */; };
 		692833C02DF5FC3A004868CB /* Search.swift in Sources */ = {isa = PBXBuildFile; fileRef = 692833BF2DF5FC3A004868CB /* Search.swift */; };
+		69283BAE2E0217B500C64EA4 /* AppIcon.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 69283BAD2E0217B500C64EA4 /* AppIcon.xcassets */; };
 		694C16B42D9468F300328F6D /* MusicButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694C16B32D9468F300328F6D /* MusicButton.swift */; };
 		695459992DB69EB300A3DB11 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 695459982DB69EB300A3DB11 /* SocketIO */; };
 		6954599B2DB6A10400A3DB11 /* SocketIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6954599A2DB6A10400A3DB11 /* SocketIO.swift */; };
@@ -22,7 +23,7 @@
 		695B297B2D910B2C00D24EF2 /* Home.swift in Sources */ = {isa = PBXBuildFile; fileRef = 695B297A2D910B2C00D24EF2 /* Home.swift */; };
 		695B2DD02DC1721B00D3862A /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 695B2DCF2DC1721B00D3862A /* Settings.swift */; };
 		696780952DFC15D0009FDE8D /* Playlists.swift in Sources */ = {isa = PBXBuildFile; fileRef = 696780942DFC15D0009FDE8D /* Playlists.swift */; };
-		6967809B2E00636A009FDE8D /* Maple-iOS.icon in Resources */ = {isa = PBXBuildFile; fileRef = 6967809A2E00636A009FDE8D /* Maple-iOS.icon */; };
+		6967809B2E00636A009FDE8D /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 6967809A2E00636A009FDE8D /* AppIcon.icon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,13 +49,14 @@
 		691210E22DAF1EC900E3AA06 /* Artists.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Artists.swift; sourceTree = "<group>"; };
 		691211082DB01B9D00E3AA06 /* Account.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Account.swift; sourceTree = "<group>"; };
 		692833BF2DF5FC3A004868CB /* Search.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Search.swift; sourceTree = "<group>"; };
+		69283BAD2E0217B500C64EA4 /* AppIcon.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = AppIcon.xcassets; sourceTree = "<group>"; };
 		694C16B32D9468F300328F6D /* MusicButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicButton.swift; sourceTree = "<group>"; };
 		6954599A2DB6A10400A3DB11 /* SocketIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocketIO.swift; sourceTree = "<group>"; };
 		6954599C2DB74F5A00A3DB11 /* mapleDefault.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = mapleDefault.xcassets; sourceTree = "<group>"; };
 		695B297A2D910B2C00D24EF2 /* Home.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Home.swift; sourceTree = "<group>"; };
 		695B2DCF2DC1721B00D3862A /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
 		696780942DFC15D0009FDE8D /* Playlists.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Playlists.swift; sourceTree = "<group>"; };
-		6967809A2E00636A009FDE8D /* Maple-iOS.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = "Maple-iOS.icon"; sourceTree = "<group>"; };
+		6967809A2E00636A009FDE8D /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		69D91D162D90F84500456238 /* Maple.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Maple.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		69D91D262D90F84700456238 /* MapleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MapleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		69D91D302D90F84700456238 /* MapleUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MapleUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -123,7 +125,8 @@
 		69D91D0D2D90F84500456238 = {
 			isa = PBXGroup;
 			children = (
-				6967809A2E00636A009FDE8D /* Maple-iOS.icon */,
+				69283BAD2E0217B500C64EA4 /* AppIcon.xcassets */,
+				6967809A2E00636A009FDE8D /* AppIcon.icon */,
 				696780942DFC15D0009FDE8D /* Playlists.swift */,
 				692833BF2DF5FC3A004868CB /* Search.swift */,
 				695B2DCF2DC1721B00D3862A /* Settings.swift */,
@@ -282,7 +285,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6967809B2E00636A009FDE8D /* Maple-iOS.icon in Resources */,
+				69283BAE2E0217B500C64EA4 /* AppIcon.xcassets in Resources */,
+				6967809B2E00636A009FDE8D /* AppIcon.icon in Resources */,
 				6954599D2DB74F5A00A3DB11 /* mapleDefault.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -355,7 +359,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -422,7 +426,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -481,13 +485,14 @@
 		69D91D3B2D90F84700456238 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = "Maple-iOS";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Maple/Preview Content\"";
-				DEVELOPMENT_TEAM = BT2ZA8S87T;
+				DEVELOPMENT_TEAM = P6PV2R9443;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Maple/Info.plist;
@@ -495,15 +500,14 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_UISupportsDocumentBrowser = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.hammerpot.Maple;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -516,13 +520,14 @@
 		69D91D3C2D90F84700456238 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = "Maple-iOS";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Maple/Preview Content\"";
-				DEVELOPMENT_TEAM = BT2ZA8S87T;
+				DEVELOPMENT_TEAM = P6PV2R9443;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Maple/Info.plist;
@@ -530,15 +535,14 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_UISupportsDocumentBrowser = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.hammerpot.Maple;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

@@ -167,6 +167,9 @@
       "blur-material" : null,
       "hidden-specializations" : [
         {
+          "value" : false
+        },
+        {
           "appearance" : "dark",
           "value" : true
         },
@@ -177,23 +180,12 @@
       ],
       "layers" : [
         {
-          "blend-mode" : "normal",
           "fill" : "none",
-          "glass" : true,
           "hidden" : false,
           "image-name" : "1.bg.svg",
           "name" : "1.bg",
-          "opacity-specializations" : [
-            {
-              "value" : 1
-            },
-            {
-              "appearance" : "dark",
-              "value" : 1
-            }
-          ],
           "position" : {
-            "scale" : 1.84,
+            "scale" : 2,
             "translation-in-points" : [
               0,
               0
@@ -212,9 +204,8 @@
     }
   ],
   "supported-platforms" : {
-    "circles" : [
-      "watchOS"
-    ],
-    "squares" : "shared"
+    "squares" : [
+      "iOS"
+    ]
   }
 }

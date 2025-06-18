@@ -5,6 +5,10 @@
 //  Created by Potter on 4/16/25.
 //
 
+
+
+
+
 import SwiftUI
 import Foundation
 import SwiftyJSON
@@ -84,7 +88,7 @@ func login(username: String, password: String) async throws -> LoginResponse {
     if let httpResponse = response as? HTTPURLResponse {
         // print("Response Headers:")
         // for (key, value) in httpResponse.allHeaderFields {
-        //     print("\(key): \(value)")
+        //     // print("\(key): \(value)")
         // }
         
         // Print and save cookies after the request
@@ -111,7 +115,7 @@ func login(username: String, password: String) async throws -> LoginResponse {
             
             if let encoded = try? JSONEncoder().encode(cookieData) {
                 UserDefaults.standard.set(encoded, forKey: "savedCookies")
-                print("Cookies saved successfully")
+                // print("Cookies saved successfully")
             }
         }
     }
@@ -122,7 +126,7 @@ func login(username: String, password: String) async throws -> LoginResponse {
     }
     
     // Print response for debugging
-    print("HTTP Status Code: \(httpResponse.statusCode)")
+    // print("HTTP Status Code: \(httpResponse.statusCode)")
     
     // Handle different status codes
     switch httpResponse.statusCode {
@@ -130,15 +134,15 @@ func login(username: String, password: String) async throws -> LoginResponse {
         // Success - parse the response
         do {
             let json = try JSON(data: data)
-            print("Response JSON: \(json)")
+            // print("Response JSON: \(json)")
             
             // Try to decode the response
             let serverUsername = json["user"]["username"]
             let serverID = json["user"]["id"]
             let status = json["status"]
-            print("Server Username: \(serverUsername)")
-            print("Server ID: \(serverID)")
-            print("Status: \(status)")
+            // print("Server Username: \(serverUsername)")
+            // print("Server ID: \(serverID)")
+            // print("Status: \(status)")
             if status.stringValue.lowercased() == "success" {
                 return LoginResponse(success: true, serverUsername: serverUsername.stringValue, serverID: serverID.stringValue, response: httpResponse.statusCode)
             }
@@ -146,7 +150,7 @@ func login(username: String, password: String) async throws -> LoginResponse {
                 return LoginResponse(success: false, serverUsername: "", serverID: "", response: httpResponse.statusCode)
             }
         } catch {
-            print("Decoding error: \(error)")
+            // print("Decoding error: \(error)")
             throw error
         }
     case 401:
@@ -180,9 +184,9 @@ func register(username: String, password: String) async throws -> String {
         throw URLError(.badServerResponse)
     }
 
-    print("Register Response: \(httpResponse.statusCode)")
-    print("Register Response Data: \(String(data: data, encoding: .utf8))")
-    print("Register Response Headers: \(httpResponse.allHeaderFields)")
+    // print("Register Response: \(httpResponse.statusCode)")
+    // print("Register Response Data: \(String(data: data, encoding: .utf8))")
+    // print("Register Response Headers: \(httpResponse.allHeaderFields)")
 
     switch httpResponse.statusCode {
     case 200:
@@ -193,7 +197,7 @@ func register(username: String, password: String) async throws -> String {
 }
 
 func getUser(serverID: String) async throws -> userResponse {
-    print("Getting user data for ID: \(serverID)")
+    // print("Getting user data for ID: \(serverID)")
     guard let url = URL(string: "https://maple.kolf.pro:3000/get/user/\(serverID)") else {
         throw URLError(.badURL)
     }
@@ -208,15 +212,15 @@ func getUser(serverID: String) async throws -> userResponse {
     config.httpCookieAcceptPolicy = .always
     config.httpCookieStorage = .shared
     let session = URLSession(configuration: config)
-    print("Request: \(request)")
-    print("Request Headers: \(request.allHTTPHeaderFields)")
+    // print("Request: \(request)")
+    // print("Request Headers: \(request.allHTTPHeaderFields)")
     let (data, response) = try await session.data(for: request)
 
     guard let httpResponse = response as? HTTPURLResponse else {
         throw URLError(.badServerResponse)
     }
     
-    print("User data response status: \(httpResponse.statusCode)")
+    // print("User data response status: \(httpResponse.statusCode)")
     
     switch httpResponse.statusCode {
     case 200:
@@ -272,9 +276,9 @@ func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
     // print("Body: \(body.count)")
         // Print the body as a string
     if let bodyString = String(data: body, encoding: .utf8) {
-        print("Request Body: \n--------\n\(bodyString)\n--------")
+        // print("Request Body: \n--------\n\(bodyString)\n--------")
     } else {
-        print("Failed to convert body to string.")
+        // print("Failed to convert body to string.")
     }
     request.httpBody = body
 
@@ -395,8 +399,8 @@ func sendWebhook(song: Song, serverID: String) async throws -> String {
         throw URLError(.badServerResponse)
     }
     
-    print("Webhook Status Code: \(httpResponse.statusCode)")
-    print("Webhook Response Data: \(String(data: data, encoding: .utf8) ?? "No response data")")
+    // print("Webhook Status Code: \(httpResponse.statusCode)")
+    // print("Webhook Response Data: \(String(data: data, encoding: .utf8) ?? "No response data")")
     
     return "Webhook Moment"
 }
@@ -443,7 +447,7 @@ func getFriendList(serverID: String) async throws -> ([[String : JSON]], [Data?]
         else {
             pfps.append(nil)
         }
-        print("PFP: \(pfps)")
+        // print("PFP: \(pfps)")
     }
     // print("User Info Array: \(userInfoArray)")
 
@@ -533,12 +537,12 @@ func getPublicPfp(serverID: String) async throws -> Data? {
 }
 
 func addFriend(username: String) async throws -> String {
-    print("addFriend")
+    // print("addFriend")
     let user = try await publicUser(username: username)
-    print(user)
+    // print(user)
 
     if let error = user["error"]?.stringValue {
-        print(error)
+        // print(error)
         return error
     }
     else {
@@ -556,7 +560,7 @@ func addFriend(username: String) async throws -> String {
         let parameters: [String : Any] = [
             "friendId": id
         ]
-        print(parameters)
+        // print(parameters)
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
     
         let config = URLSessionConfiguration.default
@@ -574,11 +578,11 @@ func addFriend(username: String) async throws -> String {
         let json = try JSON(data: data)
         let dict = json.dictionaryValue
         if let message = dict["message"]?.stringValue {
-            print(message)
+            // print(message)
             return message
         }
         else if let error = dict["error"]?.stringValue {
-            print(error)
+            // print(error)
             return error
         }
         
@@ -600,7 +604,7 @@ func acceptFriend(id: String) async throws -> String {
         let parameters: [String : Any] = [
             "friendId": id
         ]
-        print(parameters)
+        // print(parameters)
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
     
         let config = URLSessionConfiguration.default
@@ -618,11 +622,11 @@ func acceptFriend(id: String) async throws -> String {
         let json = try JSON(data: data)
         let dict = json.dictionaryValue
         if let message = dict["message"]?.stringValue {
-            print(message)
+            // print(message)
             return message
         }
         else if let error = dict["error"]?.stringValue {
-            print(error)
+            // print(error)
             return error
         }
     return "Function ran but did not end in a valid route?"
@@ -641,7 +645,7 @@ func rejectFriend(id: String) async throws -> String {
         let parameters: [String : Any] = [
             "friendId": id
         ]
-        print(parameters)
+        // print(parameters)
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
     
         let config = URLSessionConfiguration.default
@@ -659,11 +663,11 @@ func rejectFriend(id: String) async throws -> String {
         let json = try JSON(data: data)
         let dict = json.dictionaryValue
         if let message = dict["message"]?.stringValue {
-            print(message)
+            // print(message)
             return message
         }
         else if let error = dict["error"]?.stringValue {
-            print(error)
+            // print(error)
             return error
         }
     return "Function ran but did not end in a valid route?"
@@ -682,7 +686,7 @@ func removeFriend(id: String) async throws -> String {
         let parameters: [String : Any] = [
             "friendId": id
         ]
-        print(parameters)
+        // print(parameters)
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
     
         let config = URLSessionConfiguration.default
@@ -700,11 +704,11 @@ func removeFriend(id: String) async throws -> String {
         let json = try JSON(data: data)
         let dict = json.dictionaryValue
         if let message = dict["message"]?.stringValue {
-            print(message)
+            // print(message)
             return message
         }
         else if let error = dict["error"]?.stringValue {
-            print(error)
+            // print(error)
             return error
         }
     return "Function ran but did not end in a valid route?"
@@ -752,7 +756,7 @@ func getReqList(serverID: String) async throws -> ([[String : JSON]], [Data?]) {
         else {
             pfps.append(nil)
         }
-        print("PFP: \(pfps)")
+        // print("PFP: \(pfps)")
     }
     // print("User Info Array: \(userInfoArray)")
 
@@ -830,9 +834,9 @@ struct Login: View {
                     Task {
                         do {
                             let response = try await register(username: username, password: password)
-                            print("Register Response: \(response)")
+                            // print("Register Response: \(response)")
                         } catch {
-                            print("Error registering: \(error)")
+                            // print("Error registering: \(error)")
                         }
                     }
                 }) {
@@ -860,7 +864,7 @@ struct Login: View {
             // Save serverID to UserDefaults
             UserDefaults.standard.set(serverID, forKey: "savedServerID")
             
-            print("Login successful: \(response)")
+            // print("Login successful: \(response)")
             isLoggedIn = response.success
             
             // Save cookies after successful login
@@ -870,7 +874,7 @@ struct Login: View {
             await AppSocketManager.shared.connect()
         } catch {
             errorMessage = "Login failed: \(error.localizedDescription)"
-            print("Login error: \(error)")
+            // print("Login error: \(error)")
         }
         
         isLoading = false
@@ -887,7 +891,7 @@ struct Login: View {
                 isLoggedIn = true
             }
         } catch {
-            print("Error fetching user data: \(error)")
+            // print("Error fetching user data: \(error)")
         }
     }
 }
@@ -970,7 +974,7 @@ struct LoggedIn: View {
             pfp = response.pfp
         } catch {
             self.error = "Error: \(error.localizedDescription)"
-            print("Error fetching user data: \(error)")
+            // print("Error fetching user data: \(error)")
         }
         
         isLoading = false
@@ -1212,7 +1216,7 @@ struct FriendList: View {
         do {
             let (response, pfps) = try await getFriendList(serverID: savedServerID)
 
-            print("Friend List: \(response)")
+            // print("Friend List: \(response)")
             userInfoArray = response
             pfpArray = pfps
             for (index, friend) in userInfoArray.enumerated() {
@@ -1227,7 +1231,7 @@ struct FriendList: View {
                 friends.append(Friend(id: friend["id"]?.stringValue ?? "", name: friend["name"]?.stringValue ?? "", username: friend["username"]?.stringValue ?? "", pfp: pfpArray[index], nowPlaying: nowPlaying))
             }
         } catch {
-            print("Error getting friend list: \(error)")
+            // print("Error getting friend list: \(error)")
         }
     }
 
@@ -1237,7 +1241,7 @@ struct FriendList: View {
         do {
             let (response, pfps) = try await getReqList(serverID: savedServerID)
 
-            print("Friend List: \(response)")
+            // print("Friend List: \(response)")
             userInfoArrayReq = response
             pfpArrayReq = pfps
             for (index, friend) in userInfoArrayReq.enumerated() {
@@ -1252,53 +1256,53 @@ struct FriendList: View {
                 requests.append(Friend(id: friend["id"]?.stringValue ?? "", name: friend["name"]?.stringValue ?? "", username: friend["username"]?.stringValue ?? "", pfp: pfpArrayReq[index], nowPlaying: nowPlaying))
             }
         } catch {
-            print("Error getting friend list: \(error)")
+            // print("Error getting friend list: \(error)")
         }
     }
 
     private func acceptF(id: String) async {
         do {
             let response = try await acceptFriend(id: id)
-            print("acceptF: \(response)")
+            // print("acceptF: \(response)")
         } catch {
-            print("acceptF E: \(error)")
+            // print("acceptF E: \(error)")
         }
     }
 
     private func rejectF(id: String) async {
         do {
             let response = try await rejectFriend(id: id)
-            print("rejectF: \(response)")
+            // print("rejectF: \(response)")
         } catch {
-            print("rejectF E: \(error)")
+            // print("rejectF E: \(error)")
         }
     }
 
     private func addF(username: String) async {
         do {
             let response = try await addFriend(username: username)
-            print("addF: \(response)")
+            // print("addF: \(response)")
         }
         catch {
-            print("addF E: \(error)")
+            // print("addF E: \(error)")
         }
     }
 
     private func removeF(id: String) async {
         do {
             let response = try await removeFriend(id: id)
-            print("removeF: \(response)")
+            // print("removeF: \(response)")
         } catch {
-            print("removeF E: \(error)")
+            // print("removeF E: \(error)")
         }
     }
 
     private func delete(at offsets: IndexSet){
-        print("BLAH")
+        // print("BLAH")
         let index = offsets[offsets.startIndex]
-        print("bLAH: \(index)")
+        // print("bLAH: \(index)")
         let id = friends[index].id
-        print(id)
+        // print(id)
         Task {
             await removeF(id: id)
             await friendMoment()

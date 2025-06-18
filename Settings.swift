@@ -9,8 +9,8 @@ import SwiftUI
 
 struct Settings: View {
     @State private var webhookURL = UserDefaults.standard.string(forKey: "webhookURL") ?? ""
-    @State private var mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC") ?? false
-    @State private var socketIO = UserDefaults.standard.bool(forKey: "socketIO") ?? false
+    @State private var mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC")
+    @State private var socketIO = UserDefaults.standard.bool(forKey: "socketIO")
     @State private var showingAlert = false
 
     var body: some View {

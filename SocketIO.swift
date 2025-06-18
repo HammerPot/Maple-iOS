@@ -11,7 +11,7 @@ import SwiftyJSON
 
 class AppSocketManager: ObservableObject {
     static let shared = AppSocketManager()
-    let enabled = UserDefaults.standard.bool(forKey: "socketIO") ?? false
+    let enabled = UserDefaults.standard.bool(forKey: "socketIO")
 
     private var manager: SocketManager
     var socket: SocketIOClient
