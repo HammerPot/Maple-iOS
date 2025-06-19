@@ -3,7 +3,6 @@ import AVFoundation
 
 
 struct Artists: View {
-	// @Binding var localFiles: [URL]
 	@State private var artists: [Artist] = []
 	@State private var isLoading = true
 	
@@ -17,12 +16,6 @@ struct Artists: View {
 					.foregroundColor(.gray)
 					.padding()
 			} else {
-				// Text("Artists")
-				// 	.font(.title)
-				// 	.bold()
-				// 	.frame(maxWidth: .infinity, alignment: .leading)
-				// 	.padding(.horizontal)
-				
 				List {
 					ForEach(artists) { artist in
 						NavigationLink(destination: ArtistDetailView(artist: artist)) {
@@ -34,8 +27,6 @@ struct Artists: View {
 		}
 		.navigationTitle("Artists")
 		.onAppear {
-			// localFiles = loadLocalFiles()
-			// loadArtists()
 			loadArtistsJ()
 		}
 	}
@@ -72,12 +63,6 @@ struct ArtistDetailView: View {
     }
 	var body: some View {
 		VStack {
-			// Text(artist.name)
-			// 	.font(.title)
-			// 	.bold()
-			// 	.frame(maxWidth: .infinity, alignment: .leading)
-			// 	.padding(.horizontal)
-			
 			List {
 				ForEach(sortedSongs) { song in
 					NavigationLink(destination: AudioPlayerView(song: song, allSongs: sortedSongs)) {

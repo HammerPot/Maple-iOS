@@ -18,7 +18,6 @@ struct MusicButton: View {
 		// VStack {
 			Button("Upload Music") {
 				importing = true
-				print("La Button")
 			}
 			.fileImporter(
 				isPresented: $importing,

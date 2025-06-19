@@ -906,15 +906,6 @@ struct LoggedIn: View {
     @State private var pfp: Data? = nil
     @Binding var isLoggedIn: Bool
     @State private var showingAlert = false
-
-    // @State private var userInfoArray: [[String : JSON]] = []
-    // @State private var userInfoArrayReq: [[String : JSON]] = []
-    // @State private var pfpArray: [Data?] = []
-    // @State private var pfpArrayReq: [Data?] = []
-    // @State private var friends: [Friend] = []
-    // @State private var requests: [Friend] = []
-    // @State private var fUsername: String = ""
-
     
     var body: some View {
         VStack {
@@ -931,12 +922,21 @@ struct LoggedIn: View {
                         .frame(width: 100, height: 100)
                         .clipShape(Circle())
                 }
-                Text("\(username)")
+                Button("\(username)"){
+                    UIPasteboard.general.string = username
+                }
                     .font(.title)
-                Text("\(name)")
+                    .foregroundColor(.primary)
+                Button("\(name)"){
+                    UIPasteboard.general.string = name
+                }
                     .font(.title2)
-                Text("\(id)")
+                    .foregroundColor(.primary)
+                Button("\(id)"){
+                    UIPasteboard.general.string = id
+                }
                     .font(.subheadline)
+                    .foregroundColor(.primary)
 
                 Spacer()
                 
@@ -945,12 +945,7 @@ struct LoggedIn: View {
             }
         }
         .onAppear {
-            // friends.removeAll()
-            // requests.removeAll()
             Task {
-                // await friendList()
-                // await reqList()
-                // await friendMoment()
                 await fetchUserData()
             }
         }

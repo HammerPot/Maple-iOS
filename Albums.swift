@@ -16,22 +16,11 @@ struct Albums: View {
 				ProgressView("Loading albums...")
 					.padding()
 			} else if albums.isEmpty {
-				Text("Albums")
-                    .font(.title)
-                    .bold()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
 				Text("No albums found")
 					.font(.headline)
 					.foregroundColor(.gray)
 					.padding()
 			} else {
-				// Text("Albums")
-                //     .font(.title)
-                //     .bold()
-                //     .frame(maxWidth: .infinity, alignment: .leading)
-                //     .padding(.horizontal)
-				// List {
 				LazyVGrid(columns: columns, spacing: 16) {
 					ForEach(albums) { album in
 						NavigationLink(destination: AlbumDetailView(album: album)) {
@@ -59,6 +48,7 @@ struct Albums: View {
 								
 								Text(album.name)
 									.font(.headline)
+									.foregroundColor(.primary)
 									.lineLimit(1)
 								
 								Text(album.artist)
@@ -125,51 +115,80 @@ struct AlbumDetailView: View {
 	
 	var body: some View {
 		VStack {
-			VStack(alignment: .leading, spacing: 8) {
-				if let artwork = album.artwork {
-					let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artwork)
-					if let uiImage = UIImage(contentsOfFile: artworkPath.path){
-						Image(uiImage: uiImage)
-							.resizable()
-							.aspectRatio(contentMode: .fit)
-							.frame(maxWidth: .infinity)
-							.cornerRadius(8)
-							.padding(.horizontal)
-					}
-				}
-			
-				Text(album.name)
-					.font(.title)
-					.bold()
-				
-				Text(album.artist)
-					.font(.title2)
-					.foregroundColor(.secondary)
-			}
-			.frame(maxWidth: .infinity, alignment: .leading)
-			.padding(.horizontal)
 			
 			List {
-				ForEach(sortedSongs) { song in
-					NavigationLink(destination: AudioPlayerView(song: song, allSongs: sortedSongs)) {
-						HStack {
-							Text("\(song.trackNumber).")
-								.font(.caption)
-								.foregroundColor(.secondary)
-								.frame(width: 25, alignment: .trailing)
-							
-							Text(song.title)
-								.font(.body)
-							
-							Spacer()
-							
-							Text("(Disc \(song.discNumber))")
-								.font(.caption)
-								.foregroundColor(.secondary)
+				Section{
+				// VStack(alignment: .leading, spacing: 8) {
+				// 	if let artwork = album.artwork {
+				// 		let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artwork)
+				// 		if let uiImage = UIImage(contentsOfFile: artworkPath.path){
+				// 			Image(uiImage: uiImage)
+				// 				.resizable()
+				// 				.aspectRatio(contentMode: .fit)
+				// 				.frame(maxWidth: .infinity)
+				// 				.cornerRadius(8)
+				// 				.padding(.horizontal)
+				// 		}
+				// 	}
+				
+				// 	Text(album.name)
+				// 		.font(.title)
+				// 		.bold()
+					
+				// 	Text(album.artist)
+				// 		.font(.title2)
+				// 		.foregroundColor(.secondary)
+				// }
+				// .frame(maxWidth: .infinity, alignment: .leading)
+				// .padding(.horizontal)
+					ForEach(sortedSongs) { song in
+						NavigationLink(destination: AudioPlayerView(song: song, allSongs: sortedSongs)) {
+							HStack {
+								Text("\(song.trackNumber).")
+									.font(.caption)
+									.foregroundColor(.secondary)
+									.frame(width: 25, alignment: .trailing)
+								
+								Text(song.title)
+									.font(.body)
+								
+								Spacer()
+								
+								Text("(Disc \(song.discNumber))")
+									.font(.caption)
+									.foregroundColor(.secondary)
+							}
 						}
 					}
+				} header: {
+						VStack(alignment: .leading, spacing: 8) {
+							if let artwork = album.artwork {
+								let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artwork)
+								if let uiImage = UIImage(contentsOfFile: artworkPath.path){
+									Image(uiImage: uiImage)
+										.resizable()
+										.aspectRatio(contentMode: .fit)
+										.frame(maxWidth: .infinity)
+										.cornerRadius(8)
+										.padding(.horizontal)
+								}
+							}
+						
+							Text(album.name)
+								.font(.title)
+								.bold()
+								.foregroundColor(.primary)
+								.frame(maxWidth: .infinity, alignment: .center)
+							
+							Text(album.artist)
+								.font(.title2)
+								.foregroundColor(.secondary)
+								.frame(maxWidth: .infinity, alignment: .center)
+						}
+						.frame(maxWidth: .infinity, alignment: .leading)
+						.padding(.horizontal)
 				}
-			}
+			} 
 		}
 	}
 }

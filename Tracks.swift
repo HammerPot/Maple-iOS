@@ -15,12 +15,6 @@ struct Tracks: View {
                     .foregroundColor(.gray)
                     .padding()
             } else {
-                // Text("Tracks")
-                //     .font(.title)
-                //     .bold()
-                //     .frame(maxWidth: .infinity, alignment: .leading)
-                //     .padding(.horizontal)
-                
                 List {
                     ForEach(songs.sorted(by: { $0.title < $1.title })) { song in
                         NavigationLink(destination: AudioPlayerView(song: song, allSongs: songs.sorted(by: { $0.title < $1.title }))) {
@@ -32,11 +26,7 @@ struct Tracks: View {
         }
         .navigationTitle("Tracks")
 		.onAppear {
-			// localFiles = loadLocalFiles()
-			// loadSongsLocal()
             Task{
-                // songs = await loadSongsFromJson()
-                // print("thg: \(songs)")
                 loadSongsJ()
             }
 		}
@@ -49,20 +39,4 @@ struct Tracks: View {
         }
         isLoading = false
     }
-
-
-    // private func loadSongsLocal() {
-	// 	isLoading = true
-	// 	print("Loading songs local")
-	// 	Task {
-	// 		let songsList = await loadSongs(from: localFiles)
-	// 		print("Songs loaded: \(songsList.count)")
-			
-	// 		await MainActor.run {
-	// 			songs = songsList
-	// 			isLoading = false
-    //             print("isloading: \(isLoading)")
-	// 		}
-	// 	}
-	// }
 }

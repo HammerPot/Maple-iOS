@@ -19,7 +19,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     @Published var currentSong: Song?
     private var isHandlingRemoteControl = false
     private var serverID: String = ""
-    private var mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC") ?? false
+    private var mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC")
     private var rpcTask = false
 
     
@@ -199,7 +199,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
         print("Play called - current audio player exists: \(audioPlayer != nil)")
         audioPlayer?.play()
         isPlaying = true
-        mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC") ?? false
+        mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC")
         startTimer()
         if let song = currentSong {
             updateNowPlayingInfo(song: song)
@@ -428,9 +428,6 @@ struct AudioPlayerView: View {
         .onAppear {
             // Only set up the queue if we haven't done so for this song
             if !hasInitializedQueue {
-                print("allSongs titles: \(allSongs.map { $0.title })")
-                print("song: \(song.title)")
-                print("\(allSongs.firstIndex(where: { $0.url == song.url }))")
                 if let index = allSongs.firstIndex(where: { $0.url == song.url }) {
                     audioManager.setQueue(allSongs, startingAt: index)
                     hasInitializedQueue = true
