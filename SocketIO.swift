@@ -18,22 +18,17 @@ class AppSocketManager: ObservableObject {
 
     init() {
         let cookies = HTTPCookieStorage.shared.cookies ?? []
-
-        // print(cookies)
-        // let cookieString = cookies.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
         
         let config: SocketIOClientConfiguration = [
-            .log(true), // Enable logging
+            .log(true),
             .cookies(cookies)
         ]
-        // Initialize the SocketManager with the server URL
-        manager = SocketManager(socketURL: URL(string: "https://maple.kolf.pro:3000")!, config: config)
+        manager = SocketManager(socketURL: URL(string: "https://api.maple.music")!, config: config)
         socket = manager.defaultSocket
 
         if enabled{
             connect()
         }
-
     }
 
     func connect() {
@@ -51,9 +46,7 @@ class AppSocketManager: ObservableObject {
     }
 
     func nowPlaying(song: Song, id: String, discord: Bool) {
-        // Check if the socket is connected before emitting
         if socket.status == .connected {
-            // Create the song data
             let songData: [String: Any] = [
                 "title": song.title,
                 "artist": song.artist,
@@ -62,39 +55,20 @@ class AppSocketManager: ObservableObject {
                 "discord": discord
             ]
             
-            // Wrap the song data in a dictionary with the key "nowPlaying"
             let payload: [String: Any] = ["nowPlaying": songData]
             
-            // Convert payload to JSON
             do {
                 let jsonData = try JSONSerialization.data(withJSONObject: payload)
                 if let jsonString = String(data: jsonData, encoding: .utf8) {
-                    print("Payload being sent: \(jsonString)") // Print the JSON string
+
                 }
             } catch {
                 print("Error converting payload to JSON: \(error)")
             }
             
-            // Emit the payload
             socket.emit("nowPlaying", payload)
         } else {
             print("Socket is not connected. Cannot emit nowPlaying event.")
         }
     }
-    
-    
 }
-
-
-
-
-// struct SocketIO: View {
-//     var body: some View {
-//         Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
-//     }
-// }
-
-// #Preview {
-//     SocketIO()
-// }
-

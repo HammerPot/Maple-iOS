@@ -54,18 +54,13 @@ struct Settings: View {
                     .foregroundStyle(.red)
                 }
                 .alert("Warning!", isPresented: $showingAlert, actions: { 
-                        /// A destructive button that appears in red.
                         Button(role: .destructive) {
                             clearDocumentsDirectory()
-                            // Perform the deletion
                         } label: {
                             Text("Delete")
                             .foregroundStyle(.red)
                         }
-                        
-                        /// A cancellation button that appears with bold text.
                         Button("Cancel", role: .cancel) {
-                            // Perform cancellation
                         }
                 }, message: {
                     Text("This will delete all data saved in the Maple directory. This is irreversible! (This will not log you out of Maple nor will it change any settings)")

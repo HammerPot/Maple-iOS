@@ -2,7 +2,6 @@ import SwiftUI
 import AVFoundation
 
 struct Tracks: View {
-	// @Binding var localFiles: [URL]
 	@State private var songs: [Song] = []
     @State private var isLoading = true
 	var body: some View {

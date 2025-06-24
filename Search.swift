@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-
 struct Result: Identifiable {
 	let id = UUID()
 	var name: String
@@ -18,13 +17,7 @@ struct Result: Identifiable {
 	var artist: Artist? = nil
 }
 
-
-// class Model: ObservableObject {
-// 	@Published var searchText: String = ""
-// }
-
 struct Search: View {
-	// @StateObject private var model = Model()
 	@State private var searchText: String = ""
 	@State private var songs: [Song] = []
 	@State private var albums: [Album] = []
@@ -33,7 +26,6 @@ struct Search: View {
 	@State private var alResults: [Result] = []
 	@State private var arResults: [Result] = []
 	@State private var results: [Result] = []
-	// @State private var filteredResults: [Result] = []
 
 	var body: some View {
 		NavigationStack {
@@ -49,7 +41,6 @@ struct Search: View {
 					ForEach(filteredResults) { result in
 						NavigationLink(destination: result.destination) {
 							HStack {
-								// Text("blah")
 								if let art = result.song?.artwork {
 									if let uiImage = UIImage(contentsOfFile: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(art).path) {
 										Image(uiImage: uiImage)
@@ -66,18 +57,6 @@ struct Search: View {
 											.frame(width: 50, height: 50)
 									}
 								}
-							// if (result.type == "song"){
-							// 	Image(contentsOfFile: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(result.song.artwork))
-							// 		.resizable()
-							// 		.scaledToFit()
-							// 		.frame(width: 100, height: 100)
-							// }
-							// 	else if (result.type == "album"){
-							// 		Image(contentsOfFile: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(result.album.artwork))
-							// 			.resizable()
-							// 			.scaledToFit()
-							// 			.frame(width: 100, height: 100)
-							// 	}
 								VStack {
 									Text(result.name)
 										.font(.headline)
@@ -91,16 +70,6 @@ struct Search: View {
 			}
 		}
 		.searchable(text: $searchText)
-		// .onChange(of: searchText) { newValue in
-		// 	if newValue.isEmpty {
-		// 		filteredResults = []
-		// 	} 
-		// 	else {
-		// 		filteredResults = results.filter { result in 
-		// 			result.name.lowercased().contains(newValue.lowercased())
-		// 		}
-		// 	}
-		// }
 		.onAppear {
 			Task{
 				sResults = []
@@ -111,7 +80,6 @@ struct Search: View {
 				albums = await loadAlbumsFromJson()
 				artists = await loadArtistsFromJson()
 				
-				// Process the results
 				for song in songs {
 					sResults.append(Result(name: song.title, type: "song", destination: AnyView(AudioPlayerView(song: song, allSongs: [song])), song: song))
 				}
@@ -138,9 +106,6 @@ struct Search: View {
 		}
 	}
 }
-
-
-
 
 #Preview {
 	Search()

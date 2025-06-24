@@ -8,7 +8,6 @@
 import SwiftUI
 import AVFoundation
 
-// Models for songs and albums
 struct Song: Identifiable, Codable {
 	let id: UUID
 	var title: String
@@ -17,9 +16,7 @@ struct Song: Identifiable, Codable {
 	var year: Int
 	var genre: String
 	let duration: Double
-	// var artwork: Data?
 	var artwork: String?
-	// var artwork: URL
 	var trackNumber: Int
 	var discNumber: Int
 	let ext: String
@@ -32,7 +29,6 @@ struct Album: Identifiable, Codable {
 	var artist: String
 	var year: Int
 	var genre: String
-	// var artwork: Data?
 	var artwork: String?
 	var tracks: [String]
 	var songs: [Song]
@@ -55,7 +51,6 @@ struct Playlist: Identifiable, Codable {
 	var songs: [Song]
 }
 
-// Global function to load local music files
 func loadLocalFiles() -> [URL] {
 	let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
 	do {
@@ -72,7 +67,6 @@ func loadLocalFiles() -> [URL] {
 	}
 }
 
-// Global function to extract metadata from audio files
 func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: String, album: String, year: Int, genre: String, duration: Double, artwork: String, trackNumber: Int, discNumber: Int, ext: String) {
 	let documentDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
 
@@ -83,7 +77,6 @@ func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: S
 	var year = 0000
 	var genre = "Unknown Genre"
 	var duration: Double = 0
-	// var artwork: Data? = UIImage(named: "Maple")?.pngData()
 	var artwork = ""
 	var _artwork: Data? = UIImage(named: "Maple")?.pngData()
 	var trackNumber = 0
@@ -93,19 +86,10 @@ func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: S
 	do {
 		let metadata = try await asset.load(.metadata)
 		print("Metadata for \(url.lastPathComponent):")
-		// print(metadata)
 		print("\n")
 		
 		for item in metadata {
 			print("\(url.lastPathComponent): \(item)")
-			// // Print the identifier to help debug
-			// print("Item identifier: \(item.identifier) | Item commonkey: \(item.commonKey) | Item KEY: \(item.key)")
-			// // print("Item commonkey: \(item.commonKey)")
-			// // print("Item KEY: \(item.key)")
-			// if ("\(item.key)".contains("1953655662")) {
-			// 	print("BLOH")
-				
-			// }
 			print("comm: \(item.commonKey)")
 			switch item.commonKey {
 			case .commonKeyTitle?:
@@ -137,9 +121,7 @@ func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: S
 			let identifierKey = "\(item.key)".lowercased()
 
 			if identifierKey.contains("tpa"){
-				// print("tpa: \(item.value)")
 				if let value = try await item.load(.stringValue) {
-						// print("value: \(value)")
 						let components = value.split(separator: "/")
 						if let discNum = Int(components[0]) {
 							discNumber = discNum
@@ -147,10 +129,7 @@ func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: S
 				}
 			}
 			if identifierKey.contains("trk"){
-				// print("trk: \(item.value)")
 					if let value = try await item.load(.stringValue) {
-						// print("tpa: \(value)")
-						// Disc numbers might be in format "1/2" or just "1"
 						let components = value.split(separator: "/")
 						if let trackNum = Int(components[0]) {
 							trackNumber = trackNum
@@ -158,7 +137,6 @@ func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: S
 					}
 			}
 			if identifierKey.contains("tye") || identifierKey.contains("tyer") {
-					// print("HIT!")
 					if let value = try await item.load(.stringValue) {
 						if let _year = Int(value) {
 							year = _year
@@ -166,15 +144,11 @@ func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: S
 					}
 				}
 
-			// Check for track number using string identifiers
 			if let identifier = item.identifier?.rawValue {
 				let identifierString = identifier.lowercased()
 				print("idntStr: \(identifierString)")
-				// print("Identifier: \(identifierString)")
 				if identifierString.contains("track") || identifierString.contains("trck"){
 					if let value = try await item.load(.stringValue) {
-						// print("value: \(value)")
-						// Track numbers might be in format "1/10" or just "1"
 						let components = value.split(separator: "/")
 						if let trackNum = Int(components[0]) {
 							trackNumber = trackNum
@@ -183,40 +157,20 @@ func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: S
 				}
 				if identifierString.contains("trkn") {
 						if let value = try await item.load(.dataValue) {
-							// print("track: \(value)")
-						// Track numbers might be in format "1/10" or just "1"
 						let bytes = [UInt8](value)
 						for byte in bytes {
-							// print("\(title): Num: \(byte)")
 						}
 						let trackNum = ((Int)(bytes[2]) << 8) | (Int)(bytes[3])
-						// print("Track Number: \(trackNum)")
 						trackNumber = trackNum
 					}
 				}
 				
-				// Check for disc number using string identifiers
-				// if identifierString.contains("tpa") {
-				// 	if let value = try await item.load(.stringValue) {
-				// 		print("tpa: \(value)")
-				// 		// Disc numbers might be in format "1/2" or just "1"
-				// 		let components = value.split(separator: "/")
-				// 		if let discNum = Int(components[0]) {
-				// 			discNumber = discNum
-				// 		}
-				// 	}
-				// }
-
-
 				if identifierString.contains("disk") {
 					if let value = try await item.load(.dataValue) {
-						// print("disk: \(value)")
 						let bytes = [UInt8](value)
 						for byte in bytes {
-							// print("\(title): Byte: \(byte)")
 						}
 						let discNum = ((Int)(bytes[2]) << 8) | (Int)(bytes[3])
-						// print("Disc Number: \(discNum)")
 						discNumber = discNum
 					}
 				}
@@ -268,7 +222,6 @@ func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: S
 	return (title, artist, album, year, genre, duration, artwork, trackNumber, discNumber, ext)
 }
 
-// Global function to load songs with metadata
 func loadSongs(from urls: [URL]) async -> [Song] {
 	var songs: [Song] = []
 	
@@ -287,9 +240,6 @@ func loadSongs(from urls: [URL]) async -> [Song] {
 						discNumber: metadata.discNumber,
 						ext: metadata.ext,
 						url: url)
-		// if song.artwork == nil {
-		// 	song.artwork = UIImage(named: "Maple")?.pngData()
-		// }
 		print(song)
 		songs.append(song)
 	}
@@ -302,8 +252,6 @@ func loadSongs(from urls: [URL]) async -> [Song] {
 		let songFolder = documentsDirectory.appendingPathComponent("tracks")
 		let jsonURL = songFolder.appendingPathComponent("tracks.json")
 		try jsonData.write(to: jsonURL)
-		// print("Json data: \n\(jsonData)")
-		// print("Json string: \n\(jsonString)")
 	} catch {
 		print("Json moment: \(error)")
 	}
@@ -334,7 +282,6 @@ func loadSongsFromJson() async -> [Song] {
 
 
 
-// Global function to group songs by album
 func groupSongsByAlbum(_ songs: [Song]) -> [Album] {
 	var albumDict: [String: Album] = [:]
 	
@@ -493,7 +440,6 @@ func loadAlbums(song: Song)  -> [Album] {
 					let albumData = try jsonEncoder.encode(albums)
 					try albumData.write(to: jsonURL)
 					return albums.sorted { $0.name < $1.name }
-					// return
 				}
 			}
 			if !didWrite {
@@ -509,7 +455,6 @@ func loadAlbums(song: Song)  -> [Album] {
 				let albumData = try jsonEncoder.encode(albums)
 				try albumData.write(to: jsonURL)
 				return albums.sorted { $0.name < $1.name }
-				// return
 			}
 		}
 		else {
@@ -526,15 +471,12 @@ func loadAlbums(song: Song)  -> [Album] {
 			let albumData = try jsonEncoder.encode(albums)
 			try albumData.write(to: jsonURL)
 			return albums.sorted { $0.name < $1.name }
-			// return
 		}
 	} catch {
 		print("Error loading albums from JSON: \(error)")
 		return []
-		// return
 	}
 	return []
-	// return
 }
 
 func groupSongsByArtist(_ songs: [Song]) -> [Artist] {

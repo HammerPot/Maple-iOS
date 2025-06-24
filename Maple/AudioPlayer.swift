@@ -24,7 +24,6 @@ class AudioPlayerManager: NSObject, ObservableObject {
 
     
     
-    // Queue management
     public var queue: [Song] = []
     private var currentIndex: Int = -1
     
@@ -46,7 +45,6 @@ class AudioPlayerManager: NSObject, ObservableObject {
     private func setupRemoteTransportControls() {
         let commandCenter = MPRemoteCommandCenter.shared()
         
-        // Add handler for play command
         commandCenter.playCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
             self.isHandlingRemoteControl = true
@@ -55,7 +53,6 @@ class AudioPlayerManager: NSObject, ObservableObject {
             return .success
         }
         
-        // Add handler for pause command
         commandCenter.pauseCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
             self.isHandlingRemoteControl = true
@@ -64,7 +61,6 @@ class AudioPlayerManager: NSObject, ObservableObject {
             return .success
         }
         
-        // Add handler for next track command
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
             self.isHandlingRemoteControl = true
@@ -73,7 +69,6 @@ class AudioPlayerManager: NSObject, ObservableObject {
             return .success
         }
         
-        // Add handler for previous track command
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
             self.isHandlingRemoteControl = true
@@ -82,7 +77,6 @@ class AudioPlayerManager: NSObject, ObservableObject {
             return .success
         }
         
-        // Add handler for seek command
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let self = self,
                   let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
@@ -118,15 +112,12 @@ class AudioPlayerManager: NSObject, ObservableObject {
             
             print("New audio player created - duration: \(duration)")
             
-            // Setup now playing info
             if let song = currentSong {
                 setupNowPlayingInfo(song: song)
             }
             
-            // Set up completion handler
             audioPlayer?.delegate = self
             
-            // If we're handling a remote control event, automatically start playing
             if isHandlingRemoteControl {
                 play()
             }
@@ -138,7 +129,6 @@ class AudioPlayerManager: NSObject, ObservableObject {
     private func setupNowPlayingInfo(song: Song) {
         currentSong = song
         
-        // Create artwork
         var mediaArtwork: MPMediaItemArtwork?
         if let artwork = song.artwork {
             let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artwork)
@@ -147,7 +137,6 @@ class AudioPlayerManager: NSObject, ObservableObject {
             }
         }
         
-        // Setup now playing info
         nowPlayingInfo = [
             MPMediaItemPropertyTitle: song.title,
             MPMediaItemPropertyArtist: song.artist,
@@ -161,14 +150,12 @@ class AudioPlayerManager: NSObject, ObservableObject {
             nowPlayingInfo[MPMediaItemPropertyArtwork] = mediaArtwork
         }
         
-        // Update the now playing info
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
     
     func updateNowPlayingInfo(song: Song) {
         currentSong = song
         
-        // Create artwork
         var mediaArtwork: MPMediaItemArtwork?
         if let artwork = song.artwork {
             let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artwork)
@@ -177,7 +164,6 @@ class AudioPlayerManager: NSObject, ObservableObject {
             }
         }
         
-        // Setup now playing info
         nowPlayingInfo = [
             MPMediaItemPropertyTitle: song.title,
             MPMediaItemPropertyArtist: song.artist,
@@ -191,7 +177,6 @@ class AudioPlayerManager: NSObject, ObservableObject {
             nowPlayingInfo[MPMediaItemPropertyArtwork] = mediaArtwork
         }
         
-        // Update the now playing info
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
     
@@ -325,7 +310,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
 }
 
-// Add AVAudioPlayerDelegate extension
+
 extension AudioPlayerManager: AVAudioPlayerDelegate {
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         if flag {
@@ -347,19 +332,17 @@ struct AudioPlayerView: View {
     
     var body: some View {
         VStack(spacing: 20) {
-            // Album Art
             if let artworkData = audioManager.currentSong?.artwork {
                 let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artworkData)
                 if let uiImage = UIImage(contentsOfFile: artworkPath.path){
                     Image(uiImage: uiImage)
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 160, height: 160) // Adjust size as needed
+                        .frame(width: 160, height: 160)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .padding()
                 }
             } else {
-                // Placeholder image if no artwork is available
                 Rectangle()
                 .fill(Color.gray.opacity(0.2))
                 .frame(width: 160, height: 160)
@@ -371,7 +354,6 @@ struct AudioPlayerView: View {
                 )
             }
 
-            // Song Info
             VStack(spacing: 8) {
                 Text(audioManager.currentSong?.title ?? song.title)
                     .font(.headline)
@@ -380,7 +362,6 @@ struct AudioPlayerView: View {
                     .foregroundColor(.secondary)
             }
             
-            // Playback Controls
             HStack(spacing: 30) {
                 Button(action: {
                     audioManager.playPrevious()
@@ -408,7 +389,6 @@ struct AudioPlayerView: View {
                 }
             }
             
-            // Progress Bar
             VStack {
                 Slider(value: Binding(
                     get: { audioManager.currentTime },
@@ -426,7 +406,6 @@ struct AudioPlayerView: View {
         }
         .padding()
         .onAppear {
-            // Only set up the queue if we haven't done so for this song
             if !hasInitializedQueue {
                 if let index = allSongs.firstIndex(where: { $0.url == song.url }) {
                     audioManager.setQueue(allSongs, startingAt: index)
@@ -456,19 +435,17 @@ struct MediaPlayerView: View {
     
     var body: some View {
         VStack(spacing: 20) {
-            // Album Art
             if let artworkData = audioManager.currentSong?.artwork {
                 let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artworkData)
                 if let uiImage = UIImage(contentsOfFile: artworkPath.path){
                     Image(uiImage: uiImage)
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 160, height: 160) // Adjust size as needed
+                        .frame(width: 160, height: 160)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .padding()
                 }
             } else {
-                // Placeholder image if no artwork is available
                 Rectangle()
                 .fill(Color.gray.opacity(0.2))
                 .frame(width: 160, height: 160)
@@ -480,7 +457,6 @@ struct MediaPlayerView: View {
                 )
             }
 
-            // Song Info
             VStack(spacing: 8) {
                 Text(audioManager.currentSong?.title ?? song.title)
                     .font(.headline)
@@ -489,7 +465,6 @@ struct MediaPlayerView: View {
                     .foregroundColor(.secondary)
             }
             
-            // Playback Controls
             HStack(spacing: 30) {
                 Button(action: {
                     audioManager.playPrevious()
@@ -517,7 +492,6 @@ struct MediaPlayerView: View {
                 }
             }
             
-            // Progress Bar
             VStack {
                 Slider(value: Binding(
                     get: { audioManager.currentTime },
@@ -535,16 +509,6 @@ struct MediaPlayerView: View {
         }
         .padding()
         .onAppear {
-            // // Only set up the queue if we haven't done so for this song
-            // if !hasInitializedQueue {
-            //     print("allSongs titles: \(allSongs.map { $0.title })")
-            //     print("song: \(song.title)")
-            //     print("\(allSongs.firstIndex(where: { $0.url == song.url }))")
-            //     if let index = allSongs.firstIndex(where: { $0.url == song.url }) {
-            //         audioManager.setQueue(allSongs, startingAt: index)
-            //         hasInitializedQueue = true
-            //     }
-            // }
         }
     }
     
@@ -556,16 +520,4 @@ struct MediaPlayerView: View {
 }
 
 #Preview {
-    // AudioPlayerView(
-    //     song: Song(
-    //         url: URL(fileURLWithPath: ""),
-    //         title: "Sample Song",
-    //         artist: "Sample Artist",
-    //         album: "Sample Album",
-    //         artwork: nil,
-    //         trackNumber: 1,
-    //         discNumber: 1
-    //     ),
-    //     allSongs: []
-    // )
 } 

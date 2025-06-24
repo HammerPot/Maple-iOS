@@ -2,7 +2,6 @@ import SwiftUI
 import AVFoundation
 
 struct Albums: View {
-	// @Binding var localFiles: [URL]
 	@State private var albums: [Album] = []
 	@State private var isLoading = true
 	
@@ -64,13 +63,11 @@ struct Albums: View {
 						}
 					}
 				}
-				// }
 				.padding()
 			}
 		}
 		.navigationTitle("Albums")
 		.onAppear {
-			// localFiles = loadLocalFiles()
 			loadAlbumsJ()
 		}
 	}
@@ -82,8 +79,6 @@ struct Albums: View {
 		}
 		isLoading = false
 	}
-
-
 
 	private func loadAlbums() {
 		isLoading = true
@@ -115,32 +110,8 @@ struct AlbumDetailView: View {
 	
 	var body: some View {
 		VStack {
-			
 			List {
 				Section{
-				// VStack(alignment: .leading, spacing: 8) {
-				// 	if let artwork = album.artwork {
-				// 		let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artwork)
-				// 		if let uiImage = UIImage(contentsOfFile: artworkPath.path){
-				// 			Image(uiImage: uiImage)
-				// 				.resizable()
-				// 				.aspectRatio(contentMode: .fit)
-				// 				.frame(maxWidth: .infinity)
-				// 				.cornerRadius(8)
-				// 				.padding(.horizontal)
-				// 		}
-				// 	}
-				
-				// 	Text(album.name)
-				// 		.font(.title)
-				// 		.bold()
-					
-				// 	Text(album.artist)
-				// 		.font(.title2)
-				// 		.foregroundColor(.secondary)
-				// }
-				// .frame(maxWidth: .infinity, alignment: .leading)
-				// .padding(.horizontal)
 					ForEach(sortedSongs) { song in
 						NavigationLink(destination: AudioPlayerView(song: song, allSongs: sortedSongs)) {
 							HStack {

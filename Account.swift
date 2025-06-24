@@ -5,18 +5,13 @@
 //  Created by Potter on 4/16/25.
 //
 
-
-
-
-
 import SwiftUI
 import Foundation
 import SwiftyJSON
 import Alamofire
 import SwiftVibrantium
-// MARK: - Data Structures
+import PhotosUI
 
-// Structure to store cookie data
 struct CookieData: Codable {
     let name: String
     let value: String
@@ -58,7 +53,7 @@ struct NowPlaying: Identifiable {
 // MARK: - API Functions
 
 func login(username: String, password: String) async throws -> LoginResponse {
-    guard let url = URL(string: "https://maple.kolf.pro:3000/login") else {
+    guard let url = URL(string: "https://api.maple.music/login") else {
         throw URLError(.badURL)
     }
     
@@ -66,16 +61,13 @@ func login(username: String, password: String) async throws -> LoginResponse {
     request.httpMethod = "POST"
     request.addValue("application/json", forHTTPHeaderField: "Content-Type")
     
-    // Create the JSON parameters
     let parameters: [String: Any] = [
         "username": username,
         "password": password
     ]
     
-    // Convert parameters to JSON data
     request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
     
-    // Create a URLSession with cookie handling
     let config = URLSessionConfiguration.default
     config.httpShouldSetCookies = true
     config.httpCookieAcceptPolicy = .always
@@ -84,25 +76,8 @@ func login(username: String, password: String) async throws -> LoginResponse {
     
     let (data, response) = try await session.data(for: request)
     
-    // Print response headers for debugging
     if let httpResponse = response as? HTTPURLResponse {
-        // print("Response Headers:")
-        // for (key, value) in httpResponse.allHeaderFields {
-        //     // print("\(key): \(value)")
-        // }
-        
-        // Print and save cookies after the request
         if let cookies = HTTPCookieStorage.shared.cookies(for: url) {
-            // print("\nCookies after request:")
-            // for cookie in cookies {
-            //     print("Cookie: \(cookie.name) = \(cookie.value)")
-            //     print("Domain: \(cookie.domain)")
-            //     print("Path: \(cookie.path)")
-            //     print("Expires: \(String(describing: cookie.expiresDate))")
-            //     print("---")
-            // }
-            
-            // Save cookies to UserDefaults
             let cookieData = cookies.map { cookie in
                 CookieData(
                     name: cookie.name,
@@ -115,34 +90,22 @@ func login(username: String, password: String) async throws -> LoginResponse {
             
             if let encoded = try? JSONEncoder().encode(cookieData) {
                 UserDefaults.standard.set(encoded, forKey: "savedCookies")
-                // print("Cookies saved successfully")
             }
         }
     }
     
-    // Check HTTP response
     guard let httpResponse = response as? HTTPURLResponse else {
         throw URLError(.badServerResponse)
     }
     
-    // Print response for debugging
-    // print("HTTP Status Code: \(httpResponse.statusCode)")
-    
-    // Handle different status codes
     switch httpResponse.statusCode {
     case 200...299:
-        // Success - parse the response
         do {
             let json = try JSON(data: data)
-            // print("Response JSON: \(json)")
             
-            // Try to decode the response
             let serverUsername = json["user"]["username"]
             let serverID = json["user"]["id"]
             let status = json["status"]
-            // print("Server Username: \(serverUsername)")
-            // print("Server ID: \(serverID)")
-            // print("Status: \(status)")
             if status.stringValue.lowercased() == "success" {
                 return LoginResponse(success: true, serverUsername: serverUsername.stringValue, serverID: serverID.stringValue, response: httpResponse.statusCode)
             }
@@ -150,7 +113,6 @@ func login(username: String, password: String) async throws -> LoginResponse {
                 return LoginResponse(success: false, serverUsername: "", serverID: "", response: httpResponse.statusCode)
             }
         } catch {
-            // print("Decoding error: \(error)")
             throw error
         }
     case 401:
@@ -163,7 +125,7 @@ func login(username: String, password: String) async throws -> LoginResponse {
 }
 
 func register(username: String, password: String) async throws -> String {
-    guard let url = URL(string: "https://maple.kolf.pro:3000/login/create") else {
+    guard let url = URL(string: "https://api.maple.music/login/create") else {
         throw URLError(.badURL)
     }
 
@@ -184,10 +146,6 @@ func register(username: String, password: String) async throws -> String {
         throw URLError(.badServerResponse)
     }
 
-    // print("Register Response: \(httpResponse.statusCode)")
-    // print("Register Response Data: \(String(data: data, encoding: .utf8))")
-    // print("Register Response Headers: \(httpResponse.allHeaderFields)")
-
     switch httpResponse.statusCode {
     case 200:
         return "Success! Please login using your new account: \(username)"
@@ -197,8 +155,7 @@ func register(username: String, password: String) async throws -> String {
 }
 
 func getUser(serverID: String) async throws -> userResponse {
-    // print("Getting user data for ID: \(serverID)")
-    guard let url = URL(string: "https://maple.kolf.pro:3000/get/user/\(serverID)") else {
+    guard let url = URL(string: "https://api.maple.music/get/user/\(serverID)") else {
         throw URLError(.badURL)
     }
 
@@ -206,26 +163,20 @@ func getUser(serverID: String) async throws -> userResponse {
     request.httpMethod = "GET"
     request.addValue("application/json", forHTTPHeaderField: "Content-Type")
     
-    // Use the same session configuration as login
     let config = URLSessionConfiguration.default
     config.httpShouldSetCookies = true
     config.httpCookieAcceptPolicy = .always
     config.httpCookieStorage = .shared
     let session = URLSession(configuration: config)
-    // print("Request: \(request)")
-    // print("Request Headers: \(request.allHTTPHeaderFields)")
     let (data, response) = try await session.data(for: request)
 
     guard let httpResponse = response as? HTTPURLResponse else {
         throw URLError(.badServerResponse)
     }
     
-    // print("User data response status: \(httpResponse.statusCode)")
-    
     switch httpResponse.statusCode {
     case 200:
         let json = try JSON(data: data)
-        // print("User data JSON: \(json)")
         let name = json["name"]
         let id = json["id"]
         let username = json["username"]
@@ -244,12 +195,11 @@ func getUser(serverID: String) async throws -> userResponse {
 
 
 func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
-    guard let url = URL(string: "https://maple.kolf.pro:3000/user/manage/setAlbumArt/\(serverID)") else {
+    guard let url = URL(string: "https://api.maple.music/user/manage/setAlbumArt/\(serverID)") else {
         throw URLError(.badURL)
     }
-    // print("URL: \(url)")
+
     var request = URLRequest(url: url)
-    // print("url: \(request)")
     request.httpMethod = "POST"
     let boundary = UUID().uuidString
     request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -257,11 +207,7 @@ func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
     var body = Data()
     let boundaryStart = "--\(boundary)\r\n"
     let boundaryEnd = "--\(boundary)--\r\n"
-    // print("Album Art: \(albumArt)")
-    // print(albumArt)
 
-    // print("Boundary Start: \(boundaryStart)")
-    // print("BSData: \(boundaryStart.data(using: .utf8)!)")
     body.append(boundaryStart.data(using: .utf8)!)
     body.append("Content-Disposition: form-data; name=\"albumArt\"; filename=\"albumArt.jpg\"\r\n".data(using: .utf8)!)
     body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
@@ -272,46 +218,20 @@ func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
     body.append("\(serverID)\r\n".data(using: .utf8)!)
     body.append(boundaryEnd.data(using: .utf8)!)
 
-
-    // print("Body: \(body.count)")
-        // Print the body as a string
-    if let bodyString = String(data: body, encoding: .utf8) {
-        // print("Request Body: \n--------\n\(bodyString)\n--------")
-    } else {
-        // print("Failed to convert body to string.")
-    }
     request.httpBody = body
-
-    // print("Request Headers: \(request.allHTTPHeaderFields)")
-    // print("Request Body: \(request.httpBody)")
 
     let config = URLSessionConfiguration.default
     config.httpShouldSetCookies = true
     config.httpCookieAcceptPolicy = .always
     config.httpCookieStorage = .shared
     let session = URLSession(configuration: config)
-
-    // if let cookies = HTTPCookieStorage.shared.cookies {
-    //     let cookieString = cookies.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
-    //     print("Cookie String: \(cookieString)")
-    //     request.addValue(cookieString, forHTTPHeaderField: "Cookie")
-    // }
     request.addValue("\(body.count)", forHTTPHeaderField: "Content-Length")
-    // print("Request Headers: \(request.allHTTPHeaderFields)")
 
     let (data, response) = try await session.data(for: request)
     guard let httpResponse = response as? HTTPURLResponse else {
         throw URLError(.badServerResponse)
     }
-    // print("BLAH TEXT")
-    // print("Album Art Response: Code \(httpResponse.statusCode)")
-    // print("Album Art Response Data: \(String(data: data, encoding: .utf8))")
-    // print("Album Art Response Headers: \(httpResponse.allHeaderFields)")
     return "\(httpResponse.statusCode)"
-    
-    
-
-    
 }
 
 func sendWebhook(song: Song, serverID: String) async throws -> String {
@@ -353,7 +273,7 @@ func sendWebhook(song: Song, serverID: String) async throws -> String {
     let payloadJSON: [String : Any] = [
         "embeds": [embeds],
         "username": "Maple-iOS",
-        "avatar_url": "https://maple.kolf.pro:3000/public/get/pfp/\(serverID)"
+        "avatar_url": "https://api.maple.music/public/get/pfp/\(serverID)"
     ]
 
     let songData = try JSONSerialization.data(withJSONObject: payloadJSON, options: [])
@@ -371,14 +291,12 @@ func sendWebhook(song: Song, serverID: String) async throws -> String {
     let boundaryStart = "--\(boundary)\r\n"
     let boundaryEnd = "--\(boundary)--\r\n"
 
-    // Append the image data
     body.append(boundaryStart.data(using: .utf8)!)
     body.append("Content-Disposition: form-data; name=\"file\"; filename=\"albumArt.jpg\"\r\n".data(using: .utf8)!)
     body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
     body.append(artworkData)
     body.append("\r\n".data(using: .utf8)!)
 
-    // Append the payload JSON
     body.append(boundaryStart.data(using: .utf8)!)
     body.append("Content-Disposition: form-data; name=\"payload_json\"\r\n\r\n".data(using: .utf8)!)
     body.append(songData)
@@ -399,14 +317,11 @@ func sendWebhook(song: Song, serverID: String) async throws -> String {
         throw URLError(.badServerResponse)
     }
     
-    // print("Webhook Status Code: \(httpResponse.statusCode)")
-    // print("Webhook Response Data: \(String(data: data, encoding: .utf8) ?? "No response data")")
-    
     return "Webhook Moment"
 }
 
 func getFriendList(serverID: String) async throws -> ([[String : JSON]], [Data?]) {
-    guard let url = URL(string: "https://maple.kolf.pro:3000/user/friends/get/friends/\(serverID)") else {
+    guard let url = URL(string: "https://api.maple.music/user/friends/get/friends/\(serverID)") else {
         throw URLError(.badURL)
     }
 
@@ -425,15 +340,10 @@ func getFriendList(serverID: String) async throws -> ([[String : JSON]], [Data?]
         throw URLError(.badServerResponse)
     }
 
-    // print("Friend List Response: \(httpResponse.statusCode)")
-    // print("Friend List Response Data: \(String(data: data, encoding: .utf8))")
-    // print("Friend List Response Headers: \(httpResponse.allHeaderFields)")
-
     let json = try JSON(data: data)
     let friends = json.arrayValue.compactMap { friend in
         friend["friend_id"].stringValue == serverID ? friend["user_id"].stringValue : friend["friend_id"].stringValue
     }
-    // print("Friends: \n\(friends)\n\n")
 
     var userInfoArray: [[String : JSON]] = []
     var pfps: [Data?] = []
@@ -447,15 +357,13 @@ func getFriendList(serverID: String) async throws -> ([[String : JSON]], [Data?]
         else {
             pfps.append(nil)
         }
-        // print("PFP: \(pfps)")
     }
-    // print("User Info Array: \(userInfoArray)")
 
     return (userInfoArray, pfps)
 }
 
 func publicUserId(serverID: String) async throws -> [String : JSON] {
-    guard let url = URL(string: "https://maple.kolf.pro:3000/public/get/user/id/\(serverID)") else {
+    guard let url = URL(string: "https://api.maple.music/public/get/user/id/\(serverID)") else {
         throw URLError(.badURL)
     }
 
@@ -477,15 +385,11 @@ func publicUserId(serverID: String) async throws -> [String : JSON] {
     let json = try JSON(data: data)
     let user = json.dictionaryValue
 
-    // print("Public User: \(user)")
-
     return user
-    
-    
 }
 
 func publicUser(username: String) async throws -> [String: JSON] {
-    guard let url = URL(string: "https://maple.kolf.pro:3000/public/get/user/\(username)") else {
+    guard let url = URL(string: "https://api.maple.music/public/get/user/\(username)") else {
         throw URLError(.badURL)
     }
 
@@ -506,14 +410,12 @@ func publicUser(username: String) async throws -> [String: JSON] {
 
     let json = try JSON(data: data)
     let user = json.dictionaryValue
-
-    // print("Public User: \(user)")
 
     return user
 }
 
 func getPublicPfp(serverID: String) async throws -> Data? {
-    guard let url = URL(string: "https://maple.kolf.pro:3000/public/get/pfp/\(serverID)") else {
+    guard let url = URL(string: "https://api.maple.music/public/get/pfp/\(serverID)") else {
         throw URLError(.badURL)
     }
 
@@ -531,25 +433,23 @@ func getPublicPfp(serverID: String) async throws -> Data? {
     guard let httpResponse = response as? HTTPURLResponse else {
         throw URLError(.badServerResponse)
     }
-    // if 
     return data
     
 }
 
 func addFriend(username: String) async throws -> String {
-    // print("addFriend")
     let user = try await publicUser(username: username)
-    // print(user)
 
     if let error = user["error"]?.stringValue {
-        // print(error)
         return error
     }
     else {
-        // print("blah")
+        guard let serverID = UserDefaults.standard.string(forKey: "savedServerID") else {
+            throw URLError(.badURL)
+        }
         let id: String = user["id"]?.stringValue ?? ""
 
-        guard let url = URL(string: "https://maple.kolf.pro:3000/user/friends/add/\(id)") else {
+        guard let url = URL(string: "https://api.maple.music/user/friends/add/\(serverID)") else {
             throw URLError(.badURL)
         }
 
@@ -560,7 +460,6 @@ func addFriend(username: String) async throws -> String {
         let parameters: [String : Any] = [
             "friendId": id
         ]
-        // print(parameters)
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
     
         let config = URLSessionConfiguration.default
@@ -570,6 +469,8 @@ func addFriend(username: String) async throws -> String {
         let session = URLSession(configuration: config)
         
         let (data, response) = try await session.data(for: request)
+        print("Add Friend Data: \(String(data: data, encoding: .utf8))")
+        print("Add Friend Response: \(response)")
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
@@ -578,11 +479,9 @@ func addFriend(username: String) async throws -> String {
         let json = try JSON(data: data)
         let dict = json.dictionaryValue
         if let message = dict["message"]?.stringValue {
-            // print(message)
             return message
         }
         else if let error = dict["error"]?.stringValue {
-            // print(error)
             return error
         }
         
@@ -592,8 +491,10 @@ func addFriend(username: String) async throws -> String {
 }
 
 func acceptFriend(id: String) async throws -> String {
-
-        guard let url = URL(string: "https://maple.kolf.pro:3000/user/friends/accept/\(id)") else {
+        guard let serverID = UserDefaults.standard.string(forKey: "savedServerID") else {
+            throw URLError(.badURL)
+        }
+        guard let url = URL(string: "https://api.maple.music/user/friends/accept/\(serverID)") else {
             throw URLError(.badURL)
         }
 
@@ -604,7 +505,6 @@ func acceptFriend(id: String) async throws -> String {
         let parameters: [String : Any] = [
             "friendId": id
         ]
-        // print(parameters)
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
     
         let config = URLSessionConfiguration.default
@@ -614,6 +514,8 @@ func acceptFriend(id: String) async throws -> String {
         let session = URLSession(configuration: config)
         
         let (data, response) = try await session.data(for: request)
+        print("Accept Friend Data: \(String(data: data, encoding: .utf8))")
+        print("Accept Friend Response: \(response)")
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
@@ -622,19 +524,19 @@ func acceptFriend(id: String) async throws -> String {
         let json = try JSON(data: data)
         let dict = json.dictionaryValue
         if let message = dict["message"]?.stringValue {
-            // print(message)
             return message
         }
         else if let error = dict["error"]?.stringValue {
-            // print(error)
             return error
         }
     return "Function ran but did not end in a valid route?"
 }
 
 func rejectFriend(id: String) async throws -> String {
-
-        guard let url = URL(string: "https://maple.kolf.pro:3000/user/friends/decline/\(id)") else {
+        guard let serverID = UserDefaults.standard.string(forKey: "savedServerID") else {
+            throw URLError(.badURL)
+        }
+        guard let url = URL(string: "https://api.maple.music/user/friends/decline/\(serverID)") else {
             throw URLError(.badURL)
         }
 
@@ -645,7 +547,6 @@ func rejectFriend(id: String) async throws -> String {
         let parameters: [String : Any] = [
             "friendId": id
         ]
-        // print(parameters)
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
     
         let config = URLSessionConfiguration.default
@@ -655,6 +556,8 @@ func rejectFriend(id: String) async throws -> String {
         let session = URLSession(configuration: config)
         
         let (data, response) = try await session.data(for: request)
+        print("Reject Friend Data: \(String(data: data, encoding: .utf8))")
+        print("Reject Friend Response: \(response)")
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
@@ -663,19 +566,19 @@ func rejectFriend(id: String) async throws -> String {
         let json = try JSON(data: data)
         let dict = json.dictionaryValue
         if let message = dict["message"]?.stringValue {
-            // print(message)
             return message
         }
         else if let error = dict["error"]?.stringValue {
-            // print(error)
             return error
         }
     return "Function ran but did not end in a valid route?"
 }
 
 func removeFriend(id: String) async throws -> String {
-
-        guard let url = URL(string: "https://maple.kolf.pro:3000/user/friends/remove/\(id)") else {
+        guard let serverID = UserDefaults.standard.string(forKey: "savedServerID") else {
+            throw URLError(.badURL)
+        }
+        guard let url = URL(string: "https://api.maple.music/user/friends/remove/\(serverID)") else {
             throw URLError(.badURL)
         }
 
@@ -686,7 +589,6 @@ func removeFriend(id: String) async throws -> String {
         let parameters: [String : Any] = [
             "friendId": id
         ]
-        // print(parameters)
         request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
     
         let config = URLSessionConfiguration.default
@@ -696,6 +598,8 @@ func removeFriend(id: String) async throws -> String {
         let session = URLSession(configuration: config)
         
         let (data, response) = try await session.data(for: request)
+        print("Remove Friend Data: \(String(data: data, encoding: .utf8))")
+        print("Remove Friend Response: \(response)")
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
@@ -704,18 +608,16 @@ func removeFriend(id: String) async throws -> String {
         let json = try JSON(data: data)
         let dict = json.dictionaryValue
         if let message = dict["message"]?.stringValue {
-            // print(message)
             return message
         }
         else if let error = dict["error"]?.stringValue {
-            // print(error)
             return error
         }
     return "Function ran but did not end in a valid route?"
 }
 
 func getReqList(serverID: String) async throws -> ([[String : JSON]], [Data?]) {
-    guard let url = URL(string: "https://maple.kolf.pro:3000/user/friends/get/requests/\(serverID)") else {
+    guard let url = URL(string: "https://api.maple.music/user/friends/get/requests/\(serverID)") else {
         throw URLError(.badURL)
     }
 
@@ -734,15 +636,10 @@ func getReqList(serverID: String) async throws -> ([[String : JSON]], [Data?]) {
         throw URLError(.badServerResponse)
     }
 
-    // print("Friend List Response: \(httpResponse.statusCode)")
-    // print("Friend List Response Data: \(String(data: data, encoding: .utf8))")
-    // print("Friend List Response Headers: \(httpResponse.allHeaderFields)")
-
     let json = try JSON(data: data)
     let friends = json.arrayValue.compactMap { friend in
         friend["friend_id"].stringValue == serverID ? friend["user_id"].stringValue : friend["friend_id"].stringValue
     }
-    // print("Friends: \n\(friends)\n\n")
 
     var userInfoArray: [[String : JSON]] = []
     var pfps: [Data?] = []
@@ -756,14 +653,79 @@ func getReqList(serverID: String) async throws -> ([[String : JSON]], [Data?]) {
         else {
             pfps.append(nil)
         }
-        // print("PFP: \(pfps)")
     }
-    // print("User Info Array: \(userInfoArray)")
-
     return (userInfoArray, pfps)
 }
 
-// MARK: - Views
+func uploadPfp(serverID: String, pfp: Data) async throws -> String {
+    guard let url = URL(string: "https://api.maple.music/user/manage/setProfile/\(serverID)") else {
+        throw URLError(.badURL)
+    }
+
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    let boundary = UUID().uuidString
+    request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+    var body = Data()
+    let boundaryStart = "--\(boundary)\r\n"
+    let boundaryEnd = "--\(boundary)--\r\n"
+
+    body.append(boundaryStart.data(using: .utf8)!)
+    body.append("Content-Disposition: form-data; name=\"pfp\"; filename=\"pfp.jpg\"\r\n".data(using: .utf8)!)
+    body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+    body.append(pfp)
+    body.append("\r\n".data(using: .utf8)!)
+    body.append(boundaryStart.data(using: .utf8)!)
+    body.append("Content-Disposition: form-data; name=\"id\"\r\n\r\n".data(using: .utf8)!)
+    body.append("\(serverID)\r\n".data(using: .utf8)!)
+    body.append(boundaryEnd.data(using: .utf8)!)
+
+    request.httpBody = body
+
+    let config = URLSessionConfiguration.default
+    config.httpShouldSetCookies = true
+    config.httpCookieAcceptPolicy = .always
+    config.httpCookieStorage = .shared
+    let session = URLSession(configuration: config)
+    request.addValue("\(body.count)", forHTTPHeaderField: "Content-Length")
+
+    let (data, response) = try await session.data(for: request)
+    guard let httpResponse = response as? HTTPURLResponse else {
+        throw URLError(.badServerResponse)
+    }
+    return "\(httpResponse)"
+}
+
+func uploadName(serverID: String, name: String) async throws -> String {
+    guard let url = URL(string: "https://api.maple.music/user/manage/setDisplayName/\(serverID)") else {
+        throw URLError(.badURL)
+    }
+
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+    let parameters: [String : Any] = [
+        "displayName" : name
+    ]
+    request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
+    
+    let config = URLSessionConfiguration.default
+    config.httpShouldSetCookies = true
+    config.httpCookieAcceptPolicy = .always
+    config.httpCookieStorage = .shared
+    let session = URLSession(configuration: config)
+    
+    
+    let (data, response) = try await session.data(for: request)
+    
+    guard let httpResponse = response as? HTTPURLResponse else {
+        throw URLError(.badServerResponse)
+    }
+    return "\(httpResponse)"
+}
+
 
 struct Login: View {
     @State private var username: String = ""
@@ -775,13 +737,11 @@ struct Login: View {
     @State private var serverID: String = ""
     @State private var userStatus: Int? = nil
     
-    // Load saved cookies and serverID on init
     init() {
         if let savedCookies = loadCookies() {
             restoreCookies(savedCookies)
         }
         
-        // Load saved serverID
       if let savedServerID = UserDefaults.standard.string(forKey: "savedServerID") {
             _serverID = State(initialValue: savedServerID)
         }  
@@ -834,9 +794,7 @@ struct Login: View {
                     Task {
                         do {
                             let response = try await register(username: username, password: password)
-                            // print("Register Response: \(response)")
                         } catch {
-                            // print("Error registering: \(error)")
                         }
                     }
                 }) {
@@ -861,26 +819,21 @@ struct Login: View {
             serverUsername = response.serverUsername
             serverID = response.serverID
             
-            // Save serverID to UserDefaults
             UserDefaults.standard.set(serverID, forKey: "savedServerID")
             
-            // print("Login successful: \(response)")
             isLoggedIn = response.success
             
-            // Save cookies after successful login
-            if let cookies = HTTPCookieStorage.shared.cookies(for: URL(string: "https://maple.kolf.pro:3000")!) {
+            if let cookies = HTTPCookieStorage.shared.cookies(for: URL(string: "https://api.maple.music")!) {
                 saveCookies(cookies)
             }
             await AppSocketManager.shared.connect()
         } catch {
             errorMessage = "Login failed: \(error.localizedDescription)"
-            // print("Login error: \(error)")
         }
         
         isLoading = false
     }
     
-    // Save cookies to UserDefaults
     private func fetchUserData() async {
         guard let savedServerID = UserDefaults.standard.string(forKey: "savedServerID"), !savedServerID.isEmpty else { return }
         
@@ -891,7 +844,6 @@ struct Login: View {
                 isLoggedIn = true
             }
         } catch {
-            // print("Error fetching user data: \(error)")
         }
     }
 }
@@ -906,6 +858,11 @@ struct LoggedIn: View {
     @State private var pfp: Data? = nil
     @Binding var isLoggedIn: Bool
     @State private var showingAlert = false
+    @State private var showPhotoPicker = false
+    @State private var selectedItem: PhotosPickerItem?
+    @State private var selectedImageData: Data?
+    @State private var showNameSheet = false
+    @State private var newName: String = ""
     
     var body: some View {
         VStack {
@@ -949,8 +906,36 @@ struct LoggedIn: View {
                 await fetchUserData()
             }
         }
+        .onChange(of: selectedItem) {
+            Task {
+                if let data = try? await selectedItem?.loadTransferable(type: Data.self) {
+                    selectedImageData = data
+                    await uploadProfilePicture()
+                }
+            }
+        }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $selectedItem, matching: .images)
+        .sheet(isPresented: $showNameSheet) {
+            ChangeNameSheet(newName: $newName, currentName: name, onSave: {
+                Task {
+                    await updateName()
+                }
+            })
+        }
+        .toolbar {
+            ToolbarItem{
+                Menu("Manage Account") {
+                    Button("Upload Profile Picture", action: {
+                        showPhotoPicker = true
+                    })
+                    Button("Change Your Name", action: {
+                        newName = name
+                        showNameSheet = true
+                    })
+                }
+            }
+        }
     }
-    
     
     private func fetchUserData() async {
         guard let serverID = UserDefaults.standard.string(forKey: "savedServerID"), !serverID.isEmpty else { 
@@ -969,14 +954,89 @@ struct LoggedIn: View {
             pfp = response.pfp
         } catch {
             self.error = "Error: \(error.localizedDescription)"
-            // print("Error fetching user data: \(error)")
         }
         
         isLoading = false
     }
+
+    private func uploadProfilePicture() async {
+        guard let serverID = UserDefaults.standard.string(forKey: "savedServerID"), !serverID.isEmpty else {
+            error = "No server ID found"
+            return
+        }
+        guard let imageData = selectedImageData else {
+            error = "No image data"
+            return
+        }
+
+        isLoading = true
+        do {
+            _ = try await uploadPfp(serverID: serverID, pfp: imageData)
+            await fetchUserData()
+        } catch {
+            self.error = "Error uploading pfp: \(error.localizedDescription)"
+        }
+        isLoading = false
+    }
+    
+    private func updateName() async {
+        guard let serverID = UserDefaults.standard.string(forKey: "savedServerID"), !serverID.isEmpty else {
+            error = "No server ID found"
+            return
+        }
+        guard !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            error = "Name cannot be empty"
+            return
+        }
+
+        isLoading = true
+        do {
+            _ = try await uploadName(serverID: serverID, name: newName)
+            await fetchUserData()
+            showNameSheet = false
+        } catch {
+            self.error = "Error updating name: \(error.localizedDescription)"
+        }
+        isLoading = false
+    }
 }
 
-
+struct ChangeNameSheet: View {
+    @Binding var newName: String
+    let currentName: String
+    let onSave: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Text("Change Your Name")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                
+                Text("Current name: \(currentName)")
+                    .foregroundColor(.secondary)
+                
+                TextField("Enter new name", text: $newName)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding(.horizontal)
+                
+                Spacer()
+            }
+            .padding()
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarItems(
+                leading: Button("Cancel") {
+                    dismiss()
+                },
+                trailing: Button("Save") {
+                    onSave()
+                }
+                .disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            )
+        }
+    }
+}
 
 func saveCookies(_ cookies: [HTTPCookie]) {
     let cookieData = cookies.map { cookie in
@@ -994,7 +1054,6 @@ func saveCookies(_ cookies: [HTTPCookie]) {
     }
 }
 
-// Load cookies from UserDefaults
 func loadCookies() -> [CookieData]? {
     guard let data = UserDefaults.standard.data(forKey: "savedCookies"),
             let cookieData = try? JSONDecoder().decode([CookieData].self, from: data) else {
@@ -1003,7 +1062,6 @@ func loadCookies() -> [CookieData]? {
     return cookieData
 }
 
-// Restore cookies to HTTPCookieStorage
 func restoreCookies(_ cookieData: [CookieData]) {
     for data in cookieData {
         var properties: [HTTPCookiePropertyKey: Any] = [
@@ -1024,7 +1082,6 @@ func restoreCookies(_ cookieData: [CookieData]) {
 }
 
 func deleteCookies() async {
-    // Delete all cookies
     if let cookies = HTTPCookieStorage.shared.cookies {
         for cookie in cookies {
             HTTPCookieStorage.shared.deleteCookie(cookie)
@@ -1055,9 +1112,7 @@ struct FriendList: View {
                     TextField("username", text: $fUsername)
                     .onSubmit {
                     Task {
-                        // let response: String = try await addFriend(username: fUsername)
                         await addF(username: fUsername)
-                        // print ("AddFriend Response: \(response)")
                         await friendMoment()
                     }
             }
@@ -1069,7 +1124,6 @@ struct FriendList: View {
             Section{
                 ForEach(requests) { friend in
                     HStack {
-                        // if let pfpData = friend["pfp"]?.stringValue.data(using: .utf8),
                         if let pfp = friend.pfp, let uiImage = UIImage(data: pfp) {
                             Image(uiImage: uiImage)
                                 .resizable()
@@ -1091,7 +1145,6 @@ struct FriendList: View {
                         Spacer()
                         Button(action: {
                             Task {
-                                // let response: String = try await addFriend(id: friend.id)
                                 await acceptF(id: friend.id)
                                 await friendMoment()
                             }
@@ -1102,10 +1155,8 @@ struct FriendList: View {
                                 .frame(width: 25, height: 25)
                             }
                             .buttonStyle(.borderless)
-                        // Divider()
                         Button(action: {
                             Task {
-                                // let response = try await rejectFriend(id: friend.id)
                                 await rejectF(id: friend.id)
                                 await friendMoment()
                             }
@@ -1122,12 +1173,9 @@ struct FriendList: View {
             } header: {
                 Text("Requests")
             }
-            // Spacer()
-            // Divider()
             Section{
                 ForEach(friends) { friend in
                     HStack {
-                        // if let pfpData = friend["pfp"]?.stringValue.data(using: .utf8),
                         if let pfp = friend.pfp, let uiImage = UIImage(data: pfp) {
                             Image(uiImage: uiImage)
                                 .resizable()
@@ -1140,11 +1188,9 @@ struct FriendList: View {
                         Text(friend.name)
                             .font(.headline)
                         Text("@" + friend.username)
-                        // Text(friend.username)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                         Text(friend.nowPlaying.song + " - " + friend.nowPlaying.artist)
-                        // Text(friend.nowPlaying.artist)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                         }
@@ -1153,7 +1199,6 @@ struct FriendList: View {
                     .padding(.vertical, 4)
                 }
                 .onDelete(perform: delete)
-                // .onDelete(perform: removeF)
             } header: {
                 Text("Friends")
             }
@@ -1165,7 +1210,6 @@ struct FriendList: View {
                         .foregroundStyle(.red)
                     }
                     .alert("Warning!", isPresented: $showingAlert, actions: { 
-                        /// A destructive button that appears in red.
                         Button(role: .destructive) {
                             Task {
                                 await deleteCookies()
@@ -1188,19 +1232,11 @@ struct FriendList: View {
             }
         }
         .refreshable {
-            // friends.removeAll()
-            // requests.removeAll()
-            // Task {
-            //     await friendList()
-            //     await reqList()
-            //     // await fetchUserData()
-            // }
             await friendMoment()
         }
         .onAppear {
-            // friends.removeAll()
             Task {
-                await friendList()
+                await friendMoment()
             }
         }
     }
@@ -1211,22 +1247,14 @@ struct FriendList: View {
         do {
             let (response, pfps) = try await getFriendList(serverID: savedServerID)
 
-            // print("Friend List: \(response)")
             userInfoArray = response
             pfpArray = pfps
             for (index, friend) in userInfoArray.enumerated() {
-                // let nowPlaying = NowPlaying(id: "", song: "", album: "", artist: "", discord: false)
                 let nowPlayingDict = friend["nowPlaying"]?.dictionaryValue
-                // let nowPlaying = NowPlaying(id: friend["id"].stringValue ?? "", song: friend["nowPlaying"]["title"].stringValue ?? "Unknown Song", album: friend["nowPlaying"]["album"].stringValue ?? "Unknown Album", artist: friend["nowPlaying"]["artist"].stringValue ?? "Unknown Artist", discord: friend["nowPlaying"]["discord"].boolValue ?? false)
                 let nowPlaying = NowPlaying(id: nowPlayingDict?["id"]?.stringValue ?? "", song: nowPlayingDict?["title"]?.stringValue ?? "Unknown Song", album: nowPlayingDict?["album"]?.stringValue ?? "Unknown Album", artist: nowPlayingDict?["artist"]?.stringValue ?? "Unknown Artist", discord: nowPlayingDict?["discord"]?.boolValue ?? false)
-                // let nowPlayingSong = friend["nowPlaying"]["title"]?.stringValue
-                // let nowPlayingArtist = friend["nowPlaying"]["artist"]?.stringValue
-                // let nowPlaying = nowPlayingSong + " - " + nowPlayingArtist
-                // if let 
                 friends.append(Friend(id: friend["id"]?.stringValue ?? "", name: friend["name"]?.stringValue ?? "", username: friend["username"]?.stringValue ?? "", pfp: pfpArray[index], nowPlaying: nowPlaying))
             }
         } catch {
-            // print("Error getting friend list: \(error)")
         }
     }
 
@@ -1236,68 +1264,49 @@ struct FriendList: View {
         do {
             let (response, pfps) = try await getReqList(serverID: savedServerID)
 
-            // print("Friend List: \(response)")
             userInfoArrayReq = response
             pfpArrayReq = pfps
             for (index, friend) in userInfoArrayReq.enumerated() {
-                // let nowPlaying = NowPlaying(id: "", song: "", album: "", artist: "", discord: false)
                 let nowPlayingDict = friend["nowPlaying"]?.dictionaryValue
-                // let nowPlaying = NowPlaying(id: friend["id"].stringValue ?? "", song: friend["nowPlaying"]["title"].stringValue ?? "Unknown Song", album: friend["nowPlaying"]["album"].stringValue ?? "Unknown Album", artist: friend["nowPlaying"]["artist"].stringValue ?? "Unknown Artist", discord: friend["nowPlaying"]["discord"].boolValue ?? false)
                 let nowPlaying = NowPlaying(id: nowPlayingDict?["id"]?.stringValue ?? "", song: nowPlayingDict?["title"]?.stringValue ?? "Unknown Song", album: nowPlayingDict?["album"]?.stringValue ?? "Unknown Album", artist: nowPlayingDict?["artist"]?.stringValue ?? "Unknown Artist", discord: nowPlayingDict?["discord"]?.boolValue ?? false)
-                // let nowPlayingSong = friend["nowPlaying"]["title"]?.stringValue
-                // let nowPlayingArtist = friend["nowPlaying"]["artist"]?.stringValue
-                // let nowPlaying = nowPlayingSong + " - " + nowPlayingArtist
-                // if let 
                 requests.append(Friend(id: friend["id"]?.stringValue ?? "", name: friend["name"]?.stringValue ?? "", username: friend["username"]?.stringValue ?? "", pfp: pfpArrayReq[index], nowPlaying: nowPlaying))
             }
         } catch {
-            // print("Error getting friend list: \(error)")
         }
     }
 
     private func acceptF(id: String) async {
         do {
             let response = try await acceptFriend(id: id)
-            // print("acceptF: \(response)")
         } catch {
-            // print("acceptF E: \(error)")
         }
     }
 
     private func rejectF(id: String) async {
         do {
             let response = try await rejectFriend(id: id)
-            // print("rejectF: \(response)")
         } catch {
-            // print("rejectF E: \(error)")
         }
     }
 
     private func addF(username: String) async {
         do {
             let response = try await addFriend(username: username)
-            // print("addF: \(response)")
         }
         catch {
-            // print("addF E: \(error)")
         }
     }
 
     private func removeF(id: String) async {
         do {
             let response = try await removeFriend(id: id)
-            // print("removeF: \(response)")
         } catch {
-            // print("removeF E: \(error)")
         }
     }
 
     private func delete(at offsets: IndexSet){
-        // print("BLAH")
         let index = offsets[offsets.startIndex]
-        // print("bLAH: \(index)")
         let id = friends[index].id
-        // print(id)
         Task {
             await removeF(id: id)
             await friendMoment()
@@ -1311,14 +1320,10 @@ struct FriendList: View {
         Task {
             await friendList()
             await reqList()
-            // await fetchUserData()
         }
     }
 
 }
-
-
-// MARK: - Preview
 
 #Preview {
     Login()

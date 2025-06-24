@@ -37,7 +37,9 @@ struct ContentView: View {
                     Search()
                 }
                 Tab("Account", systemImage: "person.crop.circle") {
-                    Login()
+                    NavigationStack{
+                        Login()
+                    }
                 }
                 Tab("Settings", systemImage: "gear") {
                     Settings()
@@ -77,7 +79,9 @@ struct ContentView: View {
                     Search()
                 }
                 Tab("Account", systemImage: "person.crop.circle") {
-                    Login()
+                    NavigationStack{
+                        Login()
+                    }
                 }
                 Tab("Settings", systemImage: "gear") {
                     Settings()
@@ -86,7 +90,7 @@ struct ContentView: View {
         }
     }
 
-    // let manager = SocketManager(socketURL: URL(string: "https://maple.kolf.pro:3000")!, config: [.log(true)])
+    // let manager = SocketManager(socketURL: URL(string: "https://api.maple.music")!, config: [.log(true)])
     // let socket = manager.defaultSocket
 
     // init() {
