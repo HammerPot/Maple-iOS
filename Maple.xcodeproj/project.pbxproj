@@ -24,6 +24,7 @@
 		695B2DD02DC1721B00D3862A /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 695B2DCF2DC1721B00D3862A /* Settings.swift */; };
 		696780952DFC15D0009FDE8D /* Playlists.swift in Sources */ = {isa = PBXBuildFile; fileRef = 696780942DFC15D0009FDE8D /* Playlists.swift */; };
 		6967809B2E00636A009FDE8D /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 6967809A2E00636A009FDE8D /* AppIcon.icon */; };
+		69CCFFCB2E11CAC100B3E242 /* AMPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69CCFFCA2E11CAC100B3E242 /* AMPlayer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,6 +58,7 @@
 		695B2DCF2DC1721B00D3862A /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
 		696780942DFC15D0009FDE8D /* Playlists.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Playlists.swift; sourceTree = "<group>"; };
 		6967809A2E00636A009FDE8D /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		69CCFFCA2E11CAC100B3E242 /* AMPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AMPlayer.swift; sourceTree = "<group>"; };
 		69D91D162D90F84500456238 /* Maple.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Maple.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		69D91D262D90F84700456238 /* MapleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MapleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		69D91D302D90F84700456238 /* MapleUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MapleUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -125,6 +127,7 @@
 		69D91D0D2D90F84500456238 = {
 			isa = PBXGroup;
 			children = (
+				69CCFFCA2E11CAC100B3E242 /* AMPlayer.swift */,
 				69283BAD2E0217B500C64EA4 /* AppIcon.xcassets */,
 				6967809A2E00636A009FDE8D /* AppIcon.icon */,
 				696780942DFC15D0009FDE8D /* Playlists.swift */,
@@ -315,6 +318,7 @@
 				695B297B2D910B2C00D24EF2 /* Home.swift in Sources */,
 				694C16B42D9468F300328F6D /* MusicButton.swift in Sources */,
 				691210E32DAF1EC900E3AA06 /* Artists.swift in Sources */,
+				69CCFFCB2E11CAC100B3E242 /* AMPlayer.swift in Sources */,
 				6954599B2DB6A10400A3DB11 /* SocketIO.swift in Sources */,
 				691211092DB01B9D00E3AA06 /* Account.swift in Sources */,
 				691210DF2DAF1C0800E3AA06 /* Tracks.swift in Sources */,

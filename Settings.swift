@@ -11,10 +11,25 @@ struct Settings: View {
     @State private var webhookURL = UserDefaults.standard.string(forKey: "webhookURL") ?? ""
     @State private var mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC")
     @State private var socketIO = UserDefaults.standard.bool(forKey: "socketIO")
+    @State private var musicKit = UserDefaults.standard.bool(forKey: "musicKit")
     @State private var showingAlert = false
 
     var body: some View {
         List{
+            Section{
+                Toggle("Enable MusicKit?", isOn: $musicKit)
+                .onChange(of: self.musicKit) {
+                    UserDefaults.standard.set(musicKit, forKey: "musicKit")
+                    if musicKit == true {
+                        let manager = AppleMusicManager.shared
+                        manager.requestAuthorization()
+                    }
+                }
+            } header: {
+                Text("MusicKit")
+            } footer: {
+                Text("To make full use of this feature you must be subscribed to Apple Music. Currently your authorization status is **\(AppleMusicManager.shared.authStatus.rawValue)**. Depending on this value you may need to allow Maple to access your Apple Music library.")
+            }
             Section{
                 VStack{
                     Text("Webhook URL")

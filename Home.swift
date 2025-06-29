@@ -495,15 +495,23 @@ func groupSongsByArtist(_ songs: [Song]) -> [Artist] {
 }
 
 struct Home: View {
+	@ObservedObject private var manager = AppleMusicManager.shared
 	@State private var localFiles: [URL] = []
 	var body: some View {
 	   NavigationStack {
 		   List {
-			   NavigationLink("Tracks", value: "Tracks")
-			//    NavigationLink("Playlists", value: "Playlists")
-			   NavigationLink("Albums", value: "Albums")
-			   NavigationLink("Artists", value: "Artists")
-		   }
+				Section() {
+					NavigationLink("Tracks", value: "Tracks")
+					//    NavigationLink("Playlists", value: "Playlists")
+					NavigationLink("Albums", value: "Albums")
+					NavigationLink("Artists", value: "Artists")
+				}
+				if manager.authStatus == .authorized {
+					Section() {
+						NavigationLink("Apple Music", value: "Apple Music")
+					}
+				}
+		   	}
 		   .navigationTitle("Home")
 		   .navigationDestination(for: String.self) { content in
 				switch content {
@@ -515,6 +523,8 @@ struct Home: View {
 					Albums()
 				case "Artists":
 					Artists()
+				case "Apple Music":
+					AppleMusic()
 				default:
 					Text("Invalid content")
 				}

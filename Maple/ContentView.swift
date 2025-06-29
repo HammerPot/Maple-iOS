@@ -9,6 +9,7 @@ import SwiftUI
 import SocketIO
 
 struct ContentView: View {
+    @ObservedObject private var manager = AppleMusicManager.shared
     @ObservedObject private var audioManager = AudioPlayerManager.shared
     let socketManager = AppSocketManager.shared
 
@@ -25,6 +26,10 @@ struct ContentView: View {
                     try UIImage(named: "Maple")?.pngData()?.write(to: imagePath.appendingPathComponent("maple.image"))
                 }
             }
+
+        }
+        if UserDefaults.standard.bool(forKey: "musicKit") == true {
+            manager.checkAuthorization()
         }
     }
     var body: some View {
