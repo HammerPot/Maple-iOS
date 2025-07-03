@@ -8,6 +8,8 @@
 import SwiftUI
 import SocketIO
 import SwiftyJSON
+import MusicKit
+import MediaPlayer
 
 class AppSocketManager: ObservableObject {
     static let shared = AppSocketManager()
@@ -51,6 +53,33 @@ class AppSocketManager: ObservableObject {
                 "title": song.title,
                 "artist": song.artist,
                 "album": song.album,
+                "id": id,
+                "discord": discord
+            ]
+            
+            let payload: [String: Any] = ["nowPlaying": songData]
+            
+            do {
+                let jsonData = try JSONSerialization.data(withJSONObject: payload)
+                if let jsonString = String(data: jsonData, encoding: .utf8) {
+
+                }
+            } catch {
+                print("Error converting payload to JSON: \(error)")
+            }
+            
+            socket.emit("nowPlaying", payload)
+        } else {
+            print("Socket is not connected. Cannot emit nowPlaying event.")
+        }
+    }
+
+    func nowPlayingAM(song: MPMediaItem, id: String, discord: Bool) {
+        if socket.status == .connected {
+            let songData: [String: Any] = [
+                "title": song.title,
+                "artist": song.artist,
+                "album": song.albumTitle,
                 "id": id,
                 "discord": discord
             ]

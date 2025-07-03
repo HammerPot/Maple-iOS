@@ -13,6 +13,8 @@ struct ContentView: View {
     @ObservedObject private var audioManager = AudioPlayerManager.shared
     let socketManager = AppSocketManager.shared
 
+    @ObservedObject private var amPlayer = AMPlayer.shared
+
     @State private var showPlayer = false
 
     init() {
