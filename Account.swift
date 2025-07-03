@@ -228,10 +228,20 @@ func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
     request.addValue("\(body.count)", forHTTPHeaderField: "Content-Length")
 
     let (data, response) = try await session.data(for: request)
+    print("Set Album Art Data: \(String(data: data, encoding: .utf8))")
+    print("Set Album Art Response: \(response)")
+
+                            print("There were \(albumArt.count) bytes")
+                            let bcf = ByteCountFormatter()
+                            bcf.allowedUnits = [.useMB] // optional: restricts the units to MB only
+                            bcf.countStyle = .file
+                            let string = bcf.string(fromByteCount: Int64(albumArt.count))
+                            print("formatted result: \(string)")
+                        
     guard let httpResponse = response as? HTTPURLResponse else {
         throw URLError(.badServerResponse)
     }
-    return "\(httpResponse.statusCode)"
+    return "\(httpResponse)"
 }
 
 func sendWebhook(song: Song, serverID: String) async throws -> String {
