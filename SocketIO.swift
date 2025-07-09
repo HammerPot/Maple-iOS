@@ -22,7 +22,7 @@ class AppSocketManager: ObservableObject {
         let cookies = HTTPCookieStorage.shared.cookies ?? []
         
         let config: SocketIOClientConfiguration = [
-            .log(true),
+            .log(false),
             .cookies(cookies)
         ]
         manager = SocketManager(socketURL: URL(string: "https://api.maple.music")!, config: config)

@@ -25,6 +25,7 @@
 		696780952DFC15D0009FDE8D /* Playlists.swift in Sources */ = {isa = PBXBuildFile; fileRef = 696780942DFC15D0009FDE8D /* Playlists.swift */; };
 		6967809B2E00636A009FDE8D /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 6967809A2E00636A009FDE8D /* AppIcon.icon */; };
 		69CCFFCB2E11CAC100B3E242 /* AMPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69CCFFCA2E11CAC100B3E242 /* AMPlayer.swift */; };
+		69D43B432E19D5F200DFE8B0 /* MusadoraKit in Frameworks */ = {isa = PBXBuildFile; productRef = 69D43B422E19D5F200DFE8B0 /* MusadoraKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -100,6 +101,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				69D43B432E19D5F200DFE8B0 /* MusadoraKit in Frameworks */,
 				6912110C2DB091B000E3AA06 /* SwiftyJSON in Frameworks */,
 				695459A22DB9D1A200A3DB11 /* SwiftVibrantium in Frameworks */,
 				6912110F2DB14E3000E3AA06 /* Alamofire in Frameworks */,
@@ -182,6 +184,7 @@
 				6912110E2DB14E3000E3AA06 /* Alamofire */,
 				695459982DB69EB300A3DB11 /* SocketIO */,
 				695459A12DB9D1A200A3DB11 /* SwiftVibrantium */,
+				69D43B422E19D5F200DFE8B0 /* MusadoraKit */,
 			);
 			productName = Maple;
 			productReference = 69D91D162D90F84500456238 /* Maple.app */;
@@ -270,6 +273,7 @@
 				6912110D2DB14E3000E3AA06 /* XCRemoteSwiftPackageReference "Alamofire" */,
 				695459972DB69EB300A3DB11 /* XCRemoteSwiftPackageReference "socket" */,
 				695459A02DB9D1A200A3DB11 /* XCRemoteSwiftPackageReference "swift-vibrantium" */,
+				69D43B412E19D5F200DFE8B0 /* XCRemoteSwiftPackageReference "MusadoraKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 69D91D172D90F84500456238 /* Products */;
@@ -511,7 +515,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.5;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.hammerpot.Maple;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -546,7 +550,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.5;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.hammerpot.Maple;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -702,6 +706,14 @@
 				minimumVersion = 1.0.0;
 			};
 		};
+		69D43B412E19D5F200DFE8B0 /* XCRemoteSwiftPackageReference "MusadoraKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/rryam/MusadoraKit";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -724,6 +736,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 695459A02DB9D1A200A3DB11 /* XCRemoteSwiftPackageReference "swift-vibrantium" */;
 			productName = SwiftVibrantium;
+		};
+		69D43B422E19D5F200DFE8B0 /* MusadoraKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 69D43B412E19D5F200DFE8B0 /* XCRemoteSwiftPackageReference "MusadoraKit" */;
+			productName = MusadoraKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

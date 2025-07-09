@@ -199,6 +199,11 @@ func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
         throw URLError(.badURL)
     }
 
+    // let documentDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    // let uuid = UUID()
+	// 	try albumArt.write(to: documentDirectory.appendingPathComponent("albumArt\(uuid.uuidString).png"))
+    
+
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     let boundary = UUID().uuidString
@@ -228,8 +233,8 @@ func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
     request.addValue("\(body.count)", forHTTPHeaderField: "Content-Length")
 
     let (data, response) = try await session.data(for: request)
-    print("Set Album Art Data: \(String(data: data, encoding: .utf8))")
-    print("Set Album Art Response: \(response)")
+    // print("Set Album Art Data: \(String(data: data, encoding: .utf8))")
+    // print("Set Album Art Response: \(response)")
 
                             print("There were \(albumArt.count) bytes")
                             let bcf = ByteCountFormatter()

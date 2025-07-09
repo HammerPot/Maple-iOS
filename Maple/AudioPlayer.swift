@@ -2,12 +2,14 @@ import SwiftUI
 import AVFoundation
 import MediaPlayer
 import SocketIO
+import MusicKit
 
 
 
 
 
 class AudioPlayerManager: NSObject, ObservableObject {
+    @ObservedObject private var amPlayer = AMPlayer.shared
     static let shared = AudioPlayerManager()
     
     private var audioPlayer: AVAudioPlayer?
@@ -181,6 +183,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
     
     func play() {
+        amPlayer.Stop()
         print("Play called - current audio player exists: \(audioPlayer != nil)")
         audioPlayer?.play()
         isPlaying = true
@@ -234,7 +237,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
             }
             print("end rpcTask: \(rpcTask)")
         }
-        
+        amPlayer.Stop()
     }
     
     func pause() {
