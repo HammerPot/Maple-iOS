@@ -9,14 +9,15 @@ import SwiftUI
 import SocketIO
 import MusicKit
 import MusadoraKit
+import SwiftUISnackbar
 
 struct ContentView: View {
     @ObservedObject private var manager = AppleMusicManager.shared
     @ObservedObject private var audioManager = AudioPlayerManager.shared
-    let socketManager = AppSocketManager.shared
+    @ObservedObject private var socketManager = AppSocketManager.shared
 
     @ObservedObject private var amPlayer = AMPlayer.shared
-
+    @State private var snackbar: Snackbar?
     @State private var showPlayer = false
 
     init() {
@@ -46,13 +47,17 @@ struct ContentView: View {
                     try UIImage(named: "Maple")?.pngData()?.write(to: imagePath.appendingPathComponent("maple.image"))
                 }
             }
-
         }
         if UserDefaults.standard.bool(forKey: "musicKit") == true {
             manager.checkAuthorization()
         }
     }
     var body: some View {
+        // Button(action: {
+        //     snackbar = Snackbar(title: "Hello", message: "World")
+        // }) {
+        //     Text("Show Snackbar")
+        // }
         if #available(iOS 26.0, *) {
             TabView {
                 Tab("Home", systemImage: "house") {
@@ -70,6 +75,9 @@ struct ContentView: View {
                     Settings()
                 }
             }
+            .snackbarView(snackbar: $socketManager.snackbar)
+            .snackbarView(snackbar: $snackbar)
+            .zIndex(0)
             // .tabBarMinimizeBehavior(.onScrollDown)
             .tabViewBottomAccessory {
                 NowPlayingBar(showPlayer: $showPlayer)
@@ -79,15 +87,15 @@ struct ContentView: View {
                     AMPlayerView2()
                 }
                 else {
-                MediaPlayerView(
-                    song: audioManager.currentSong ?? Song(
-                        id: UUID(), title: "No Song", artist: "No Artist", album: "No Album",
-                        year: Int(Calendar(identifier: .gregorian).dateComponents([.year], from: .now).year ?? 2025), genre: "Unknown", duration: 0.0, artwork: nil,
-                        trackNumber: 0, discNumber: 0, ext: "", url: URL(fileURLWithPath: "")
-                    ),
-                    allSongs: audioManager.queue
-                )
-            }
+                    MediaPlayerView(
+                        song: audioManager.currentSong ?? Song(
+                            id: UUID(), title: "No Song", artist: "No Artist", album: "No Album",
+                            year: Int(Calendar(identifier: .gregorian).dateComponents([.year], from: .now).year ?? 2025), genre: "Unknown", duration: 0.0, artwork: nil,
+                            trackNumber: 0, discNumber: 0, ext: "", url: URL(fileURLWithPath: "")
+                        ),
+                        allSongs: audioManager.queue
+                    )
+                }
             }
         } else {
             // Fallback on earlier versions
@@ -122,6 +130,8 @@ struct ContentView: View {
                     Settings()
                 }
             }
+            .snackbarView(snackbar: $socketManager.snackbar)
+            .zIndex(0)
         }
     }
 

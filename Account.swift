@@ -11,6 +11,7 @@ import SwiftyJSON
 import Alamofire
 import SwiftVibrantium
 import PhotosUI
+import SwiftUISnackbar
 
 struct CookieData: Codable {
     let name: String
@@ -119,6 +120,8 @@ func login(username: String, password: String) async throws -> LoginResponse {
         throw NSError(domain: "LoginError", code: 401, userInfo: [NSLocalizedDescriptionKey: "Invalid username or password"])
     case 400:
         throw NSError(domain: "LoginError", code: 400, userInfo: [NSLocalizedDescriptionKey: "Bad request"])
+    case 404:
+        throw NSError(domain: "LoginError", code: 404, userInfo: [NSLocalizedDescriptionKey: "Either server is down or no user with that username exists"])
     default:
         throw NSError(domain: "LoginError", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Server error: \(httpResponse.statusCode)"])
     }
@@ -150,7 +153,9 @@ func register(username: String, password: String) async throws -> String {
     case 200:
         return "Success! Please login using your new account: \(username)"
     default:
-        throw NSError(domain: "RegisterError", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Server error: \(httpResponse.statusCode)"])
+        let json = try JSON(data: data)
+        let error = json["error"]
+        throw NSError(domain: "RegisterError", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "\(error.stringValue) (\(httpResponse.statusCode))"])
     }
 }
 
@@ -484,8 +489,8 @@ func addFriend(username: String) async throws -> String {
         let session = URLSession(configuration: config)
         
         let (data, response) = try await session.data(for: request)
-        print("Add Friend Data: \(String(data: data, encoding: .utf8))")
-        print("Add Friend Response: \(response)")
+        // print("Add Friend Data: \(String(data: data, encoding: .utf8))")
+        // print("Add Friend Response: \(response)")
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
@@ -747,10 +752,19 @@ struct Login: View {
     @State private var password: String = ""
     @State private var isLoading = false
     @State private var errorMessage: String? = nil
+    @State private var successMessage: String? = nil
     @State private var isLoggedIn = false
     @State private var serverUsername: String = ""
     @State private var serverID: String = ""
     @State private var userStatus: Int? = nil
+
+    @State private var snackbarSuccess: Snackbar?
+    @State private var snackbarError: Snackbar?
+
+    @State private var showSuccessMessage = false
+    @State private var showErrorMessage = false
+    @State private var showRegisterSheet = false
+
     
     init() {
         if let savedCookies = loadCookies() {
@@ -783,15 +797,24 @@ struct Login: View {
                         }
                     }
                 
-                if let errorMessage = errorMessage {
-                    Text(errorMessage)
-                        .foregroundColor(.red)
-                        .padding()
-                }
+                // if let errorMessage = errorMessage {
+                //     Text(errorMessage)
+                //         .foregroundColor(.red)
+                //         .padding()
+                // }
+
+                // if let successMessage = successMessage {
+                //     Text(successMessage)
+                //         .foregroundColor(.green)
+                //         .padding()
+                // }
                 
                 Button(action: {
                     Task {
                         await handleLogin()
+                        // successMessage = "Login successful! Please wait."
+                        // showSuccessMessage = true
+                        
                     }
                 }) {
                     if isLoading {
@@ -805,23 +828,29 @@ struct Login: View {
                 .padding()
                 .disabled(isLoading)
 
-                Button(action: {
-                    Task {
-                        do {
-                            let response = try await register(username: username, password: password)
-                        } catch {
-                        }
-                    }
-                }) {
-                    Text("Register")
+                Button("Register") {
+                    showRegisterSheet = true
                 }
             }
             .padding()
+            .snackbarView(snackbar: $snackbarSuccess)
+            .snackbarView(snackbar: $snackbarError)
+            // .snackbar(isShowing: $showSuccessMessage, title: "Success", text: successMessage, style: .custom(.green))
+            // .snackbar(isShowing: $showErrorMessage, title: "Error", text: errorMessage, style: .custom(.red))
+            .sheet(isPresented: $showRegisterSheet) {
+                RegisterSheet { newUsername, newPassword in
+                    // optionally prefill the login form
+                    username = newUsername
+                    password = newPassword
+                    snackbarSuccess = Snackbar(title: "Success", message: "Registration successful! Please login.")
+                }
+            }
             .onAppear {
                 Task {
                     await fetchUserData()
                 }
             }
+            
         }
     }
     
@@ -842,8 +871,11 @@ struct Login: View {
                 saveCookies(cookies)
             }
             await AppSocketManager.shared.connect()
+            snackbarSuccess = Snackbar(title: "Success", message: "Login successful! Please wait.")
         } catch {
-            errorMessage = "Login failed: \(error.localizedDescription)"
+            // errorMessage = "Login failed: \(error.localizedDescription)"
+            // showErrorMessage = true
+            snackbarError = Snackbar(title: "Error", message: "Login failed: \(error.localizedDescription)")
         }
         
         isLoading = false
@@ -878,6 +910,8 @@ struct LoggedIn: View {
     @State private var selectedImageData: Data?
     @State private var showNameSheet = false
     @State private var newName: String = ""
+
+    @State private var snackbar: Snackbar?
     
     var body: some View {
         VStack {
@@ -912,10 +946,11 @@ struct LoggedIn: View {
 
                 Spacer()
                 
-                FriendList(isLoggedIn: $isLoggedIn, showingAlert: $showingAlert)
+                FriendList(isLoggedIn: $isLoggedIn, showingAlert: $showingAlert, snackbar: $snackbar)
 
             }
         }
+        .snackbarView(snackbar: $snackbar)
         .onAppear {
             Task {
                 await fetchUserData()
@@ -926,6 +961,7 @@ struct LoggedIn: View {
                 if let data = try? await selectedItem?.loadTransferable(type: Data.self) {
                     selectedImageData = data
                     await uploadProfilePicture()
+                    snackbar = Snackbar(title: "Success", message: "Profile picture uploaded successfully!")
                 }
             }
         }
@@ -934,6 +970,7 @@ struct LoggedIn: View {
             ChangeNameSheet(newName: $newName, currentName: name, onSave: {
                 Task {
                     await updateName()
+                    snackbar = Snackbar(title: "Success", message: "Name updated successfully!")
                 }
             })
         }
@@ -1053,6 +1090,90 @@ struct ChangeNameSheet: View {
     }
 }
 
+struct RegisterSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var username: String = ""
+    @State private var password: String = ""
+    @State private var isLoading = false
+    @State private var snackbar: Snackbar?
+
+    let onSuccess: (String, String) -> Void
+
+    var body: some View {
+        NavigationView {
+            VStack() {
+                Text("Create Account")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+
+                TextField("Username", text: $username)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .disableAutocorrection(true)
+                    .autocapitalization(.none)
+
+                SecureField("Password", text: $password)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .disableAutocorrection(true)
+                    .onSubmit { Task { await createAccount() } }
+
+                Spacer()
+                Text("Password must meet the following requirements:")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Text("1. Contains at least 8 characters")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Text("2. Contains at least 1 uppercase letter")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Text("3. Contains at least 1 lowercase letter")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Text("4. Contains at least 1 number")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Text("5. Contains at least 1 special character")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            .padding()
+            .navigationTitle("Register")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if isLoading {
+                        ProgressView()
+                    } else {
+                        Button("Create") { Task { await createAccount() } }
+                    }
+                }
+            }
+        }
+        .snackbarView(snackbar: $snackbar)
+    }
+
+    private func createAccount() async {
+        guard !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let response = try await register(username: username, password: password)
+            if response.lowercased().contains("success") {
+                onSuccess(username, password)
+                dismiss()
+            } else {
+                snackbar = Snackbar(title: "Error", message: "Registration failed.")
+            }
+        } catch {
+            snackbar = Snackbar(title: "Error", message: "Registration failed: \(error.localizedDescription)")
+        }
+    }
+}
+
 func saveCookies(_ cookies: [HTTPCookie]) {
     let cookieData = cookies.map { cookie in
         CookieData(
@@ -1118,6 +1239,8 @@ struct FriendList: View {
         @State private var friends: [Friend] = []
         @State private var requests: [Friend] = []
         @State private var fUsername: String = ""
+
+        @Binding var snackbar: Snackbar?
 
     var body: some View {
         List {
@@ -1293,29 +1416,37 @@ struct FriendList: View {
     private func acceptF(id: String) async {
         do {
             let response = try await acceptFriend(id: id)
+            snackbar = Snackbar(title: "Accept Friend", message: "\(response)")
         } catch {
+            snackbar = Snackbar(title: "Accept Friend", message: "\(error.localizedDescription)")
         }
     }
 
     private func rejectF(id: String) async {
         do {
             let response = try await rejectFriend(id: id)
+            snackbar = Snackbar(title: "Reject Friend", message: "\(response)")
         } catch {
+            snackbar = Snackbar(title: "Reject Friend", message: "\(error.localizedDescription)")
         }
     }
 
     private func addF(username: String) async {
         do {
             let response = try await addFriend(username: username)
+            snackbar = Snackbar(title: "Add Friend", message: "\(response)")
         }
         catch {
+            snackbar = Snackbar(title: "Add Friend", message: "\(error.localizedDescription)")
         }
     }
 
     private func removeF(id: String) async {
         do {
-            let response = try await removeFriend(id: id)
+            let response = try await removeFriend(id: id)   
+            snackbar = Snackbar(title: "Remove Friend", message: "\(response)")
         } catch {
+            snackbar = Snackbar(title: "Remove Friend", message: "\(error.localizedDescription)")
         }
     }
 

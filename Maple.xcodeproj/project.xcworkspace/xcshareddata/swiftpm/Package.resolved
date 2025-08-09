@@ -1,5 +1,5 @@
 {
-  "originHash" : "597f30e2bb4fd2b252f04f71d22cac1da783316c88c2935978f9e4f641a930df",
+  "originHash" : "99d08b726fc8a5d1eadb9517384adc8574bb23797c83dba867de106adbb1796a",
   "pins" : [
     {
       "identity" : "alamofire",
@@ -44,6 +44,15 @@
       "state" : {
         "revision" : "0aa974e1c72d125d34d42ff867dfd8cf81cb735f",
         "version" : "1.0.0"
+      }
+    },
+    {
+      "identity" : "swiftui-snackbar",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/chrisnyw/SwiftUI-Snackbar",
+      "state" : {
+        "revision" : "c62d8622ffbdef00218c1d5b93b32074ac0fbdcb",
+        "version" : "1.0.1"
       }
     },
     {

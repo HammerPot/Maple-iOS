@@ -24,6 +24,7 @@
 		695B2DD02DC1721B00D3862A /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 695B2DCF2DC1721B00D3862A /* Settings.swift */; };
 		696780952DFC15D0009FDE8D /* Playlists.swift in Sources */ = {isa = PBXBuildFile; fileRef = 696780942DFC15D0009FDE8D /* Playlists.swift */; };
 		6967809B2E00636A009FDE8D /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 6967809A2E00636A009FDE8D /* AppIcon.icon */; };
+		69922A662E2307A1004EFE79 /* SwiftUISnackbar in Frameworks */ = {isa = PBXBuildFile; productRef = 69922A652E2307A1004EFE79 /* SwiftUISnackbar */; };
 		69CCFFCB2E11CAC100B3E242 /* AMPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69CCFFCA2E11CAC100B3E242 /* AMPlayer.swift */; };
 		69D43B432E19D5F200DFE8B0 /* MusadoraKit in Frameworks */ = {isa = PBXBuildFile; productRef = 69D43B422E19D5F200DFE8B0 /* MusadoraKit */; };
 /* End PBXBuildFile section */
@@ -102,6 +103,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				69D43B432E19D5F200DFE8B0 /* MusadoraKit in Frameworks */,
+				69922A662E2307A1004EFE79 /* SwiftUISnackbar in Frameworks */,
 				6912110C2DB091B000E3AA06 /* SwiftyJSON in Frameworks */,
 				695459A22DB9D1A200A3DB11 /* SwiftVibrantium in Frameworks */,
 				6912110F2DB14E3000E3AA06 /* Alamofire in Frameworks */,
@@ -185,6 +187,7 @@
 				695459982DB69EB300A3DB11 /* SocketIO */,
 				695459A12DB9D1A200A3DB11 /* SwiftVibrantium */,
 				69D43B422E19D5F200DFE8B0 /* MusadoraKit */,
+				69922A652E2307A1004EFE79 /* SwiftUISnackbar */,
 			);
 			productName = Maple;
 			productReference = 69D91D162D90F84500456238 /* Maple.app */;
@@ -274,6 +277,7 @@
 				695459972DB69EB300A3DB11 /* XCRemoteSwiftPackageReference "socket" */,
 				695459A02DB9D1A200A3DB11 /* XCRemoteSwiftPackageReference "swift-vibrantium" */,
 				69D43B412E19D5F200DFE8B0 /* XCRemoteSwiftPackageReference "MusadoraKit" */,
+				69922A642E2307A1004EFE79 /* XCRemoteSwiftPackageReference "SwiftUI-Snackbar" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 69D91D172D90F84500456238 /* Products */;
@@ -495,7 +499,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -530,7 +534,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -706,6 +710,14 @@
 				minimumVersion = 1.0.0;
 			};
 		};
+		69922A642E2307A1004EFE79 /* XCRemoteSwiftPackageReference "SwiftUI-Snackbar" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/chrisnyw/SwiftUI-Snackbar";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.1;
+			};
+		};
 		69D43B412E19D5F200DFE8B0 /* XCRemoteSwiftPackageReference "MusadoraKit" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/rryam/MusadoraKit";
@@ -736,6 +748,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 695459A02DB9D1A200A3DB11 /* XCRemoteSwiftPackageReference "swift-vibrantium" */;
 			productName = SwiftVibrantium;
+		};
+		69922A652E2307A1004EFE79 /* SwiftUISnackbar */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 69922A642E2307A1004EFE79 /* XCRemoteSwiftPackageReference "SwiftUI-Snackbar" */;
+			productName = SwiftUISnackbar;
 		};
 		69D43B422E19D5F200DFE8B0 /* MusadoraKit */ = {
 			isa = XCSwiftPackageProductDependency;
