@@ -498,36 +498,40 @@ struct Home: View {
 	@ObservedObject private var manager = AppleMusicManager.shared
 	@State private var localFiles: [URL] = []
 	var body: some View {
-	   NavigationStack {
-		   List {
-				Section() {
-					NavigationLink("Tracks", value: "Tracks")
-					//    NavigationLink("Playlists", value: "Playlists")
-					NavigationLink("Albums", value: "Albums")
-					NavigationLink("Artists", value: "Artists")
-				}
-				if manager.authStatus == .authorized {
+		NavigationStack {
+			ZStack(alignment: .bottomTrailing) {
+				List {
 					Section() {
-						NavigationLink("Apple Music", value: "Apple Music")
+						NavigationLink("Tracks", value: "Tracks")
+						//    NavigationLink("Playlists", value: "Playlists")
+						NavigationLink("Albums", value: "Albums")
+						NavigationLink("Artists", value: "Artists")
+					}
+					if manager.authStatus == .authorized {
+						Section() {
+							NavigationLink("Apple Music", value: "Apple Music")
+						}
 					}
 				}
-		   	}
-		   .navigationTitle("Home")
-		   .navigationDestination(for: String.self) { content in
-				switch content {
-				case "Tracks":
-					Tracks()
-				case "Playlists":
-					Playlists()
-				case "Albums":
-					Albums()
-				case "Artists":
-					Artists()
-				case "Apple Music":
-					AppleMusic()
-				default:
-					Text("Invalid content")
+				.navigationTitle("Home")
+				.navigationDestination(for: String.self) { content in
+					switch content {
+					case "Tracks":
+						Tracks()
+					case "Playlists":
+						Playlists()
+					case "Albums":
+						Albums()
+					case "Artists":
+						Artists()
+					case "Apple Music":
+						AppleMusic()
+					default:
+						Text("Invalid content")
+					}
 				}
+				MusicButtonPlus()
+				.padding()
 			}
 		}
 		.onAppear {

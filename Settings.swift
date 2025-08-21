@@ -83,6 +83,29 @@ struct Settings: View {
             } header: {
                 Text("File Management")
             }
+            Section{
+                Button(action: {
+                    UIApplication.shared.open(URL(string: "https://github.com/HammerPot/Maple-iOS")!, options: [:], completionHandler: nil)
+                }) {
+                    Text("Open the Maple-iOS GitHub Repository")
+                }
+                Button(action: {
+                    UIApplication.shared.open(URL(string: "https://github.com/cattn/Maple")!, options: [:], completionHandler: nil)
+                }) {
+                    Text("Open the Maple GitHub Repository")
+                }
+                Button(action: {
+                    UIApplication.shared.open(URL(string: "https://maple.music")!, options: [:], completionHandler: nil)
+                }) {
+                    Text("Open the Maple website")
+                }
+            } header: {
+                Text("External Links")
+            } footer: {
+                Text("These will open the GitHub repositories in your default browser.\n\n\nMaple originally made by [Cattn](https://cattn.dev).")
+            }
+
+
         }
     }
 }

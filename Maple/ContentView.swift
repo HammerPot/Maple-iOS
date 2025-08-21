@@ -251,7 +251,7 @@ struct NowPlayingBar: View {
                             .buttonStyle(.borderless)
                             Button(action: {
                                 print("AM Button pressed")
-                                UIApplication.shared.open (URL(string: "music://")!, options: [:], completionHandler: nil)
+                                UIApplication.shared.open(URL(string: "music://")!, options: [:], completionHandler: nil)
                             }){
                                 Image(uiImage: UIImage(named: "AM")!)
                                     .resizable()
