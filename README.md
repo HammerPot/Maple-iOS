@@ -3,7 +3,7 @@
 A music player that plays files you keep locally on your phone. Comes with a robust social functionality that allows you to see what your friends are listening to.
 
 ## How to download?
-Go to https://testflight.apple.com/join/YXZVrhnC and join the TestFlight to beta test before the final release! 
+Go to https://testflight.apple.com/join/1pcMjAqQ and join the TestFlight to beta test before the final release! 
 > App Store version coming soon!
 
 ## What is it?
