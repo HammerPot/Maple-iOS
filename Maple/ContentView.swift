@@ -58,46 +58,46 @@ struct ContentView: View {
         // }) {
         //     Text("Show Snackbar")
         // }
-        if #available(iOS 26.0, *) {
-            TabView {
-                Tab("Home", systemImage: "house") {
-                    Home()
-                }
-                Tab("Search", systemImage: "magnifyingglass", role: .search) {
-                    Search()
-                }
-                Tab("Account", systemImage: "person.crop.circle") {
-                    NavigationStack{
-                        Login()
-                    }
-                }
-                Tab("Settings", systemImage: "gear") {
-                    Settings()
-                }
-            }
-            .snackbarView(snackbar: $socketManager.snackbar)
-            .snackbarView(snackbar: $snackbar)
-            .zIndex(0)
-            // .tabBarMinimizeBehavior(.onScrollDown)
-            .tabViewBottomAccessory {
-                NowPlayingBar(showPlayer: $showPlayer)
-            }
-            .sheet(isPresented: $showPlayer) {
-                if amPlayer.initialized == true {
-                    AMPlayerView2()
-                }
-                else {
-                    MediaPlayerView(
-                        song: audioManager.currentSong ?? Song(
-                            id: UUID(), title: "No Song", artist: "No Artist", album: "No Album",
-                            year: Int(Calendar(identifier: .gregorian).dateComponents([.year], from: .now).year ?? 2025), genre: "Unknown", duration: 0.0, artwork: nil,
-                            trackNumber: 0, discNumber: 0, ext: "", url: URL(fileURLWithPath: "")
-                        ),
-                        allSongs: audioManager.queue
-                    )
-                }
-            }
-        } else {
+        // if #available(iOS 26.0, *) {
+        //     TabView {
+        //         Tab("Home", systemImage: "house") {
+        //             Home()
+        //         }
+        //         Tab("Search", systemImage: "magnifyingglass", role: .search) {
+        //             Search()
+        //         }
+        //         Tab("Account", systemImage: "person.crop.circle") {
+        //             NavigationStack{
+        //                 Login()
+        //             }
+        //         }
+        //         Tab("Settings", systemImage: "gear") {
+        //             Settings()
+        //         }
+        //     }
+        //     .snackbarView(snackbar: $socketManager.snackbar)
+        //     .snackbarView(snackbar: $snackbar)
+        //     .zIndex(0)
+        //     // .tabBarMinimizeBehavior(.onScrollDown)
+        //     .tabViewBottomAccessory {
+        //         NowPlayingBar(showPlayer: $showPlayer)
+        //     }
+        //     .sheet(isPresented: $showPlayer) {
+        //         if amPlayer.initialized == true {
+        //             AMPlayerView2()
+        //         }
+        //         else {
+        //             MediaPlayerView(
+        //                 song: audioManager.currentSong ?? Song(
+        //                     id: UUID(), title: "No Song", artist: "No Artist", album: "No Album",
+        //                     year: Int(Calendar(identifier: .gregorian).dateComponents([.year], from: .now).year ?? 2025), genre: "Unknown", duration: 0.0, artwork: nil,
+        //                     trackNumber: 0, discNumber: 0, ext: "", url: URL(fileURLWithPath: "")
+        //                 ),
+        //                 allSongs: audioManager.queue
+        //             )
+        //         }
+        //     }
+        // } else {
             // Fallback on earlier versions
             TabView {
                 Tab("Home", systemImage: "house") {
@@ -132,7 +132,7 @@ struct ContentView: View {
             }
             .snackbarView(snackbar: $socketManager.snackbar)
             .zIndex(0)
-        }
+        // }
     }
 
     // let manager = SocketManager(socketURL: URL(string: "https://api.maple.music")!, config: [.log(true)])

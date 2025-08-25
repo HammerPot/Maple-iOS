@@ -746,6 +746,47 @@ func uploadName(serverID: String, name: String) async throws -> String {
     return "\(httpResponse)"
 }
 
+func deleteAccount(serverID: String) async throws -> String {
+    guard let url = URL(string: "https://api.maple.music/user/manage/deleteAccount/\(serverID)") else {
+        throw URLError(.badURL)
+    }
+
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+    let parameters: [String : Any] = [
+        "id" : serverID
+    ]
+    request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
+
+    let config = URLSessionConfiguration.default
+    config.httpShouldSetCookies = true
+    config.httpCookieAcceptPolicy = .always
+    config.httpCookieStorage = .shared
+    let session = URLSession(configuration: config)
+
+    let (data, response) = try await session.data(for: request)
+    guard let httpResponse = response as? HTTPURLResponse else {
+        throw URLError(.badServerResponse)
+    }
+    if let json = try? JSON(data: data){
+        let dict = json.dictionaryValue
+        if let message = dict["message"]?.stringValue {
+            return message
+        }
+        else if let error = dict["error"]?.stringValue {
+            throw NSError(domain: "DeleteAccountError", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Error: \(error) (Code: \(httpResponse.statusCode))"])
+        }
+        else {
+            throw NSError(domain: "DeleteAccountError", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Server error: \(httpResponse.statusCode)"]) 
+        }
+    }
+    else {
+        throw NSError(domain: "DeleteAccountError", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Server error: \(httpResponse.statusCode)"])
+    }
+}
+
 
 struct Login: View {
     @State private var username: String = ""
@@ -910,6 +951,7 @@ struct LoggedIn: View {
     @State private var selectedImageData: Data?
     @State private var showNameSheet = false
     @State private var newName: String = ""
+    @State private var showingDeleteAlert = false
 
     @State private var snackbar: Snackbar?
     
@@ -984,11 +1026,57 @@ struct LoggedIn: View {
                         newName = name
                         showNameSheet = true
                     })
+                    Button(role: .destructive) {
+                        print("delete account")
+                        showingDeleteAlert = true
+                    } label: {
+                        Text("Delete Account")
+                        // .foregroundColor(.red)
+                    }
                 }
             }
         }
+        .alert("Warning!", isPresented: $showingDeleteAlert, actions: { 
+            Button(role: .destructive) {
+                Task {
+                    await deleteUserAccount()
+                }
+
+            } label: {
+                Text("Delete Account")
+                .foregroundColor(.red)
+            }
+            
+
+            Button("Cancel", role: .cancel) {
+
+            }
+        }, message: {
+            Text("This will DELETE your account and all data associated with it. This action is irreversible!")
+        })
     }
     
+    private func deleteUserAccount() async {
+        guard let serverID = UserDefaults.standard.string(forKey: "savedServerID"), !serverID.isEmpty else {
+            error = "No server ID found"
+            return
+        }
+        
+        do {
+            let response = try await deleteAccount(serverID: serverID)
+            if response.lowercased().contains("success") {
+                await deleteCookies()
+                await AppSocketManager.shared.disconnect()
+                isLoggedIn = false
+            } else {
+                snackbar = Snackbar(title: "Error", message: "Error deleting account: \(response)")
+            }
+        } catch {
+            print(error)
+            snackbar = Snackbar(title: "Error", message: "Error deleting account: \(error.localizedDescription)")
+        }
+    }
+
     private func fetchUserData() async {
         guard let serverID = UserDefaults.standard.string(forKey: "savedServerID"), !serverID.isEmpty else { 
             error = "No server ID found"
