@@ -14,7 +14,7 @@ struct MusicButton: View {
 	@State private var localFiles: [URL] = []
 	
 	var body: some View {
-			Button("Upload Music") {
+			Button("Add Music") {
 				importing = true
 			}
 			.fileImporter(

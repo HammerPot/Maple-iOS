@@ -747,12 +747,12 @@ func uploadName(serverID: String, name: String) async throws -> String {
 }
 
 func deleteAccount(serverID: String) async throws -> String {
-    guard let url = URL(string: "https://api.maple.music/user/manage/deleteAccount/\(serverID)") else {
+    guard let url = URL(string: "https://api.maple.music/user/manage/delete/\(serverID)") else {
         throw URLError(.badURL)
     }
 
     var request = URLRequest(url: url)
-    request.httpMethod = "POST"
+    request.httpMethod = "DELETE"
     request.addValue("application/json", forHTTPHeaderField: "Content-Type")
 
     let parameters: [String : Any] = [
