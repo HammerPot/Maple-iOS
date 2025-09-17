@@ -53,11 +53,11 @@ struct ContentView: View {
         }
     }
     var body: some View {
-        Button(action: {
-            snackbar = Snackbar(title: "Hello", message: "World")
-        }) {
-            Text("Show Snackbar")
-        }
+        // Button(action: {
+        //     snackbar = Snackbar(title: "Hello", message: "World")
+        // }) {
+        //     Text("Show Snackbar")
+        // }
         if #available(iOS 26.0, *) {
             TabView {
                 Tab("Home", systemImage: "house") {
