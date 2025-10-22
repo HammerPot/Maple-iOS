@@ -75,7 +75,7 @@ class AMPlayer: ObservableObject {
                         let response = try await setAlbumArt(serverID: UserDefaults.standard.string(forKey: "savedServerID") ?? "", albumArt: player.nowPlayingItem?.artwork?.image(at: CGSize(width: 800, height: 800))?.pngData() ?? mapleArt)
                     } catch {
                     }
-                    AppSocketManager.shared.nowPlayingAM(song: player.nowPlayingItem!, id: UserDefaults.standard.string(forKey: "savedServerID") ?? "", discord: UserDefaults.standard.bool(forKey: "discord"))
+                    AppSocketManager.shared.nowPlayingAM(song: player.nowPlayingItem!, id: UserDefaults.standard.string(forKey: "savedServerID") ?? "", discord: UserDefaults.standard.bool(forKey: "mapleRPC"))
                 }
             }
         }
