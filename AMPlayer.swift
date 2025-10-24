@@ -75,7 +75,14 @@ class AMPlayer: ObservableObject {
                         let response = try await setAlbumArt(serverID: UserDefaults.standard.string(forKey: "savedServerID") ?? "", albumArt: player.nowPlayingItem?.artwork?.image(at: CGSize(width: 800, height: 800))?.pngData() ?? mapleArt)
                     } catch {
                     }
-                    AppSocketManager.shared.nowPlayingAM(song: player.nowPlayingItem!, id: UserDefaults.standard.string(forKey: "savedServerID") ?? "", discord: UserDefaults.standard.bool(forKey: "mapleRPC"))
+
+                    let timePlayed = DateFormatter()
+                    timePlayed.locale = Locale(identifier: "en_US")
+                    timePlayed.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                    timePlayed.timeZone = TimeZone(secondsFromGMT: 0)
+                    let timePlayedString = timePlayed.string(from: Date())
+
+                    AppSocketManager.shared.nowPlayingAM(song: player.nowPlayingItem!, id: UserDefaults.standard.string(forKey: "savedServerID") ?? "", discord: UserDefaults.standard.bool(forKey: "mapleRPC"), source: "Apple Music on iOS", timePlayed: timePlayedString)
                 }
             }
         }

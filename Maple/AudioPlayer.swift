@@ -194,6 +194,13 @@ class AudioPlayerManager: NSObject, ObservableObject {
 
             print("rpcTask: \(rpcTask)")
             if !rpcTask {
+
+                let timePlayed = DateFormatter()
+                timePlayed.locale = Locale(identifier: "en_US")
+                timePlayed.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                timePlayed.timeZone = TimeZone(secondsFromGMT: 0)
+                let timePlayedString = timePlayed.string(from: Date())
+
                 if let savedServerID = UserDefaults.standard.string(forKey: "savedServerID") {
                     if let _artwork = song.artwork {
                         let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(_artwork)
@@ -227,10 +234,10 @@ class AudioPlayerManager: NSObject, ObservableObject {
                             }
                         }
                     }
-                    AppSocketManager.shared.nowPlaying(song: song, id: savedServerID, discord: mapleRPC)
+                    AppSocketManager.shared.nowPlaying(song: song, id: savedServerID, discord: mapleRPC, source: "iOS", timePlayed: timePlayedString)
                 }
                 else {
-                    AppSocketManager.shared.nowPlaying(song: song, id: serverID, discord: mapleRPC)
+                    AppSocketManager.shared.nowPlaying(song: song, id: serverID, discord: mapleRPC, source: "iOS", timePlayed: timePlayedString)
                 }
                 rpcTask = true
                 print("inner rpcTask: \(rpcTask)")

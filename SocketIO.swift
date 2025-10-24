@@ -101,14 +101,16 @@ class AppSocketManager: ObservableObject {
         }
     }
 
-    func nowPlaying(song: Song, id: String, discord: Bool) {
+    func nowPlaying(song: Song, id: String, discord: Bool, source: String, timePlayed: String) {
         if socket.status == .connected {
             let songData: [String: Any] = [
                 "title": song.title,
                 "artist": song.artist,
                 "album": song.album,
                 "id": id,
-                "discord": discord
+                "discord": discord,
+                "source": source,
+                "timePlayed": timePlayed
             ]
             
             let payload: [String: Any] = ["nowPlaying": songData]
@@ -128,14 +130,16 @@ class AppSocketManager: ObservableObject {
         }
     }
 
-    func nowPlayingAM(song: MPMediaItem, id: String, discord: Bool) {
+    func nowPlayingAM(song: MPMediaItem, id: String, discord: Bool, source: String, timePlayed: String) {
         if socket.status == .connected {
             let songData: [String: Any] = [
                 "title": song.title,
                 "artist": song.artist,
                 "album": song.albumTitle,
                 "id": id,
-                "discord": discord
+                "discord": discord,
+                "source": source,
+                "timePlayed": timePlayed
             ]
             
             let payload: [String: Any] = ["nowPlaying": songData]

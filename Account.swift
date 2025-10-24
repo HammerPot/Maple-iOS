@@ -50,6 +50,8 @@ struct NowPlaying: Identifiable {
     let album: String
     let artist: String
     let discord: Bool
+    let source: String?
+    let timePlayed: String?
 }
 // MARK: - API Functions
 
@@ -1349,50 +1351,76 @@ struct FriendList: View {
             
             Section{
                 ForEach(requests) { friend in
-                    HStack {
-                        if let pfp = friend.pfp, let uiImage = UIImage(data: pfp) {
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 40, height: 40)
-                                .clipShape(Circle())
-                        }
-                        VStack(alignment: .leading) {
-                            
-                        Text(friend.name)
-                            .font(.headline)
-                        Text("@" + friend.username)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        Text(friend.nowPlaying.song + " - " + friend.nowPlaying.artist)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        Button(action: {
-                            Task {
-                                await acceptF(id: friend.id)
-                                await friendMoment()
+                    ZStack(alignment: .topTrailing) {
+                        HStack {
+                            if let pfp = friend.pfp, let uiImage = UIImage(data: pfp) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 40, height: 40)
+                                    .clipShape(Circle())
+                            } else if let uiImage = UIImage(named: "Maple") {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 40, height: 40)
+                                    .clipShape(Circle())
                             }
-                        }) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 25, height: 25)
+                            VStack(alignment: .leading) {
+                                Text(friend.name)
+                                    .font(.headline)
+                                Text("@" + friend.username + (friend.nowPlaying.timePlayed?.isEmpty ?? true ? "" : " • " + formatTime(friend.nowPlaying.timePlayed ?? "")))
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Text(friend.nowPlaying.song + " - " + friend.nowPlaying.artist)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
                             }
-                            .buttonStyle(.borderless)
-                        Button(action: {
-                            Task {
-                                await rejectF(id: friend.id)
-                                await friendMoment()
-                            }
-                        }) {
-                            Image(systemName: "x.circle.fill")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 25, height: 25)
+                            Spacer()
+                            Button(action: {
+                                Task {
+                                    await acceptF(id: friend.id)
+                                    await friendMoment()
+                                }
+                            }) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 25, height: 25)
                             }
                             .buttonStyle(.borderless)
+                            Button(action: {
+                                Task {
+                                    await rejectF(id: friend.id)
+                                    await friendMoment()
+                                }
+                            }) {
+                                Image(systemName: "x.circle.fill")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 25, height: 25)
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                        
+                        VStack(alignment: .trailing, spacing: 4) {
+                            if let source = friend.nowPlaying.source {
+                                Text(source)
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(Color.secondary.opacity(0.2))
+                                    .cornerRadius(4)
+                            }
+                            // if let timePlayed = friend.nowPlaying.timePlayed {
+                            //     Text(formatTime(timePlayed))
+                            //         .font(.caption2)
+                            //         .padding(.horizontal, 6)
+                            //         .padding(.vertical, 3)
+                            //         .background(Color.secondary.opacity(0.2))
+                            //         .cornerRadius(4)
+                            // }
+                        }
                     }
                     .padding(.vertical, 4)
                 }
@@ -1401,26 +1429,64 @@ struct FriendList: View {
             }
             Section{
                 ForEach(friends) { friend in
-                    HStack {
-                        if let pfp = friend.pfp, let uiImage = UIImage(data: pfp) {
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 40, height: 40)
-                                .clipShape(Circle())
+                    ZStack(alignment: .topTrailing) {
+                        HStack {
+                            if let pfp = friend.pfp, let uiImage = UIImage(data: pfp)  {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 40, height: 40)
+                                    .clipShape(Circle())
+                            } else if let uiImage = UIImage(named: "Maple") {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 40, height: 40)
+                                    .clipShape(Circle())
+                            }
+                            VStack(alignment: .leading) {
+                                HStack {
+                                    Text(friend.name)
+                                        .font(.headline)
+
+                                    if let source = friend.nowPlaying.source {
+                                        Text(source)
+                                            .font(.caption2)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.secondary.opacity(0.2))
+                                            .cornerRadius(4)
+                                    }
+                                }
+
+                                Text("@" + friend.username + (friend.nowPlaying.timePlayed?.isEmpty ?? true ? "" : " • " + formatTime(friend.nowPlaying.timePlayed ?? "")))
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Text(friend.nowPlaying.song + " - " + friend.nowPlaying.artist)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
                         }
-                        VStack(alignment: .leading) {
-                            
-                        Text(friend.name)
-                            .font(.headline)
-                        Text("@" + friend.username)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        Text(friend.nowPlaying.song + " - " + friend.nowPlaying.artist)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        }
-                            
+                        
+                        // VStack(alignment: .trailing) {
+                            // if let source = friend.nowPlaying.source {
+                            //     Text(source)
+                            //         .font(.caption2)
+                            //         .padding(.horizontal, 6)
+                            //         .padding(.vertical, 2)
+                            //         .background(Color.secondary.opacity(0.2))
+                            //         .cornerRadius(4)
+                            // }
+                            // if let timePlayed = friend.nowPlaying.timePlayed {
+                            //     Text(formatTime(timePlayed))
+                            //         .font(.caption2)
+                            //         .padding(.horizontal, 6)
+                            //         .padding(.vertical, 3)
+                            //         .background(Color.secondary.opacity(0.2))
+                            //         .cornerRadius(4)
+                            // }
+                        // }
                     }
                     .padding(.vertical, 4)
                 }
@@ -1467,6 +1533,24 @@ struct FriendList: View {
         }
     }
 
+    func formatTime(_ dateString: String) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        
+        if let date = formatter.date(from: dateString) {
+            // TODO: Calculate time difference from now and format accordingly
+            print("date: " + date.description)
+            let timeDifference = Duration.seconds(Date().timeIntervalSince(date))
+            print("timeDifference: " + timeDifference.description)
+            let timeDifferenceString = timeDifference.formatted(.units(allowed: [.days, .hours, .minutes], width: .condensedAbbreviated, maximumUnitCount: 1, fractionalPart: .hide(rounded:.down)))
+            print("timeDifferenceString: " + timeDifferenceString)
+
+            return timeDifferenceString
+        }
+        return "Unknown"
+    }
+
     private func friendList() async {
         guard let savedServerID = UserDefaults.standard.string(forKey: "savedServerID"), !savedServerID.isEmpty else { return }
 
@@ -1477,7 +1561,7 @@ struct FriendList: View {
             pfpArray = pfps
             for (index, friend) in userInfoArray.enumerated() {
                 let nowPlayingDict = friend["nowPlaying"]?.dictionaryValue
-                let nowPlaying = NowPlaying(id: nowPlayingDict?["id"]?.stringValue ?? "", song: nowPlayingDict?["title"]?.stringValue ?? "Unknown Song", album: nowPlayingDict?["album"]?.stringValue ?? "Unknown Album", artist: nowPlayingDict?["artist"]?.stringValue ?? "Unknown Artist", discord: nowPlayingDict?["discord"]?.boolValue ?? false)
+                let nowPlaying = NowPlaying(id: nowPlayingDict?["id"]?.stringValue ?? "", song: nowPlayingDict?["title"]?.stringValue ?? "Unknown Song", album: nowPlayingDict?["album"]?.stringValue ?? "Unknown Album", artist: nowPlayingDict?["artist"]?.stringValue ?? "Unknown Artist", discord: nowPlayingDict?["discord"]?.boolValue ?? false, source: nowPlayingDict?["source"]?.stringValue ?? nil, timePlayed: nowPlayingDict?["timePlayed"]?.stringValue ?? nil)
                 friends.append(Friend(id: friend["id"]?.stringValue ?? "", name: friend["name"]?.stringValue ?? "", username: friend["username"]?.stringValue ?? "", pfp: pfpArray[index], nowPlaying: nowPlaying))
             }
         } catch {
@@ -1494,7 +1578,7 @@ struct FriendList: View {
             pfpArrayReq = pfps
             for (index, friend) in userInfoArrayReq.enumerated() {
                 let nowPlayingDict = friend["nowPlaying"]?.dictionaryValue
-                let nowPlaying = NowPlaying(id: nowPlayingDict?["id"]?.stringValue ?? "", song: nowPlayingDict?["title"]?.stringValue ?? "Unknown Song", album: nowPlayingDict?["album"]?.stringValue ?? "Unknown Album", artist: nowPlayingDict?["artist"]?.stringValue ?? "Unknown Artist", discord: nowPlayingDict?["discord"]?.boolValue ?? false)
+                let nowPlaying = NowPlaying(id: nowPlayingDict?["id"]?.stringValue ?? "", song: nowPlayingDict?["title"]?.stringValue ?? "Unknown Song", album: nowPlayingDict?["album"]?.stringValue ?? "Unknown Album", artist: nowPlayingDict?["artist"]?.stringValue ?? "Unknown Artist", discord: nowPlayingDict?["discord"]?.boolValue ?? false, source: nowPlayingDict?["source"]?.stringValue ?? nil, timePlayed: nowPlayingDict?["timePlayed"]?.stringValue ?? nil)
                 requests.append(Friend(id: friend["id"]?.stringValue ?? "", name: friend["name"]?.stringValue ?? "", username: friend["username"]?.stringValue ?? "", pfp: pfpArrayReq[index], nowPlaying: nowPlaying))
             }
         } catch {
