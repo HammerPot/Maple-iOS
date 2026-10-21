@@ -9,6 +9,10 @@ Go to https://testflight.apple.com/join/1pcMjAqQ and join the TestFlight to beta
 ## What is it?
 This is an iOS port of the local music player by [Cattn](https://github.com/cattn) made for the web. Due to WebKit and Safari limitations the player doesn't work on iOS, and thus I created a native solution for iOS. Check out the project at https://maple.music to learn more about both the original project and the iOS port.
 
+### Networking compatibility
+
+See [Maple API and RPC compatibility](docs/MapleCompatibility.md) for the supported upstream revision, protocol behavior, and local/remote test instructions.
+
 ### Additional information
 If you want more information on how Maple itself works, or how to use the API, check out the original repository https://github.com/cattn/maple for both the frontend and backend for Maple.
 

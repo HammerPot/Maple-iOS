@@ -13,6 +13,7 @@ class AMPlayer: ObservableObject {
     @Published var albumArt: UIImage?
     @Published var initialized = false
     @Published var isPlaying = false
+    private var lastSnapshot: MaplePlaybackSnapshot?
 
 
 
@@ -68,31 +69,36 @@ class AMPlayer: ObservableObject {
             isPlaying = false
         }
         albumArt = UIImage(data: player.nowPlayingItem?.artwork?.image(at: CGSize(width: 800, height: 800))?.pngData() ?? UIImage(named: "Maple")?.pngData() ?? Data())
-        if player.playbackState.rawValue == 1 {
-            if let mapleArt = UIImage(named: "Maple")?.pngData() {
-                Task {
-                    do {
-                        let response = try await setAlbumArt(serverID: UserDefaults.standard.string(forKey: "savedServerID") ?? "", albumArt: player.nowPlayingItem?.artwork?.image(at: CGSize(width: 800, height: 800))?.pngData() ?? mapleArt)
-                    } catch {
-                    }
-                    AppSocketManager.shared.nowPlayingAM(song: player.nowPlayingItem!, id: UserDefaults.standard.string(forKey: "savedServerID") ?? "", discord: UserDefaults.standard.bool(forKey: "mapleRPC"))
-                }
-            }
-        }
+        if isPlaying { AudioPlayerManager.shared.stop() }
+        reportPlayback(claim: isPlaying)
     }
-    
+
     @objc private func nowPlayingItemDidChange() {
-        if let nowPlayingItem = player.nowPlayingItem {
-            if let currentEntry = SystemMusicPlayer.shared.queue.currentEntry,
-               case .song(let song) = currentEntry.item {
-                let title = song.title
-                let artist = song.artistName
-                let duration = song.duration
-                let albumTitle = song.albumTitle
-            }
-        }
+        albumArt = player.nowPlayingItem?.artwork?.image(at: CGSize(width: 800, height: 800))
+        reportPlayback(claim: player.playbackState == .playing)
     }
-    
+
+    func playbackSnapshot() -> MaplePlaybackSnapshot? {
+        guard let song = player.nowPlayingItem else {
+            guard let last = lastSnapshot else { return nil }
+            return MaplePlaybackSnapshot(trackID: last.trackID, source: last.source, title: last.title,
+                                         artist: last.artist, album: last.album, playing: false,
+                                         position: 0, duration: last.duration)
+        }
+        return MaplePlaybackSnapshot(trackID: String(song.persistentID), source: "iOS Apple Music",
+                                     title: song.title ?? "Unknown Song", artist: song.artist ?? "Unknown Artist",
+                                     album: song.albumTitle ?? "Unknown Album", playing: player.playbackState == .playing,
+                                     position: player.currentPlaybackTime, duration: song.playbackDuration,
+                                     playbackRate: Double(player.currentPlaybackRate))
+    }
+
+    func reportPlayback(claim: Bool) {
+        guard let snapshot = playbackSnapshot() else { return }
+        lastSnapshot = snapshot
+        let artwork = albumArt?.jpegData(compressionQuality: 0.85) ?? UIImage(named: "Maple")?.jpegData(compressionQuality: 0.85)
+        AppSocketManager.shared.updatePlayback({ [weak self] in self?.playbackSnapshot() }, artwork: artwork, claim: claim)
+    }
+
     deinit {
         // Stop observing notifications
         player.endGeneratingPlaybackNotifications()
@@ -434,6 +440,7 @@ struct AMPlayerView: View {
                     get: { currentTime },
                     set: { newTime in
                         SystemMusicPlayer.shared.playbackTime = newTime
+                        player.reportPlayback(claim: true)
                     }
                 ), in: 0...duration)
                 
@@ -566,6 +573,7 @@ struct AMPlayerView2: View {
                     get: { currentTime },
                     set: { newTime in
                         SystemMusicPlayer.shared.playbackTime = newTime
+                        player.reportPlayback(claim: true)
                     }
                 ), in: 0...duration)
                 
