@@ -1,7 +1,6 @@
 import SwiftUI
 import SocketIO
 import SwiftyJSON
-import SwiftUISnackbar
 
 /// Socket.IO callbacks and player snapshots are handled on the main queue.
 @MainActor

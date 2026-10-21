@@ -26,32 +26,18 @@ struct Artists: View {
 			}
 		}
 		.navigationTitle("Artists")
-		.onAppear {
-			loadArtistsJ()
-		}
+        .task { await reloadLibrary() }
+        .onReceive(NotificationCenter.default.publisher(for: MapleLibrary.changed)) { _ in
+            Task { await reloadLibrary() }
+        }
 	}
 
-	private func loadArtistsJ() {
-		isLoading = true 
-		Task {
-			artists = await loadArtistsFromJson()
-		}
-		isLoading = false
-	}
+    private func reloadLibrary() async {
+        isLoading = true
+        artists = await loadArtistsFromJson()
+        isLoading = false
+    }
 
-	private func loadArtists() {
-		isLoading = true
-		
-		Task {
-			let songs = await loadSongsFromJson()
-			let groupedArtists = groupSongsByArtist(songs)
-			
-			await MainActor.run {
-				artists = groupedArtists
-				isLoading = false
-			}
-		}
-	}
 }
 
 

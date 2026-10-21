@@ -8,6 +8,7 @@
 import SwiftUI
 import MusicKit
 
+@MainActor
 class AppleMusicManager: ObservableObject {
     static let shared = AppleMusicManager()
 
@@ -126,30 +127,17 @@ class AppleMusicManager: ObservableObject {
 
 
 struct AppleMusic: View {
-    @StateObject private var manager = AppleMusicManager.shared
-
-    init() {
-        manager.checkAuthorization()
-
-
-    }
+    @ObservedObject private var manager = AppleMusicManager.shared
 
     var body: some View {
-        NavigationView {
-            VStack {
-                if manager.sub?.canPlayCatalogContent == true {
-                    List {
-                        NavigationLink("Tracks", destination: AppleMusicTracks())
-                        NavigationLink("Albums", destination: AppleMusicAlbums())
-                        NavigationLink("Artists", destination: AppleMusicArtists())
-                        NavigationLink("Playlists", destination: AppleMusicPlaylists())
-                    }
-                    .navigationTitle("Apple Music")
-                } else {
-                    Text("You cannot play catalog content. Please subscribe to Apple Music to use this feature. If you are already subscribed, please try again later or report this issue to the developer.")
-                }
-            }
+        List {
+            NavigationLink("Tracks", destination: AppleMusicTracks())
+            NavigationLink("Albums", destination: AppleMusicAlbums())
+            NavigationLink("Artists", destination: AppleMusicArtists())
+            NavigationLink("Playlists", destination: AppleMusicPlaylists())
         }
+        .navigationTitle("Apple Music")
+        .task { manager.checkAuthorization() }
     }
 }
 

@@ -1,7 +1,7 @@
 import Foundation
 import SocketIO
 import Testing
-import UIKit
+import SwiftUI
 @testable import Maple
 
 private final class LiveTestBundle: NSObject {}
@@ -48,7 +48,7 @@ struct MapleLiveTests {
         try await waitUntil { observer.generation != nil }
         var snapshot = MaplePlaybackSnapshot(trackID: "integration-track", source: "iOS", title: "Maple integration",
                                              artist: "Compatibility test", album: "Test album", playing: true, position: 5, duration: 180)
-        let artwork = try #require(UIImage(named: "Maple")?.jpegData(compressionQuality: 0.5))
+        let artwork = try #require(PlatformImage(named: "Maple")?.jpegData(compressionQuality: 0.5))
         let publisher = AppSocketManager.shared
         publisher.updatePlayback({ snapshot }, artwork: artwork, claim: true)
         try await waitUntil { observer.latest["title"] as? String == "Maple integration" && observer.latest["artworkReady"] as? Bool == true }
@@ -97,7 +97,7 @@ struct MapleLiveTests {
         // Exercise the native AVAudioPlayer hooks as well as synthetic socket snapshots.
         UserDefaults.standard.set(true, forKey: "mapleRPC")
         let player = AudioPlayerManager.shared
-        let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("tracks")
+        let directory = MapleLibrary.directory.appendingPathComponent("tracks")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let audioURL = directory.appendingPathComponent(UUID().uuidString + ".wav")
         try silentWAV().write(to: audioURL)

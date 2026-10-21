@@ -35,12 +35,14 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
     
     private func setupAudioSession() {
+        #if !os(macOS)
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
             print("Failed to set audio session category: \(error)")
         }
+        #endif
     }
     
     private func setupRemoteTransportControls() {
@@ -102,14 +104,14 @@ class AudioPlayerManager: NSObject, ObservableObject {
     func setQueue(_ songs: [Song], startingAt index: Int = 0) {
         queue = songs
         currentIndex = index
-        if index < songs.count {
+        if songs.indices.contains(index) {
             loadSong(songs[index])
         }
     }
     
     private func loadSong(_ song: Song) {
 		print("loadSong: \(song.title)")
-        loadAudio(from: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("tracks").appendingPathComponent(song.url.lastPathComponent))
+        loadAudio(from: MapleLibrary.directory.appendingPathComponent("tracks").appendingPathComponent(song.url.lastPathComponent))
         updateNowPlayingInfo(song: song)
     }
     
@@ -147,8 +149,8 @@ class AudioPlayerManager: NSObject, ObservableObject {
         
         var mediaArtwork: MPMediaItemArtwork?
         if let artwork = song.artwork {
-            let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artwork)
-            if let uiImage = UIImage(contentsOfFile: artworkPath.path){
+            let artworkPath = MapleLibrary.directory.appendingPathComponent(artwork)
+            if let uiImage = PlatformImage(contentsOfFile: artworkPath.path){
                 mediaArtwork = MPMediaItemArtwork(boundsSize: uiImage.size) { _ in uiImage }
             }
         }
@@ -167,6 +169,9 @@ class AudioPlayerManager: NSObject, ObservableObject {
         }
         
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        #if os(macOS)
+        MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
+        #endif
     }
     
     func updateNowPlayingInfo(song: Song) {
@@ -174,8 +179,8 @@ class AudioPlayerManager: NSObject, ObservableObject {
         
         var mediaArtwork: MPMediaItemArtwork?
         if let artwork = song.artwork {
-            let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artwork)
-            if let uiImage = UIImage(contentsOfFile: artworkPath.path){
+            let artworkPath = MapleLibrary.directory.appendingPathComponent(artwork)
+            if let uiImage = PlatformImage(contentsOfFile: artworkPath.path){
                 mediaArtwork = MPMediaItemArtwork(boundsSize: uiImage.size) { _ in uiImage }
             }
         }
@@ -194,6 +199,9 @@ class AudioPlayerManager: NSObject, ObservableObject {
         }
         
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        #if os(macOS)
+        MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
+        #endif
     }
     
     func play() {
@@ -230,8 +238,8 @@ class AudioPlayerManager: NSObject, ObservableObject {
 
     private func reportPlayback(claim: Bool) {
         let artwork = currentSong?.artwork.flatMap {
-            UIImage(contentsOfFile: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent($0).path)?.jpegData(compressionQuality: 0.85)
-        } ?? UIImage(named: "Maple")?.jpegData(compressionQuality: 0.85)
+            PlatformImage(contentsOfFile: MapleLibrary.directory.appendingPathComponent($0).path)?.jpegData(compressionQuality: 0.85)
+        } ?? PlatformImage(named: "Maple")?.jpegData(compressionQuality: 0.85)
         AppSocketManager.shared.updatePlayback({ [weak self] in self?.playbackSnapshot() }, artwork: artwork, claim: claim)
     }
 
@@ -288,6 +296,16 @@ class AudioPlayerManager: NSObject, ObservableObject {
         timer?.invalidate()
     }
     
+    func clearQueue() {
+        stop()
+        queue = []
+        currentIndex = -1
+        currentSong = nil
+        audioPlayer = nil
+        duration = 0
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+    }
+
     func playNext() {
         guard !queue.isEmpty else { return }
         print("playNext")
@@ -335,204 +353,24 @@ extension AudioPlayerManager: AVAudioPlayerDelegate {
 }
 
 struct AudioPlayerView: View {
-    @ObservedObject private var audioManager = AudioPlayerManager.shared
-    public let song: Song
-    public let allSongs: [Song]
+    let song: Song
+    let allSongs: [Song]
     @State private var hasInitializedQueue = false
-    
-    init(song: Song, allSongs: [Song]) {
-        self.song = song
-        self.allSongs = allSongs
-    }
-    
-    var body: some View {
-        VStack(spacing: 20) {
-            if let artworkData = audioManager.currentSong?.artwork {
-                let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artworkData)
-                if let uiImage = UIImage(contentsOfFile: artworkPath.path){
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 160, height: 160)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .padding()
-                }
-            } else {
-                Rectangle()
-                .fill(Color.gray.opacity(0.2))
-                .frame(width: 160, height: 160)
-                .cornerRadius(8)
-                .overlay(
-                    Image(systemName: "music.note")
-                        .font(.system(size: 40))
-                        .foregroundColor(.gray)
-                )
-            }
 
-            VStack(spacing: 8) {
-                Text(audioManager.currentSong?.title ?? song.title)
-                    .font(.headline)
-                Text(audioManager.currentSong?.artist ?? song.artist)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+    var body: some View {
+        LocalPlayerControls()
+            .onAppear {
+                guard !hasInitializedQueue,
+                      let index = allSongs.firstIndex(where: { $0.id == song.id }) else { return }
+                hasInitializedQueue = true
+                AudioPlayerManager.shared.setQueue(allSongs, startingAt: index)
             }
-            
-            HStack(spacing: 30) {
-                Button(action: {
-                    audioManager.playPrevious()
-                }) {
-                    Image(systemName: "backward.circle.fill")
-                        .font(.system(size: 44))
-                }
-                
-                Button(action: {
-                    if audioManager.isPlaying {
-                        audioManager.pause()
-                    } else {
-                        audioManager.play()
-                    }
-                }) {
-                    Image(systemName: audioManager.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 44))
-                }
-                
-                Button(action: {
-                    audioManager.playNext()
-                }) {
-                    Image(systemName: "forward.circle.fill")
-                        .font(.system(size: 44))
-                }
-            }
-            
-            VStack {
-                Slider(value: Binding(
-                    get: { audioManager.currentTime },
-                    set: { audioManager.seek(to: $0) }
-                ), in: 0...audioManager.duration)
-                
-                HStack {
-                    Text(formatTime(audioManager.currentTime))
-                        .font(.caption)
-                    Spacer()
-                    Text(formatTime(audioManager.duration))
-                        .font(.caption)
-                }
-            }
-        }
-        .padding()
-        .onAppear {
-            if !hasInitializedQueue {
-                if let index = allSongs.firstIndex(where: { $0.url == song.url }) {
-                    audioManager.setQueue(allSongs, startingAt: index)
-                    hasInitializedQueue = true
-                }
-            }
-        }
-    }
-    
-    private func formatTime(_ time: TimeInterval) -> String {
-        let minutes = Int(time) / 60
-        let seconds = Int(time) % 60
-        return String(format: "%d:%02d", minutes, seconds)
     }
 }
 
 struct MediaPlayerView: View {
-    @ObservedObject private var audioManager = AudioPlayerManager.shared
-    public let song: Song
-    public let allSongs: [Song]
-    @State private var hasInitializedQueue = false
-    
-    init(song: Song, allSongs: [Song]) {
-        self.song = song
-        self.allSongs = allSongs
-    }
-    
-    var body: some View {
-        VStack(spacing: 20) {
-            if let artworkData = audioManager.currentSong?.artwork {
-                let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artworkData)
-                if let uiImage = UIImage(contentsOfFile: artworkPath.path){
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 160, height: 160)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .padding()
-                }
-            } else {
-                Rectangle()
-                .fill(Color.gray.opacity(0.2))
-                .frame(width: 160, height: 160)
-                .cornerRadius(8)
-                .overlay(
-                    Image(systemName: "music.note")
-                        .font(.system(size: 40))
-                        .foregroundColor(.gray)
-                )
-            }
+    let song: Song
+    let allSongs: [Song]
 
-            VStack(spacing: 8) {
-                Text(audioManager.currentSong?.title ?? song.title)
-                    .font(.headline)
-                Text(audioManager.currentSong?.artist ?? song.artist)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
-            
-            HStack(spacing: 30) {
-                Button(action: {
-                    audioManager.playPrevious()
-                }) {
-                    Image(systemName: "backward.circle.fill")
-                        .font(.system(size: 44))
-                }
-                
-                Button(action: {
-                    if audioManager.isPlaying {
-                        audioManager.pause()
-                    } else {
-                        audioManager.play()
-                    }
-                }) {
-                    Image(systemName: audioManager.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 44))
-                }
-                
-                Button(action: {
-                    audioManager.playNext()
-                }) {
-                    Image(systemName: "forward.circle.fill")
-                        .font(.system(size: 44))
-                }
-            }
-            
-            VStack {
-                Slider(value: Binding(
-                    get: { audioManager.currentTime },
-                    set: { audioManager.seek(to: $0) }
-                ), in: 0...audioManager.duration)
-                
-                HStack {
-                    Text(formatTime(audioManager.currentTime))
-                        .font(.caption)
-                    Spacer()
-                    Text(formatTime(audioManager.duration))
-                        .font(.caption)
-                }
-            }
-        }
-        .padding()
-        .onAppear {
-        }
-    }
-    
-    private func formatTime(_ time: TimeInterval) -> String {
-        let minutes = Int(time) / 60
-        let seconds = Int(time) % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
+    var body: some View { LocalPlayerControls() }
 }
-
-#Preview {
-} 

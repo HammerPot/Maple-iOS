@@ -4,11 +4,11 @@ import AVFoundation
 struct Albums: View {
 	@State private var albums: [Album] = []
 	@State private var isLoading = true
-	
+
 	private let columns = [
 		GridItem(.adaptive(minimum: 160), spacing: 16)
 	]
-	
+
 	var body: some View {
 		ScrollView {
 			if isLoading {
@@ -25,9 +25,9 @@ struct Albums: View {
 						NavigationLink(destination: AlbumDetailView(album: album)) {
 							VStack(alignment: .leading) {
 								if let artwork = album.artwork {
-									let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artwork)
-                					if let uiImage = UIImage(contentsOfFile: artworkPath.path){
-										Image(uiImage: uiImage)
+									let artworkPath = MapleLibrary.directory.appendingPathComponent(artwork)
+									if let uiImage = PlatformImage(contentsOfFile: artworkPath.path){
+										Image(platformImage: uiImage)
 											.resizable()
 											.aspectRatio(contentMode: .fill)
 											.frame(width: 160, height: 160)
@@ -44,17 +44,17 @@ struct Albums: View {
 												.foregroundColor(.gray)
 										)
 								}
-								
+
 								Text(album.name)
 									.font(.headline)
 									.foregroundColor(.primary)
 									.lineLimit(1)
-								
+
 								Text(album.artist)
 									.font(.subheadline)
 									.foregroundColor(.secondary)
 									.lineLimit(1)
-								
+
 								Text("\(album.songs.count) tracks")
 									.font(.caption)
 									.foregroundColor(.secondary)
@@ -67,39 +67,25 @@ struct Albums: View {
 			}
 		}
 		.navigationTitle("Albums")
-		.onAppear {
-			loadAlbumsJ()
-		}
-	}
-	
-	private func loadAlbumsJ() {
-		isLoading = true 
-		Task {
-			albums = await loadAlbumsFromJson()
-		}
-		isLoading = false
+        .task { await reloadLibrary() }
+        .onReceive(NotificationCenter.default.publisher(for: MapleLibrary.changed)) { _ in
+            Task { await reloadLibrary() }
+        }
 	}
 
-	private func loadAlbums() {
-		isLoading = true
-		
-		Task {
-			let songs = await loadSongsFromJson()
-			let groupedAlbums = groupSongsByAlbum(songs)
-			
-			await MainActor.run {
-				albums = groupedAlbums
-				isLoading = false
-			}
-		}
-	}
+    private func reloadLibrary() async {
+        isLoading = true
+        albums = await loadAlbumsFromJson()
+        isLoading = false
+    }
+
 }
 
 struct AlbumDetailView: View {
 	let album: Album
-	
+
 	var sortedSongs: [Song] {
-		album.songs.sorted(by: { 
+		album.songs.sorted(by: {
 			if $0.discNumber != $1.discNumber {
 				return $0.discNumber < $1.discNumber
 			} else {
@@ -107,7 +93,7 @@ struct AlbumDetailView: View {
 			}
 		})
 	}
-	
+
 	var body: some View {
 		VStack {
 			List {
@@ -119,12 +105,12 @@ struct AlbumDetailView: View {
 									.font(.caption)
 									.foregroundColor(.secondary)
 									.frame(width: 25, alignment: .trailing)
-								
+
 								Text(song.title)
 									.font(.body)
-								
+
 								Spacer()
-								
+
 								Text("(Disc \(song.discNumber))")
 									.font(.caption)
 									.foregroundColor(.secondary)
@@ -134,23 +120,23 @@ struct AlbumDetailView: View {
 				} header: {
 						VStack(alignment: .leading, spacing: 8) {
 							if let artwork = album.artwork {
-								let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(artwork)
-								if let uiImage = UIImage(contentsOfFile: artworkPath.path){
-									Image(uiImage: uiImage)
+								let artworkPath = MapleLibrary.directory.appendingPathComponent(artwork)
+								if let uiImage = PlatformImage(contentsOfFile: artworkPath.path){
+									Image(platformImage: uiImage)
 										.resizable()
 										.aspectRatio(contentMode: .fit)
-										.frame(maxWidth: .infinity)
+										.frame(maxWidth: 320, maxHeight: 320)
 										.cornerRadius(8)
 										.padding(.horizontal)
 								}
 							}
-						
+
 							Text(album.name)
 								.font(.title)
 								.bold()
 								.foregroundColor(.primary)
 								.frame(maxWidth: .infinity, alignment: .center)
-							
+
 							Text(album.artist)
 								.font(.title2)
 								.foregroundColor(.secondary)
@@ -159,7 +145,7 @@ struct AlbumDetailView: View {
 						.frame(maxWidth: .infinity, alignment: .leading)
 						.padding(.horizontal)
 				}
-			} 
+			}
 		}
 	}
 }

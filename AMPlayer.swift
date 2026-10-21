@@ -1,614 +1,217 @@
+import Combine
 import Foundation
 import MusicKit
 import SwiftUI
-import MediaPlayer
-import MusadoraKit
-
-
 
 @MainActor
-class AMPlayer: ObservableObject {
+final class AMPlayer: ObservableObject {
     static let shared = AMPlayer()
-    @Published var hasInitializedQueue = false
-    @Published var albumArt: UIImage?
-    @Published var initialized = false
-    @Published var isPlaying = false
+    @Published private(set) var albumArt: PlatformImage?
+    @Published private(set) var initialized = false
+    @Published private(set) var isPlaying = false
+    @Published private(set) var title = "No song playing"
+    @Published private(set) var artist = "Unknown artist"
+    @Published private(set) var duration: TimeInterval = 0
+    @Published var errorMessage: String?
+
+    private var observations = Set<AnyCancellable>()
+    private var artworkTask: Task<Void, Never>?
+    private var queueTask: Task<Void, Never>?
+    private var artworkTrackID: MusicItemID?
     private var lastSnapshot: MaplePlaybackSnapshot?
 
-
-
-    init() {
-        setupNotifications()
-        getState()
-        getCurrentTime()
-        getNowPlayingItem()
-    }
-    
-    let player = MPMusicPlayerController.systemMusicPlayer
-    
-    private func setupNotifications() {
-        // Listen for playback state changes
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(playbackStateDidChange),
-            name: .MPMusicPlayerControllerPlaybackStateDidChange,
-            object: player
-        )
-        
-        // Listen for now playing item changes
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(nowPlayingItemDidChange),
-            name: .MPMusicPlayerControllerNowPlayingItemDidChange,
-            object: player
-        )
-        
-        // Start observing notifications
-        player.beginGeneratingPlaybackNotifications()
-    }
-    
-    @objc private func playbackStateDidChange() {
-        if player.playbackState == .playing {
-            initialized = true
-            isPlaying = true
-        }
-        else if player.playbackState == .stopped {
-            initialized = false
-            isPlaying = false
-        }
-        else if player.playbackState == .paused {
-            // initialized = true
-            isPlaying = false
-        }
-        else if player.playbackState == .interrupted {
-            initialized = false
-            isPlaying = false
-        }
-        else {
-            initialized = false
-            isPlaying = false
-        }
-        albumArt = UIImage(data: player.nowPlayingItem?.artwork?.image(at: CGSize(width: 800, height: 800))?.pngData() ?? UIImage(named: "Maple")?.pngData() ?? Data())
-        if isPlaying { AudioPlayerManager.shared.stop() }
-        reportPlayback(claim: isPlaying)
+    private init() {
+        MapleMusicPlayer.shared.state.objectWillChange.sink { [weak self] in
+            Task { @MainActor in self?.refresh() }
+        }.store(in: &observations)
+        MapleMusicPlayer.shared.queue.objectWillChange.sink { [weak self] in
+            Task { @MainActor in self?.refresh() }
+        }.store(in: &observations)
+        initialized = MapleMusicPlayer.shared.queue.currentEntry != nil
+        Task { @MainActor [weak self] in self?.refresh() }
     }
 
-    @objc private func nowPlayingItemDidChange() {
-        albumArt = player.nowPlayingItem?.artwork?.image(at: CGSize(width: 800, height: 800))
-        reportPlayback(claim: player.playbackState == .playing)
+    private func refresh() {
+        let wasPlaying = isPlaying
+        let wasInitialized = initialized
+        isPlaying = MapleMusicPlayer.shared.state.playbackStatus == .playing
+        initialized = isPlaying || (initialized && MapleMusicPlayer.shared.queue.currentEntry != nil)
+        if let entry = MapleMusicPlayer.shared.queue.currentEntry, case .song(let song) = entry.item {
+            title = song.title
+            artist = song.artistName
+            duration = song.duration ?? 0
+            if artworkTrackID != song.id {
+                artworkTrackID = song.id
+                albumArt = nil
+                artworkTask?.cancel()
+                if let url = song.artwork?.url(width: 640, height: 640) {
+                    artworkTask = Task { [weak self] in
+                        do {
+                            let (data, _) = try await URLSession.shared.data(from: url)
+                            try Task.checkCancellation()
+                            guard let self, self.initialized, self.artworkTrackID == song.id else { return }
+                            self.albumArt = PlatformImage(data: data)
+                            self.reportPlayback(claim: false)
+                        } catch { /* Artwork is optional; playback remains available. */ }
+                    }
+                }
+            }
+        } else {
+            title = "No song playing"
+            artist = "Unknown artist"
+            duration = 0
+            albumArt = nil
+            artworkTrackID = nil
+            artworkTask?.cancel()
+        }
+        if isPlaying && !wasPlaying { AudioPlayerManager.shared.stop() }
+        if initialized || wasInitialized { reportPlayback(claim: isPlaying && !wasPlaying) }
     }
 
     func playbackSnapshot() -> MaplePlaybackSnapshot? {
-        guard let song = player.nowPlayingItem else {
+        guard let entry = MapleMusicPlayer.shared.queue.currentEntry, case .song(let song) = entry.item else {
             guard let last = lastSnapshot else { return nil }
             return MaplePlaybackSnapshot(trackID: last.trackID, source: last.source, title: last.title,
                                          artist: last.artist, album: last.album, playing: false,
                                          position: 0, duration: last.duration)
         }
-        return MaplePlaybackSnapshot(trackID: String(song.persistentID), source: "iOS Apple Music",
-                                     title: song.title ?? "Unknown Song", artist: song.artist ?? "Unknown Artist",
-                                     album: song.albumTitle ?? "Unknown Album", playing: player.playbackState == .playing,
-                                     position: player.currentPlaybackTime, duration: song.playbackDuration,
-                                     playbackRate: Double(player.currentPlaybackRate))
+        return MaplePlaybackSnapshot(trackID: song.id.rawValue, source: "Apple Music", title: song.title,
+                                     artist: song.artistName, album: song.albumTitle ?? "Unknown Album",
+                                     playing: MapleMusicPlayer.shared.state.playbackStatus == .playing,
+                                     position: MapleMusicPlayer.shared.playbackTime, duration: song.duration ?? 0)
     }
 
     func reportPlayback(claim: Bool) {
         guard let snapshot = playbackSnapshot() else { return }
         lastSnapshot = snapshot
-        let artwork = albumArt?.jpegData(compressionQuality: 0.85) ?? UIImage(named: "Maple")?.jpegData(compressionQuality: 0.85)
+        let artwork = albumArt?.jpegData(compressionQuality: 0.85) ?? PlatformImage(named: "Maple")?.jpegData(compressionQuality: 0.85)
         AppSocketManager.shared.updatePlayback({ [weak self] in self?.playbackSnapshot() }, artwork: artwork, claim: claim)
     }
 
-    deinit {
-        // Stop observing notifications
-        player.endGeneratingPlaybackNotifications()
-        NotificationCenter.default.removeObserver(self)
-    }
-
-    func getState() -> MPMusicPlaybackState {
-        return player.playbackState
-    }
-
-    func getCurrentTime() -> TimeInterval {
-        return player.currentPlaybackTime
-    }
-    
-    func getNowPlayingItem() -> MPMediaItem? {
-        if let nowPlayingItem = player.nowPlayingItem {
-        } else {
-        }
-        return player.nowPlayingItem
-    }
-
-    func queue(song: MusicKit.Track, allSongs: [MusicKit.Track]) {
-        print("func queue called")
-        if let index = allSongs.firstIndex(where: { $0.url == song.url }) {
-            print("index: \(index)")
-            let reorderedSongs = Array(allSongs[index...] + allSongs[..<index])
-            print("reorderedSongs: \(reorderedSongs[0].title)")
-            let songIds = reorderedSongs.map { $0.title }
-            print("songIds: \(songIds[0])")
-            let query = MPMediaQuery.songs()
-            print("query is songs moment")
-            query.addFilterPredicate(
-                MPMediaPropertyPredicate(
-                    value: songIds,
-                    forProperty: MPMediaItemPropertyTitle,
-                    comparisonType: .equalTo
-                )
-            )
-            print("query.items?.count: \(query.items?.count ?? 0)")
-            let songsCollection = MPMediaItemCollection(items: query.items ?? [])
-            print("songsCollection count: \(songsCollection.items.count ?? 0)")
-            player.setQueue(with: songsCollection)
-            print("queue set")
-        }
-    }
-
     func queue2(song: MusicKit.Track, allSongs: [MusicKit.Track], type: String) {
-        if type == "song" {
-            Task {
-                do {
-                    // Insert at head to prioritize this song
-                    try await SystemMusicPlayer.shared.stop()
-                    try await SystemMusicPlayer.shared.queue.insert([song], position: .afterCurrentEntry)
-                    try await SystemMusicPlayer.shared.skipToNextEntry()
-                    try await SystemMusicPlayer.shared.play()
-                    hasInitializedQueue = true
-                } catch {
-                    print("Error: \(error)")
-                }
+        queueTask?.cancel()
+        queueTask = Task {
+            do {
+                let tracks = allSongs.contains(where: { $0.id == song.id }) ? allSongs : [song]
+                MapleMusicPlayer.shared.queue = .init(for: tracks, startingAt: song)
+                try Task.checkCancellation()
+                try await MapleMusicPlayer.shared.play()
+                try Task.checkCancellation()
+                refresh()
+                reportPlayback(claim: true)
+            } catch is CancellationError {
+            } catch {
+                errorMessage = error.localizedDescription
             }
         }
-        else if type == "album" {
-            // Make a new array from allSongs that starts with song, removing any items before song
-            // if let index = allSongs.firstIndex(where: { $0.id == song.id }) {
-                // let reorderedSongs = Array(allSongs[index...])
-                // Use reorderedSongs for queueing
-            Task {
-                do {
-                    try await SystemMusicPlayer.shared.stop()
-                    try await SystemMusicPlayer.shared.queue.insert(allSongs, position: .afterCurrentEntry)
-                    try await SystemMusicPlayer.shared.skipToNextEntry()
-                    
-                    // Wait for queue to be ready with boolean polling
-                    var queueReady = false
-                    var attempts = 0
-                    let maxAttempts = 500 // 5 seconds maximum wait time
-                    
-                    while !queueReady && attempts < maxAttempts {
-                        if let currentEntry = SystemMusicPlayer.shared.queue.currentEntry,
-                           case .song(let currentSong) = currentEntry.item,
-                           let firstSong = allSongs.first,
-                           currentSong.title == firstSong.title {
-                            queueReady = true
-                        } else {
-                            attempts += 1
-                            try await Task.sleep(nanoseconds: 10_000_000) // 10ms between checks
-                        }
-                    }
-                    
-                    if !queueReady {
-                        print("Queue failed to initialize after 5 seconds")
-                        return
-                    }
-                    
-                    // 5 seconds maximum wait time
+    }
 
-
-
-                    for i in 0..<allSongs.count {
-                        var placementReady = false
-                        var placementAttempts = 0
-                        let placementMaxAttempts = 200 // 2 seconds maximum wait time
-
-
-
-                        if let currentEntry = SystemMusicPlayer.shared.queue.currentEntry,
-                        case .song(let songCE) = currentEntry.item {
-                            print("songCE.title: \(songCE.title)")
-                            print("song.title: \(song.title)")
-                            if songCE.title != song.title {
-                                print("skipping to next entry")
-                                try await SystemMusicPlayer.shared.skipToNextEntry()
-                            }
-                            else if songCE.title == song.title {
-                                print("song found")
-                                break
-                            }
-                            if i == allSongs.count - 1 {
-                                print("song not found")
-                                break
-                            }
-                        }
-                        
-                        while !placementReady && placementAttempts < placementMaxAttempts {
-                            let curSong = allSongs[i+1]
-                            if let currentEntry = SystemMusicPlayer.shared.queue.currentEntry,
-                            case .song(let songCE) = currentEntry.item,
-                            curSong.title == songCE.title {
-                                placementReady = true
-                            }
-                            else {
-                                placementAttempts += 1
-                                try await Task.sleep(nanoseconds: 10_000_000) // 10ms between checks
-                            }
-                        }
-                    }
-                
-                    
-                    
-                    try await SystemMusicPlayer.shared.play()
-                    hasInitializedQueue = true
-                } catch {
-                    print("Error: \(error)")
-                }
+    func togglePlayback() async {
+        do {
+            if MapleMusicPlayer.shared.state.playbackStatus == .playing {
+                MapleMusicPlayer.shared.pause()
+            } else {
+                try await MapleMusicPlayer.shared.play()
             }
-        }
-        else if type == "playlist" {
-            Task {
-                do {
-                    try await SystemMusicPlayer.shared.stop()
-                    try await SystemMusicPlayer.shared.queue.insert(allSongs, position: .afterCurrentEntry)
-                    try await SystemMusicPlayer.shared.skipToNextEntry()
-                    
-                    // Wait for queue to be ready with boolean polling
-                    var queueReady = false
-                    var attempts = 0
-                    let maxAttempts = 500 // 5 seconds maximum wait time
-                    
-                    while !queueReady && attempts < maxAttempts {
-                        if let currentEntry = SystemMusicPlayer.shared.queue.currentEntry,
-                           case .song(let currentSong) = currentEntry.item,
-                           let firstSong = allSongs.first,
-                           currentSong.title == firstSong.title {
-                            queueReady = true
-                        } else {
-                            attempts += 1
-                            try await Task.sleep(nanoseconds: 10_000_000) // 10ms between checks
-                        }
-                    }
-                    
-                    if !queueReady {
-                        print("Queue failed to initialize after 5 seconds")
-                        return
-                    }
-                    
-                    // 5 seconds maximum wait time
+            refresh()
+        } catch { errorMessage = error.localizedDescription }
+    }
 
-
-
-                    for i in 0..<allSongs.count {
-                        var placementReady = false
-                        var placementAttempts = 0
-                        let placementMaxAttempts = 200 // 2 seconds maximum wait time
-
-
-
-                        if let currentEntry = SystemMusicPlayer.shared.queue.currentEntry,
-                        case .song(let songCE) = currentEntry.item {
-                            print("songCE.title: \(songCE.title)")
-                            print("song.title: \(song.title)")
-                            if songCE.title != song.title {
-                                print("skipping to next entry")
-                                try await SystemMusicPlayer.shared.skipToNextEntry()
-                            }
-                            else if songCE.title == song.title {
-                                print("song found")
-                                break
-                            }
-                            if i == allSongs.count - 1 {
-                                print("song not found")
-                                break
-                            }
-                        }
-                        
-                        while !placementReady && placementAttempts < placementMaxAttempts {
-                            let curSong = allSongs[i+1]
-                            if let currentEntry = SystemMusicPlayer.shared.queue.currentEntry,
-                            case .song(let songCE) = currentEntry.item,
-                            curSong.title == songCE.title {
-                                placementReady = true
-                            }
-                            else {
-                                placementAttempts += 1
-                                try await Task.sleep(nanoseconds: 10_000_000) // 10ms between checks
-                            }
-                        }
-                    }
-                
-                    
-                    
-                    try await SystemMusicPlayer.shared.play()
-                    hasInitializedQueue = true
-                } catch {
-                    print("Error: \(error)")
-                }
-            }
-        }
+    func skip(next: Bool) async {
+        do {
+            if next { try await MapleMusicPlayer.shared.skipToNextEntry() }
+            else { try await MapleMusicPlayer.shared.skipToPreviousEntry() }
+            refresh()
+            reportPlayback(claim: isPlaying)
+        } catch { errorMessage = error.localizedDescription }
     }
 
     func Stop() {
+        guard initialized || queueTask != nil else { return }
+        queueTask?.cancel()
+        queueTask = nil
+        artworkTask?.cancel()
+        MapleMusicPlayer.shared.stop()
+        isPlaying = false
         initialized = false
-        if player.playbackState == .playing {
-            SystemMusicPlayer.shared.stop()
-        }
-    }
-
-    func skipToNextEntry(songs: [MusicKit.Track]) async throws -> Bool {
-        try await SystemMusicPlayer.shared.queue.insert(songs, position: .afterCurrentEntry)
-        return true
+        reportPlayback(claim: false)
     }
 }
 
-
-
 struct AMPlayerView: View {
-    @StateObject private var player = AMPlayer.shared
     let song: MusicKit.Track
     let allSongs: [MusicKit.Track]
     let type: String
     @State private var hasInitializedQueue = false
-    @State private var isPlaying = false
-    @State private var currentTime: TimeInterval = 0
-    @State private var duration: TimeInterval = 0
-
-    init(song: MusicKit.Track, allSongs: [MusicKit.Track], type: String) {
-        self.song = song
-        self.allSongs = allSongs
-        self.type = type
-    }
 
     var body: some View {
-        VStack(spacing: 20) {
-            // Album artwork
-            if let artwork = player.albumArt {
-                Image(uiImage: artwork)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 160, height: 160)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .padding()
-
-            } else {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.2))
-                    .frame(width: 160, height: 160)
-                    .cornerRadius(8)
-                    .overlay(
-                        Image(systemName: "music.note")
-                            .font(.system(size: 40))
-                            .foregroundColor(.gray)
-                    )
+        AMPlayerView2()
+            .onAppear {
+                guard !hasInitializedQueue else { return }
+                hasInitializedQueue = true
+                AMPlayer.shared.queue2(song: song, allSongs: allSongs, type: type)
             }
-
-            // Song info
-            VStack(spacing: 8) {
-                if let currentEntry = SystemMusicPlayer.shared.queue.currentEntry,
-                   case .song(let song) = currentEntry.item {
-                    Text(song.title)
-                        .font(.headline)
-                    Text(song.artistName)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                } else {
-                    Text("No song playing")
-                        .font(.headline)
-                    Text("Unknown artist")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-            }
-            
-            // Playback controls
-            HStack(spacing: 30) {
-                Button(action: {
-                    Task {
-                        try? await SystemMusicPlayer.shared.skipToPreviousEntry()
-                    }
-                }) {
-                    Image(systemName: "backward.circle.fill")
-                        .font(.system(size: 44))
-                }
-                
-                Button(action: {
-                    Task {
-                        if isPlaying {
-                            SystemMusicPlayer.shared.pause()
-                        } else {
-                            try? await SystemMusicPlayer.shared.play()
-                        }
-                    }
-                }) {
-                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 44))
-                }
-                
-                Button(action: {
-                    Task {
-                        try? await SystemMusicPlayer.shared.skipToNextEntry()
-                    }
-                }) {
-                    Image(systemName: "forward.circle.fill")
-                        .font(.system(size: 44))
-                }
-            }
-            
-            // Progress slider
-            VStack {
-                Slider(value: Binding(
-                    get: { currentTime },
-                    set: { newTime in
-                        SystemMusicPlayer.shared.playbackTime = newTime
-                        player.reportPlayback(claim: true)
-                    }
-                ), in: 0...duration)
-                
-                HStack {
-                    Text(formatTime(currentTime))
-                        .font(.caption)
-                    Spacer()
-                    Text(formatTime(duration))
-                        .font(.caption)
-                }
-            }
-        }
-        .padding()
-        .onAppear {
-            if !hasInitializedQueue {
-                Task {
-                    player.queue2(song: song, allSongs: allSongs, type: type)
-                    hasInitializedQueue = true
-                }
-            }
-            updatePlaybackState()
-        }
-        .onReceive(Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()) { _ in
-            updatePlaybackState()
-        }
-    }
-    
-    private func updatePlaybackState() {
-        isPlaying = SystemMusicPlayer.shared.state.playbackStatus == .playing
-        currentTime = SystemMusicPlayer.shared.playbackTime
-        
-        // Extract the Song object from the enum case
-        if let currentEntry = SystemMusicPlayer.shared.queue.currentEntry,
-           case .song(let song) = currentEntry.item {
-            duration = song.duration ?? 0
-        }
-    }
-    
-    private func formatTime(_ time: TimeInterval) -> String {
-        let minutes = Int(time) / 60
-        let seconds = Int(time) % 60
-        return String(format: "%d:%02d", minutes, seconds)
     }
 }
 
 struct AMPlayerView2: View {
-    @StateObject private var player = AMPlayer.shared
-    @State private var isPlaying = false
+    @ObservedObject private var player = AMPlayer.shared
     @State private var currentTime: TimeInterval = 0
-    @State private var duration: TimeInterval = 0
 
     var body: some View {
-        VStack(spacing: 20) {
-            // Album artwork
-            if let artwork = player.albumArt {
-                Image(uiImage: artwork)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 160, height: 160)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .padding()
-
-            } else {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.2))
-                    .frame(width: 160, height: 160)
-                    .cornerRadius(8)
-                    .overlay(
-                        Image(systemName: "music.note")
-                            .font(.system(size: 40))
-                            .foregroundColor(.gray)
-                    )
-            }
-
-            // Song info
-            VStack(spacing: 8) {
-                if let currentEntry = SystemMusicPlayer.shared.queue.currentEntry,
-                   case .song(let song) = currentEntry.item {
-                    Text(song.title)
-                        .font(.headline)
-                    Text(song.artistName)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                } else {
-                    Text("No song playing")
-                        .font(.headline)
-                    Text("Unknown artist")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-            }
-            
-            // Playback controls
-            HStack(spacing: 30) {
-                Button(action: {
-                    Task {
-                        try? await SystemMusicPlayer.shared.skipToPreviousEntry()
+        ScrollView {
+            VStack(spacing: 20) {
+                Group {
+                    if let artwork = player.albumArt {
+                        Image(platformImage: artwork).resizable()
+                    } else {
+                        Image("Maple").resizable()
                     }
-                }) {
-                    Image(systemName: "backward.circle.fill")
-                        .font(.system(size: 44))
                 }
-                
-                Button(action: {
-                    Task {
-                        if isPlaying {
-                            SystemMusicPlayer.shared.pause()
-                        } else {
-                            try? await SystemMusicPlayer.shared.play()
-                        }
+                .scaledToFit()
+                .frame(maxWidth: 240, maxHeight: 240)
+                .clipShape(.rect(cornerRadius: 8))
+                .accessibilityHidden(true)
+                VStack(spacing: 8) {
+                    Text(player.title).font(.headline)
+                    Text(player.artist).font(.subheadline).foregroundStyle(.secondary)
+                }
+                HStack(spacing: 24) {
+                    Button("Previous Track", systemImage: "backward.fill") {
+                        Task { await player.skip(next: false) }
                     }
-                }) {
-                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 44))
-                }
-                
-                Button(action: {
-                    Task {
-                        try? await SystemMusicPlayer.shared.skipToNextEntry()
+                    Button(player.isPlaying ? "Pause" : "Play", systemImage: player.isPlaying ? "pause.fill" : "play.fill") {
+                        Task { await player.togglePlayback() }
                     }
-                }) {
-                    Image(systemName: "forward.circle.fill")
-                        .font(.system(size: 44))
+                    Button("Next Track", systemImage: "forward.fill") {
+                        Task { await player.skip(next: true) }
+                    }
                 }
-            }
-            
-            // Progress slider
-            VStack {
-                Slider(value: Binding(
-                    get: { currentTime },
-                    set: { newTime in
-                        SystemMusicPlayer.shared.playbackTime = newTime
+                .labelStyle(.iconOnly)
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(!player.initialized)
+                VStack {
+                    Slider(value: Binding(get: { min(max(currentTime, 0), max(player.duration, 1)) }, set: { newTime in
+                        currentTime = newTime
+                        MapleMusicPlayer.shared.playbackTime = newTime
                         player.reportPlayback(claim: true)
-                    }
-                ), in: 0...duration)
-                
-                HStack {
-                    Text(formatTime(currentTime))
-                        .font(.caption)
-                    Spacer()
-                    Text(formatTime(duration))
-                        .font(.caption)
+                    }), in: 0...max(player.duration, 1))
+                    .accessibilityLabel("Playback position")
+                    .disabled(player.duration <= 0)
+                    HStack {
+                        Text(Duration.seconds(max(currentTime, 0)), format: .time(pattern: .minuteSecond))
+                        Spacer()
+                        Text(Duration.seconds(max(player.duration, 0)), format: .time(pattern: .minuteSecond))
+                    }.font(.caption).monospacedDigit()
                 }
             }
+            .padding()
+            .frame(maxWidth: 520)
+            .frame(maxWidth: .infinity)
         }
-        .padding()
-        .onAppear {
-            updatePlaybackState()
+        .onReceive(Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()) { _ in
+            currentTime = MapleMusicPlayer.shared.playbackTime
         }
-        .onReceive(Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()) { _ in
-            updatePlaybackState()
-        }
-    }
-    
-    private func updatePlaybackState() {
-        isPlaying = SystemMusicPlayer.shared.state.playbackStatus == .playing
-        currentTime = SystemMusicPlayer.shared.playbackTime
-        
-        // Extract the Song object from the enum case
-        if let currentEntry = SystemMusicPlayer.shared.queue.currentEntry,
-           case .song(let song) = currentEntry.item {
-            duration = song.duration ?? 0
-        }
-    }
-    
-    private func formatTime(_ time: TimeInterval) -> String {
-        let minutes = Int(time) / 60
-        let seconds = Int(time) % 60
-        return String(format: "%d:%02d", minutes, seconds)
     }
 }

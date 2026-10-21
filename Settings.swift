@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct Settings: View {
+    @ObservedObject private var importer = MusicLibraryImporter.shared
     @State private var webhookURL = UserDefaults.standard.string(forKey: "webhookURL") ?? ""
     @State private var mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC")
     @State private var socketIO = UserDefaults.standard.bool(forKey: "socketIO")
@@ -33,12 +34,12 @@ struct Settings: View {
             Section{
                 VStack{
                     Text("Webhook URL")
-                    TextField(webhookURL == "" ? "https://discord.com/api/webhooks/..." : webhookURL, text: $webhookURL)
+                    TextField("https://discord.com/api/webhooks/...", text: $webhookURL)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                         .padding()
                         .disableAutocorrection(true)
-                        .autocapitalization(.none)
-                        .onSubmit{
+                        .mapleTextInput()
+                        .onChange(of: webhookURL) {
                             UserDefaults.standard.set(webhookURL, forKey: "webhookURL")
                         }
                         
@@ -70,6 +71,7 @@ struct Settings: View {
                     Text("Clear Documents")
                     .foregroundStyle(.red)
                 }
+                .disabled(importer.isImporting)
                 .alert("Warning!", isPresented: $showingAlert, actions: { 
                         Button(role: .destructive) {
                             clearDocumentsDirectory()
@@ -80,27 +82,15 @@ struct Settings: View {
                         Button("Cancel", role: .cancel) {
                         }
                 }, message: {
-                    Text("This will delete all data saved in the Maple directory. This is irreversible! (This will not log you out of Maple nor will it change any settings)")
+                    Text("This will delete all imported music and library artwork. This is irreversible! (This will not log you out of Maple nor will it change any settings)")
                 })
             } header: {
                 Text("File Management")
             }
             Section{
-                Button(action: {
-                    UIApplication.shared.open(URL(string: "https://github.com/HammerPot/Maple-iOS")!, options: [:], completionHandler: nil)
-                }) {
-                    Text("Open the Maple-iOS GitHub Repository")
-                }
-                Button(action: {
-                    UIApplication.shared.open(URL(string: "https://github.com/cattn/Maple")!, options: [:], completionHandler: nil)
-                }) {
-                    Text("Open the Maple GitHub Repository")
-                }
-                Button(action: {
-                    UIApplication.shared.open(URL(string: "https://maple.music")!, options: [:], completionHandler: nil)
-                }) {
-                    Text("Open the Maple website")
-                }
+                Link("Open the Maple-iOS GitHub Repository", destination: URL(string: "https://github.com/HammerPot/Maple-iOS")!)
+                Link("Open the Maple GitHub Repository", destination: URL(string: "https://github.com/cattn/Maple")!)
+                Link("Open the Maple website", destination: URL(string: "https://maple.music")!)
             } header: {
                 Text("External Links")
             } footer: {

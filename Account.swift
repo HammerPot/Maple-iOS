@@ -9,9 +9,7 @@ import SwiftUI
 import Foundation
 import SwiftyJSON
 import Alamofire
-import SwiftVibrantium
 import PhotosUI
-import SwiftUISnackbar
 
 struct CookieData: Codable {
     let name: String
@@ -87,10 +85,10 @@ func setAlbumArt(serverID: String, albumArt: Data, artworkRequestId: String? = n
 func sendWebhook(song: Song, serverID: String) async throws -> String {
     let webhookURL = UserDefaults.standard.string(forKey: "webhookURL") ?? ""
     
-    var uiImage: UIImage? = UIImage(named: "Maple")
+    var uiImage: PlatformImage? = PlatformImage(named: "Maple")
     var artwork: Data? = uiImage?.pngData()
-    let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(song.artwork ?? "images/maple.image")
-    var songArtData  = UIImage(contentsOfFile: artworkPath.path)?.pngData()
+    let artworkPath = MapleLibrary.directory.appendingPathComponent(song.artwork ?? "images/maple.image")
+    var songArtData  = PlatformImage(contentsOfFile: artworkPath.path)?.pngData()
     if let songArtwork = songArtData {
         artwork = songArtwork
     }
@@ -284,12 +282,13 @@ struct Login: View {
         if isLoggedIn {
             LoggedIn(isLoggedIn: $isLoggedIn)
         } else {
+            ScrollView {
             VStack {
                 TextField("Username", text: $username)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .padding()
                     .disableAutocorrection(true)
-                    .autocapitalization(.none)
+                    .mapleTextInput()
                 
                 SecureField("Password", text: $password)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -337,6 +336,9 @@ struct Login: View {
                 }
             }
             .padding()
+            .frame(maxWidth: 520)
+            .frame(maxWidth: .infinity)
+            }
             .snackbarView(snackbar: $snackbarSuccess)
             .snackbarView(snackbar: $snackbarError)
             // .snackbar(isShowing: $showSuccessMessage, title: "Success", text: successMessage, style: .custom(.green))
@@ -418,6 +420,7 @@ struct LoggedIn: View {
     @State private var selectedImageData: Data?
     @State private var showNameSheet = false
     @State private var newName: String = ""
+    @State private var nameSaveError: String?
     @State private var showingDeleteAlert = false
 
     @State private var snackbar: Snackbar?
@@ -430,25 +433,25 @@ struct LoggedIn: View {
                 Text(error)
                     .foregroundColor(.red)
             } else {
-                if let pfp = pfp, let uiImage = UIImage(data: pfp) {
-                    Image(uiImage: uiImage)
+                if let pfp = pfp, let uiImage = PlatformImage(data: pfp) {
+                    Image(platformImage: uiImage)
                         .resizable()
                         .scaledToFit()
                         .frame(width: 100, height: 100)
                         .clipShape(Circle())
                 }
                 Button("\(username)"){
-                    UIPasteboard.general.string = username
+                    copyToClipboard(username)
                 }
                     .font(.title)
                     .foregroundColor(.primary)
                 Button("\(name)"){
-                    UIPasteboard.general.string = name
+                    copyToClipboard(name)
                 }
                     .font(.title2)
                     .foregroundColor(.primary)
                 Button("\(id)"){
-                    UIPasteboard.general.string = id
+                    copyToClipboard(id)
                 }
                     .font(.subheadline)
                     .foregroundColor(.primary)
@@ -467,21 +470,28 @@ struct LoggedIn: View {
         }
         .onChange(of: selectedItem) {
             Task {
-                if let data = try? await selectedItem?.loadTransferable(type: Data.self) {
-                    selectedImageData = data
+                do {
+                    guard let data = try await selectedItem?.loadTransferable(type: Data.self),
+                          let image = PlatformImage(data: data),
+                          let jpeg = image.jpegData(compressionQuality: 0.85) else {
+                        snackbar = Snackbar(title: "Profile picture", message: "The selected image could not be opened.")
+                        return
+                    }
+                    selectedImageData = jpeg
                     await uploadProfilePicture()
-                    snackbar = Snackbar(title: "Success", message: "Profile picture uploaded successfully!")
+                } catch {
+                    snackbar = Snackbar(title: "Profile picture", message: error.localizedDescription)
                 }
             }
         }
         .photosPicker(isPresented: $showPhotoPicker, selection: $selectedItem, matching: .images)
         .sheet(isPresented: $showNameSheet) {
-            ChangeNameSheet(newName: $newName, currentName: name, onSave: {
+            ChangeNameSheet(newName: $newName, currentName: name, isSaving: isLoading, errorMessage: nameSaveError, onSave: {
                 Task {
                     await updateName()
-                    snackbar = Snackbar(title: "Success", message: "Name updated successfully!")
                 }
             })
+            .frame(idealWidth: 480, idealHeight: 300)
         }
         .toolbar {
             ToolbarItem{
@@ -491,6 +501,7 @@ struct LoggedIn: View {
                     })
                     Button("Change Your Name", action: {
                         newName = name
+                        nameSaveError = nil
                         showNameSheet = true
                     })
                     Button(role: .destructive) {
@@ -579,6 +590,7 @@ struct LoggedIn: View {
         do {
             _ = try await uploadPfp(serverID: serverID, pfp: imageData)
             await fetchUserData()
+            snackbar = Snackbar(title: "Success", message: "Profile picture uploaded successfully!")
         } catch {
             self.error = "Error uploading pfp: \(error.localizedDescription)"
         }
@@ -586,6 +598,7 @@ struct LoggedIn: View {
     }
     
     private func updateName() async {
+        nameSaveError = nil
         guard let serverID = UserDefaults.standard.string(forKey: "savedServerID"), !serverID.isEmpty else {
             error = "No server ID found"
             return
@@ -600,8 +613,9 @@ struct LoggedIn: View {
             _ = try await uploadName(serverID: serverID, name: newName)
             await fetchUserData()
             showNameSheet = false
+            snackbar = Snackbar(title: "Success", message: "Name updated successfully!")
         } catch {
-            self.error = "Error updating name: \(error.localizedDescription)"
+            nameSaveError = "Error updating name: \(error.localizedDescription)"
         }
         isLoading = false
     }
@@ -610,11 +624,14 @@ struct LoggedIn: View {
 struct ChangeNameSheet: View {
     @Binding var newName: String
     let currentName: String
+    let isSaving: Bool
+    let errorMessage: String?
     let onSave: () -> Void
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
+            ScrollView {
             VStack(spacing: 20) {
                 Text("Change Your Name")
                     .font(.title2)
@@ -623,6 +640,9 @@ struct ChangeNameSheet: View {
                 Text("Current name: \(currentName)")
                     .foregroundColor(.secondary)
                 
+                if let errorMessage {
+                    Text(errorMessage).foregroundStyle(.red)
+                }
                 TextField("Enter new name", text: $newName)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .padding(.horizontal)
@@ -630,16 +650,18 @@ struct ChangeNameSheet: View {
                 Spacer()
             }
             .padding()
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                leading: Button("Cancel") {
-                    dismiss()
-                },
-                trailing: Button("Save") {
-                    onSave()
+            }
+            .mapleInlineTitle()
+            .navigationTitle("Change Your Name")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 }
-                .disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            )
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save", action: onSave)
+                        .disabled(isSaving || newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
         }
     }
 }
@@ -654,7 +676,8 @@ struct RegisterSheet: View {
     let onSuccess: (String, String) -> Void
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
+            ScrollView {
             VStack() {
                 Text("Create Account")
                     .font(.title2)
@@ -663,7 +686,7 @@ struct RegisterSheet: View {
                 TextField("Username", text: $username)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .disableAutocorrection(true)
-                    .autocapitalization(.none)
+                    .mapleTextInput()
 
                 SecureField("Password", text: $password)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -691,11 +714,12 @@ struct RegisterSheet: View {
                     .foregroundColor(.secondary)
             }
             .padding()
+            }
             .navigationTitle("Register")
-            .navigationBarTitleDisplayMode(.inline)
+            .mapleInlineTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if isLoading {
@@ -707,6 +731,7 @@ struct RegisterSheet: View {
             }
         }
         .snackbarView(snackbar: $snackbar)
+        .frame(idealWidth: 480, idealHeight: 560)
     }
 
     private func createAccount() async {
@@ -809,6 +834,7 @@ struct FriendList: View {
                 HStack {
                     Text("Add Friend:")
                     TextField("username", text: $fUsername)
+                    .mapleTextInput()
                     .onSubmit {
                     Task {
                         await addF(username: fUsername)
@@ -823,8 +849,8 @@ struct FriendList: View {
             Section{
                 ForEach(requests) { friend in
                     HStack {
-                        if let pfp = friend.pfp, let uiImage = UIImage(data: pfp) {
-                            Image(uiImage: uiImage)
+                        if let pfp = friend.pfp, let uiImage = PlatformImage(data: pfp) {
+                            Image(platformImage: uiImage)
                                 .resizable()
                                 .scaledToFit()
                                 .frame(width: 40, height: 40)
@@ -854,6 +880,8 @@ struct FriendList: View {
                                 .frame(width: 25, height: 25)
                             }
                             .buttonStyle(.borderless)
+                            .accessibilityLabel("Accept friend request from \(friend.username)")
+                            .frame(minWidth: 44, minHeight: 44)
                         Button(action: {
                             Task {
                                 await rejectF(id: friend.id)
@@ -866,6 +894,8 @@ struct FriendList: View {
                                 .frame(width: 25, height: 25)
                             }
                             .buttonStyle(.borderless)
+                            .accessibilityLabel("Reject friend request from \(friend.username)")
+                            .frame(minWidth: 44, minHeight: 44)
                     }
                     .padding(.vertical, 4)
                 }
@@ -875,8 +905,8 @@ struct FriendList: View {
             Section{
                 ForEach(friends) { friend in
                     HStack {
-                        if let pfp = friend.pfp, let uiImage = UIImage(data: pfp) {
-                            Image(uiImage: uiImage)
+                        if let pfp = friend.pfp, let uiImage = PlatformImage(data: pfp) {
+                            Image(platformImage: uiImage)
                                 .resizable()
                                 .scaledToFit()
                                 .frame(width: 40, height: 40)
@@ -896,6 +926,14 @@ struct FriendList: View {
                             
                     }
                     .padding(.vertical, 4)
+                    .contextMenu {
+                        Button("Remove Friend", systemImage: "person.badge.minus", role: .destructive) {
+                            Task { await removeF(id: friend.id); await friendMoment() }
+                        }
+                    }
+                    .accessibilityAction(named: "Remove Friend") {
+                        Task { await removeF(id: friend.id); await friendMoment() }
+                    }
                 }
                 .onDelete(perform: delete)
             } header: {

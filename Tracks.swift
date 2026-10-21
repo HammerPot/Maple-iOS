@@ -24,18 +24,17 @@ struct Tracks: View {
             }
         }
         .navigationTitle("Tracks")
-		.onAppear {
-            Task{
-                loadSongsJ()
-            }
-		}
+        .task { await reloadLibrary() }
+        .onReceive(NotificationCenter.default.publisher(for: MapleLibrary.changed)) { _ in
+            Task { await reloadLibrary() }
+        }
 	}
 
-    private func loadSongsJ(){
+
+    private func reloadLibrary() async {
         isLoading = true
-        Task {
-            songs = await loadSongsFromJson()
-        }
+        songs = await loadSongsFromJson()
         isLoading = false
     }
+
 }

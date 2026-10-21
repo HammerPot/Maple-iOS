@@ -42,16 +42,16 @@ struct Search: View {
 						NavigationLink(destination: result.destination) {
 							HStack {
 								if let art = result.song?.artwork {
-									if let uiImage = UIImage(contentsOfFile: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(art).path) {
-										Image(uiImage: uiImage)
+									if let uiImage = PlatformImage(contentsOfFile: MapleLibrary.directory.appendingPathComponent(art).path) {
+										Image(platformImage: uiImage)
 											.resizable()
 											.scaledToFit()
 											.frame(width: 50, height: 50)
 									}
 								}
 								else if let art = result.album?.artwork {
-									if let uiImage = UIImage(contentsOfFile: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(art).path) {
-										Image(uiImage: uiImage)
+									if let uiImage = PlatformImage(contentsOfFile: MapleLibrary.directory.appendingPathComponent(art).path) {
+										Image(platformImage: uiImage)
 											.resizable()
 											.scaledToFit()
 											.frame(width: 50, height: 50)
@@ -70,8 +70,14 @@ struct Search: View {
 			}
 		}
 		.searchable(text: $searchText)
-		.onAppear {
-			Task{
+        .navigationTitle("Search")
+        .task { await reloadLibrary() }
+        .onReceive(NotificationCenter.default.publisher(for: MapleLibrary.changed)) { _ in
+            Task { await reloadLibrary() }
+        }
+	}
+
+    private func reloadLibrary() async {
 				sResults = []
 				arResults = []
 				alResults = []
@@ -79,7 +85,7 @@ struct Search: View {
 				songs = await loadSongsFromJson()
 				albums = await loadAlbumsFromJson()
 				artists = await loadArtistsFromJson()
-				
+
 				for song in songs {
 					sResults.append(Result(name: song.title, type: "song", destination: AnyView(AudioPlayerView(song: song, allSongs: [song])), song: song))
 				}
@@ -89,18 +95,16 @@ struct Search: View {
 				for artist in artists {
 					arResults.append(Result(name: artist.name, type: "artist", destination: AnyView(ArtistDetailView(artist: artist)), artist: artist))
 				}
-				
+
 				results = sResults + arResults + alResults
-			
-			}
-		}
-	}
-	
+
+    }
+
 	var filteredResults: [Result] {
 		if searchText.isEmpty {
 			return []
 		} else {
-			return results.filter { result in 
+			return results.filter { result in
 				result.name.lowercased().contains(searchText.lowercased())
 			}
 		}

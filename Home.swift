@@ -52,7 +52,7 @@ struct Playlist: Identifiable, Codable {
 }
 
 func loadLocalFiles() -> [URL] {
-	let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+	let documentsDirectory = MapleLibrary.directory
 	do {
 		let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsDirectory.appendingPathComponent("tracks"),
 																includingPropertiesForKeys: [.fileSizeKey])
@@ -68,7 +68,7 @@ func loadLocalFiles() -> [URL] {
 }
 
 func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: String, album: String, year: Int, genre: String, duration: Double, artwork: String, trackNumber: Int, discNumber: Int, ext: String) {
-	let documentDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+	let documentDirectory = MapleLibrary.directory
 
 	let asset = AVURLAsset(url: url)
 	var title = url.lastPathComponent
@@ -78,7 +78,7 @@ func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: S
 	var genre = "Unknown Genre"
 	var duration: Double = 0
 	var artwork = ""
-	var _artwork: Data? = UIImage(named: "Maple")?.pngData()
+	var _artwork: Data? = PlatformImage(named: "Maple")?.pngData()
 	var trackNumber = 0
 	var discNumber = 0
 	var ext = "unknown"
@@ -123,7 +123,7 @@ func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: S
 			if identifierKey.contains("tpa"){
 				if let value = try await item.load(.stringValue) {
 						let components = value.split(separator: "/")
-						if let discNum = Int(components[0]) {
+						if let component = components.first, let discNum = Int(component) {
 							discNumber = discNum
 						}
 				}
@@ -131,7 +131,7 @@ func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: S
 			if identifierKey.contains("trk"){
 					if let value = try await item.load(.stringValue) {
 						let components = value.split(separator: "/")
-						if let trackNum = Int(components[0]) {
+						if let component = components.first, let trackNum = Int(component) {
 							trackNumber = trackNum
 						}
 					}
@@ -150,7 +150,7 @@ func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: S
 				if identifierString.contains("track") || identifierString.contains("trck"){
 					if let value = try await item.load(.stringValue) {
 						let components = value.split(separator: "/")
-						if let trackNum = Int(components[0]) {
+						if let component = components.first, let trackNum = Int(component) {
 							trackNumber = trackNum
 						}
 					}
@@ -158,6 +158,7 @@ func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: S
 				if identifierString.contains("trkn") {
 						if let value = try await item.load(.dataValue) {
 						let bytes = [UInt8](value)
+                            guard bytes.count >= 4 else { continue }
 						for byte in bytes {
 						}
 						let trackNum = ((Int)(bytes[2]) << 8) | (Int)(bytes[3])
@@ -168,6 +169,7 @@ func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: S
 				if identifierString.contains("disk") {
 					if let value = try await item.load(.dataValue) {
 						let bytes = [UInt8](value)
+                            guard bytes.count >= 4 else { continue }
 						for byte in bytes {
 						}
 						let discNum = ((Int)(bytes[2]) << 8) | (Int)(bytes[3])
@@ -199,7 +201,7 @@ func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: S
 	}
 	do {
 		let durPlayer = try AVAudioPlayer(contentsOf: url)
-			duration = durPlayer.duration ?? 0
+			duration = durPlayer.duration
 			durPlayer.stop()
 		
 	} catch {
@@ -212,7 +214,7 @@ func extractMetadata(from url: URL, id: UUID) async -> (title: String, artist: S
 	do {
 		if !FileManager.default.fileExists(atPath: imagePath.path){
 			try FileManager.default.createDirectory(at: imagePath, withIntermediateDirectories: true, attributes: nil)
-			try UIImage(named: "Maple")?.pngData()?.write(to: imagePath.appendingPathComponent("maple.image"))
+			try PlatformImage(named: "Maple")?.pngData()?.write(to: imagePath.appendingPathComponent("maple.image"))
 		}
 		try _artwork?.write(to: artworkPath)
 	} catch{
@@ -248,7 +250,7 @@ func loadSongs(from urls: [URL]) async -> [Song] {
 		let jsonData = try jsonEncoder.encode(songs)
 		let jsonString = String(data: jsonData, encoding: .utf8)
 
-		let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+		let documentsDirectory = MapleLibrary.directory
 		let songFolder = documentsDirectory.appendingPathComponent("tracks")
 		let jsonURL = songFolder.appendingPathComponent("tracks.json")
 		try jsonData.write(to: jsonURL)
@@ -261,7 +263,7 @@ func loadSongs(from urls: [URL]) async -> [Song] {
 
 
 func loadSongsFromJson() async -> [Song] {
-	let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+	let documentsDirectory = MapleLibrary.directory
 	let songFolder = documentsDirectory.appendingPathComponent("tracks")
 	let jsonURL = songFolder.appendingPathComponent("tracks.json")
 	do {
@@ -305,7 +307,7 @@ func groupSongsByAlbum(_ songs: [Song]) -> [Album] {
 
 
 func loadAlbumsFromJson() async -> [Album]  {
-	let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+	let documentsDirectory = MapleLibrary.directory
 	let albumFolder = documentsDirectory.appendingPathComponent("albums")
 	let jsonURL = albumFolder.appendingPathComponent("albums.json")
 	do {
@@ -325,7 +327,7 @@ func loadAlbumsFromJson() async -> [Album]  {
 }
 
 func loadArtistsFromJson() async -> [Artist] {
-	let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+	let documentsDirectory = MapleLibrary.directory
 	let artistFolder = documentsDirectory.appendingPathComponent("artists")
 	let jsonURL = artistFolder.appendingPathComponent("artists.json")
 	do {
@@ -345,7 +347,7 @@ func loadArtistsFromJson() async -> [Artist] {
 }
 
 func loadArtist(song: Song) -> [Artist] {
-	let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+	let documentsDirectory = MapleLibrary.directory
 	let artistsFolder = documentsDirectory.appendingPathComponent("artists")
 	do {
 		if !FileManager.default.fileExists(atPath: artistsFolder.path) {
@@ -411,7 +413,7 @@ func loadArtist(song: Song) -> [Artist] {
 }
 
 func loadAlbums(song: Song)  -> [Album] {
-	let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+	let documentsDirectory = MapleLibrary.directory
 	let albumsFolder = documentsDirectory.appendingPathComponent("albums")
 	do {
 		if !FileManager.default.fileExists(atPath: albumsFolder.path) {
@@ -495,55 +497,28 @@ func groupSongsByArtist(_ songs: [Song]) -> [Artist] {
 }
 
 struct Home: View {
-	@ObservedObject private var manager = AppleMusicManager.shared
-	@State private var localFiles: [URL] = []
-	var body: some View {
-		NavigationStack {
-			ZStack(alignment: .bottomTrailing) {
-				List {
-					Section() {
-						NavigationLink("Tracks", value: "Tracks")
-						//    NavigationLink("Playlists", value: "Playlists")
-						NavigationLink("Albums", value: "Albums")
-						NavigationLink("Artists", value: "Artists")
-					}
-					if manager.authStatus == .authorized {
-						Section() {
-							NavigationLink("Apple Music", value: "Apple Music")
-						}
-					}
-				}
-				.navigationTitle("Home")
-				.navigationDestination(for: String.self) { content in
-					switch content {
-					case "Tracks":
-						Tracks()
-					case "Playlists":
-						Playlists()
-					case "Albums":
-						Albums()
-					case "Artists":
-						Artists()
-					case "Apple Music":
-						AppleMusic()
-					default:
-						Text("Invalid content")
-					}
-				}
-				MusicButtonPlus()
-				.padding()
-			}
-		}
-		.onAppear {
+    @ObservedObject private var manager = AppleMusicManager.shared
 
-		}
-	}
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Library") {
+                    NavigationLink { Tracks() } label: { Label("Tracks", systemImage: "music.note.list") }
+                    NavigationLink { Albums() } label: { Label("Albums", systemImage: "square.stack") }
+                    NavigationLink { Artists() } label: { Label("Artists", systemImage: "person.2") }
+                }
+                if manager.authStatus == .authorized {
+                    Section {
+                        NavigationLink { AppleMusic() } label: { Label("Apple Music", systemImage: "music.note") }
+                    }
+                }
+            }
+            .navigationTitle("Home")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) { MusicButtonPlus() }
+            }
+        }
+    }
 }
 
-
-
-
-
-#Preview {
-	Home()
-}
+#Preview { Home() }
