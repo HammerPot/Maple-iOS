@@ -1,3 +1,10 @@
 .qodo
 */MapleDSm*/*
 */MapleExports/*
+
+# Opt-in live API test credentials (test resources only)
+MapleTests/MapleLiveTestCredentials.json
+MapleUITests/MapleLiveTestCredentials.json
+
+# Local simulator screenshots and test attachments
+sweetpad-shots/

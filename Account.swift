@@ -19,6 +19,7 @@ struct CookieData: Codable {
     let domain: String
     let path: String
     let expiresDate: Date?
+    var isSecure: Bool? = nil
 }
 
 struct LoginResponse: Codable {
@@ -54,204 +55,33 @@ struct NowPlaying: Identifiable {
 // MARK: - API Functions
 
 func login(username: String, password: String) async throws -> LoginResponse {
-    guard let url = URL(string: "https://api.maple.music/login") else {
-        throw URLError(.badURL)
-    }
-    
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-    
-    let parameters: [String: Any] = [
-        "username": username,
-        "password": password
-    ]
-    
-    request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
-    
-    let config = URLSessionConfiguration.default
-    config.httpShouldSetCookies = true
-    config.httpCookieAcceptPolicy = .always
-    config.httpCookieStorage = .shared
-    let session = URLSession(configuration: config)
-    
-    let (data, response) = try await session.data(for: request)
-    
-    if let httpResponse = response as? HTTPURLResponse {
-        if let cookies = HTTPCookieStorage.shared.cookies(for: url) {
-            let cookieData = cookies.map { cookie in
-                CookieData(
-                    name: cookie.name,
-                    value: cookie.value,
-                    domain: cookie.domain,
-                    path: cookie.path,
-                    expiresDate: cookie.expiresDate
-                )
-            }
-            
-            if let encoded = try? JSONEncoder().encode(cookieData) {
-                UserDefaults.standard.set(encoded, forKey: "savedCookies")
-            }
-        }
-    }
-    
-    guard let httpResponse = response as? HTTPURLResponse else {
-        throw URLError(.badServerResponse)
-    }
-    
-    switch httpResponse.statusCode {
-    case 200...299:
-        do {
-            let json = try JSON(data: data)
-            
-            let serverUsername = json["user"]["username"]
-            let serverID = json["user"]["id"]
-            let status = json["status"]
-            if status.stringValue.lowercased() == "success" {
-                return LoginResponse(success: true, serverUsername: serverUsername.stringValue, serverID: serverID.stringValue, response: httpResponse.statusCode)
-            }
-            else{
-                return LoginResponse(success: false, serverUsername: "", serverID: "", response: httpResponse.statusCode)
-            }
-        } catch {
-            throw error
-        }
-    case 401:
-        throw NSError(domain: "LoginError", code: 401, userInfo: [NSLocalizedDescriptionKey: "Invalid username or password"])
-    case 400:
-        throw NSError(domain: "LoginError", code: 400, userInfo: [NSLocalizedDescriptionKey: "Bad request"])
-    case 404:
-        throw NSError(domain: "LoginError", code: 404, userInfo: [NSLocalizedDescriptionKey: "Either server is down or no user with that username exists"])
-    default:
-        throw NSError(domain: "LoginError", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Server error: \(httpResponse.statusCode)"])
-    }
+    let data = try await MapleAPI.shared.request(["login"], method: "POST", json: ["username": username, "password": password])
+    let json = try JSON(data: data)
+    guard json["status"].stringValue.lowercased() == "success",
+          let id = json["user"]["id"].string, !id.isEmpty,
+          let username = json["user"]["username"].string else { throw URLError(.badServerResponse) }
+    saveCookies(HTTPCookieStorage.shared.cookies(for: MapleAPI.baseURL) ?? [])
+    return LoginResponse(success: true, serverUsername: username, serverID: id, response: 200)
 }
 
 func register(username: String, password: String) async throws -> String {
-    guard let url = URL(string: "https://api.maple.music/login/create") else {
-        throw URLError(.badURL)
-    }
-
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-
-    let parameters: [String: Any] = [
-        "username": username,
-        "password": password
-    ]
-
-    request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
-
-    let (data, response) = try await URLSession.shared.data(for: request)
-
-    guard let httpResponse = response as? HTTPURLResponse else {
-        throw URLError(.badServerResponse)
-    }
-
-    switch httpResponse.statusCode {
-    case 200:
-        return "Success! Please login using your new account: \(username)"
-    default:
-        let json = try JSON(data: data)
-        let error = json["error"]
-        throw NSError(domain: "RegisterError", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "\(error.stringValue) (\(httpResponse.statusCode))"])
-    }
+    _ = try await MapleAPI.shared.request(["login", "create"], method: "POST", json: ["username": username, "password": password])
+    return "Success! Please login using your new account: \(username)"
 }
 
 func getUser(serverID: String) async throws -> userResponse {
-    guard let url = URL(string: "https://api.maple.music/get/user/\(serverID)") else {
-        throw URLError(.badURL)
-    }
-
-    var request = URLRequest(url: url)
-    request.httpMethod = "GET"
-    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-    
-    let config = URLSessionConfiguration.default
-    config.httpShouldSetCookies = true
-    config.httpCookieAcceptPolicy = .always
-    config.httpCookieStorage = .shared
-    let session = URLSession(configuration: config)
-    let (data, response) = try await session.data(for: request)
-
-    guard let httpResponse = response as? HTTPURLResponse else {
+    let data = try await MapleAPI.shared.request(["get", "user", serverID])
+    let json = try JSON(data: data)
+    guard let id = json["id"].string, !id.isEmpty, let username = json["username"].string else {
         throw URLError(.badServerResponse)
     }
-    
-    switch httpResponse.statusCode {
-    case 200:
-        let json = try JSON(data: data)
-        let name = json["name"]
-        let id = json["id"]
-        let username = json["username"]
-        let pfpString = json["pfp"].stringValue
-        guard let pfpData = Data(base64Encoded: pfpString) else {
-            return userResponse(name: name.stringValue, id: id.stringValue, username: username.stringValue, pfp: nil, response: httpResponse.statusCode)
-        }
-
-        return userResponse(name: name.stringValue, id: id.stringValue, username: username.stringValue, pfp: pfpData, response: httpResponse.statusCode)
-    case 401:
-        throw NSError(domain: "Error", code: 401, userInfo: [NSLocalizedDescriptionKey: "Unauthorized"])
-    default:
-        throw NSError(domain: "Error", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Server error: \(httpResponse.statusCode)"])
-    }
+    return userResponse(name: json["name"].stringValue, id: id, username: username,
+                        pfp: json["pfp"].string.flatMap { Data(base64Encoded: $0) }, response: 200)
 }
 
-
-func setAlbumArt(serverID: String, albumArt: Data) async throws -> String {
-    guard let url = URL(string: "https://api.maple.music/user/manage/setAlbumArt/\(serverID)") else {
-        throw URLError(.badURL)
-    }
-
-    // let documentDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-    // let uuid = UUID()
-	// 	try albumArt.write(to: documentDirectory.appendingPathComponent("albumArt\(uuid.uuidString).png"))
-    
-
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    let boundary = UUID().uuidString
-    request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-
-    var body = Data()
-    let boundaryStart = "--\(boundary)\r\n"
-    let boundaryEnd = "--\(boundary)--\r\n"
-
-    body.append(boundaryStart.data(using: .utf8)!)
-    body.append("Content-Disposition: form-data; name=\"albumArt\"; filename=\"albumArt.jpg\"\r\n".data(using: .utf8)!)
-    body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
-    body.append(albumArt)
-    body.append("\r\n".data(using: .utf8)!)
-    body.append(boundaryStart.data(using: .utf8)!)
-    body.append("Content-Disposition: form-data; name=\"id\"\r\n\r\n".data(using: .utf8)!)
-    body.append("\(serverID)\r\n".data(using: .utf8)!)
-    body.append(boundaryEnd.data(using: .utf8)!)
-
-    request.httpBody = body
-
-    let config = URLSessionConfiguration.default
-    config.httpShouldSetCookies = true
-    config.httpCookieAcceptPolicy = .always
-    config.httpCookieStorage = .shared
-    let session = URLSession(configuration: config)
-    request.addValue("\(body.count)", forHTTPHeaderField: "Content-Length")
-
-    let (data, response) = try await session.data(for: request)
-    // print("Set Album Art Data: \(String(data: data, encoding: .utf8))")
-    // print("Set Album Art Response: \(response)")
-
-                            print("There were \(albumArt.count) bytes")
-                            let bcf = ByteCountFormatter()
-                            bcf.allowedUnits = [.useMB] // optional: restricts the units to MB only
-                            bcf.countStyle = .file
-                            let string = bcf.string(fromByteCount: Int64(albumArt.count))
-                            print("formatted result: \(string)")
-                        
-    guard let httpResponse = response as? HTTPURLResponse else {
-        throw URLError(.badServerResponse)
-    }
-    return "\(httpResponse)"
+func setAlbumArt(serverID: String, albumArt: Data, artworkRequestId: String? = nil) async throws -> String {
+    let data = try await MapleAPI.shared.upload(["user", "manage", "setAlbumArt", serverID], field: "albumArt", image: albumArt, artworkRequestId: artworkRequestId)
+    return try JSON(data: data)["message"].stringValue
 }
 
 func sendWebhook(song: Song, serverID: String) async throws -> String {
@@ -340,453 +170,90 @@ func sendWebhook(song: Song, serverID: String) async throws -> String {
     return "Webhook Moment"
 }
 
-func getFriendList(serverID: String) async throws -> ([[String : JSON]], [Data?]) {
-    guard let url = URL(string: "https://api.maple.music/user/friends/get/friends/\(serverID)") else {
-        throw URLError(.badURL)
-    }
-
-    var request = URLRequest(url: url)
-    request.httpMethod = "GET"
-    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-    
-    let config = URLSessionConfiguration.default
-    config.httpShouldSetCookies = true
-    config.httpCookieAcceptPolicy = .always
-    config.httpCookieStorage = .shared
-    let session = URLSession(configuration: config)
-
-    let (data, response) = try await session.data(for: request)
-    guard let httpResponse = response as? HTTPURLResponse else {
-        throw URLError(.badServerResponse)
-    }
-
-    let json = try JSON(data: data)
-    let friends = json.arrayValue.compactMap { friend in
-        friend["friend_id"].stringValue == serverID ? friend["user_id"].stringValue : friend["friend_id"].stringValue
-    }
-
-    var userInfoArray: [[String : JSON]] = []
-    var pfps: [Data?] = []
-    for friend in friends {
-        let publicUser = try await publicUserId(serverID: friend)
-        userInfoArray.append(publicUser)
-        let pfp = try await getPublicPfp(serverID: friend)
-        if pfp != nil {
-            pfps.append(pfp)
-        }
-        else {
-            pfps.append(nil)
-        }
-    }
-
-    return (userInfoArray, pfps)
+func getFriendList(serverID: String) async throws -> ([[String: JSON]], [Data?]) {
+    try await fetchRelationships(serverID: serverID, kind: "friends")
 }
 
-func publicUserId(serverID: String) async throws -> [String : JSON] {
-    guard let url = URL(string: "https://api.maple.music/public/get/user/id/\(serverID)") else {
-        throw URLError(.badURL)
-    }
-
-    var request = URLRequest(url: url)
-    request.httpMethod = "GET"
-    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-    
-    let config = URLSessionConfiguration.default
-    config.httpShouldSetCookies = true
-    config.httpCookieAcceptPolicy = .always
-    config.httpCookieStorage = .shared
-    let session = URLSession(configuration: config)
-
-    let (data, response) = try await session.data(for: request)
-    guard let httpResponse = response as? HTTPURLResponse else {
-        throw URLError(.badServerResponse)
-    }
-
+private func fetchRelationships(serverID: String, kind: String) async throws -> ([[String: JSON]], [Data?]) {
+    let data = try await MapleAPI.shared.request(["user", "friends", "get", kind, serverID])
     let json = try JSON(data: data)
-    let user = json.dictionaryValue
+    guard let relationships = json.array else { throw URLError(.badServerResponse) }
+    var users: [[String: JSON]] = []
+    var pictures: [Data?] = []
+    for relationship in relationships {
+        let id = relationship["friend_id"].stringValue == serverID ? relationship["user_id"].stringValue : relationship["friend_id"].stringValue
+        guard !id.isEmpty else { throw URLError(.badServerResponse) }
+        users.append(try await publicUserId(serverID: id))
+        pictures.append(try await getPublicPfp(serverID: id))
+    }
+    return (users, pictures)
+}
 
+func publicUserId(serverID: String) async throws -> [String: JSON] {
+    let data = try await MapleAPI.shared.request(["public", "get", "user", "id", serverID])
+    var user = try JSON(data: data).dictionaryValue
+    // The SQL JSON column can be returned as either an object or a JSON string.
+    if let value = user["nowPlaying"]?.string, let encoded = value.data(using: .utf8) {
+        user["nowPlaying"] = try JSON(data: encoded)
+    }
     return user
 }
 
 func publicUser(username: String) async throws -> [String: JSON] {
-    guard let url = URL(string: "https://api.maple.music/public/get/user/\(username)") else {
-        throw URLError(.badURL)
-    }
-
-    var request = URLRequest(url: url)
-    request.httpMethod = "GET"
-    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-    
-    let config = URLSessionConfiguration.default
-    config.httpShouldSetCookies = true
-    config.httpCookieAcceptPolicy = .always
-    config.httpCookieStorage = .shared
-    let session = URLSession(configuration: config)
-
-    let (data, response) = try await session.data(for: request)
-    guard let httpResponse = response as? HTTPURLResponse else {
-        throw URLError(.badServerResponse)
-    }
-
-    let json = try JSON(data: data)
-    let user = json.dictionaryValue
-
-    return user
+    let data = try await MapleAPI.shared.request(["public", "get", "user", username])
+    return try JSON(data: data).dictionaryValue
 }
 
 func getPublicPfp(serverID: String) async throws -> Data? {
-    guard let url = URL(string: "https://api.maple.music/public/get/pfp/\(serverID)") else {
-        throw URLError(.badURL)
-    }
+    let data = try await MapleAPI.shared.request(["public", "get", "pfp", serverID], allowMissing: true)
+    return data.isEmpty ? nil : data
+}
 
-    var request = URLRequest(url: url)
-    request.httpMethod = "GET"
-    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-    
-    let config = URLSessionConfiguration.default
-    config.httpShouldSetCookies = true
-    config.httpCookieAcceptPolicy = .always
-    config.httpCookieStorage = .shared
-    let session = URLSession(configuration: config)
-
-    let (data, response) = try await session.data(for: request)
-    guard let httpResponse = response as? HTTPURLResponse else {
-        throw URLError(.badServerResponse)
+private func friendAction(_ action: String, id: String) async throws -> String {
+    guard let serverID = UserDefaults.standard.string(forKey: "savedServerID"), !serverID.isEmpty else {
+        throw MapleAPIError(statusCode: 401, data: Data())
     }
-    return data
-    
+    let data = try await MapleAPI.shared.request(["user", "friends", action, serverID], method: "POST", json: ["friendId": id])
+    return try JSON(data: data)["message"].stringValue
 }
 
 func addFriend(username: String) async throws -> String {
     let user = try await publicUser(username: username)
-
-    if let error = user["error"]?.stringValue {
-        return error
-    }
-    else {
-        guard let serverID = UserDefaults.standard.string(forKey: "savedServerID") else {
-            throw URLError(.badURL)
-        }
-        let id: String = user["id"]?.stringValue ?? ""
-
-        guard let url = URL(string: "https://api.maple.music/user/friends/add/\(serverID)") else {
-            throw URLError(.badURL)
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let parameters: [String : Any] = [
-            "friendId": id
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
-    
-        let config = URLSessionConfiguration.default
-        config.httpShouldSetCookies = true
-        config.httpCookieAcceptPolicy = .always
-        config.httpCookieStorage = .shared
-        let session = URLSession(configuration: config)
-        
-        let (data, response) = try await session.data(for: request)
-        // print("Add Friend Data: \(String(data: data, encoding: .utf8))")
-        // print("Add Friend Response: \(response)")
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-
-        let json = try JSON(data: data)
-        let dict = json.dictionaryValue
-        if let message = dict["message"]?.stringValue {
-            return message
-        }
-        else if let error = dict["error"]?.stringValue {
-            return error
-        }
-        
-        return "Else Statement Concluded with Invalid Route?"
-    }
-    return "Function Concluded with Invalid Route?"
+    guard let id = user["id"]?.string, !id.isEmpty else { throw URLError(.badServerResponse) }
+    return try await friendAction("add", id: id)
 }
 
-func acceptFriend(id: String) async throws -> String {
-        guard let serverID = UserDefaults.standard.string(forKey: "savedServerID") else {
-            throw URLError(.badURL)
-        }
-        guard let url = URL(string: "https://api.maple.music/user/friends/accept/\(serverID)") else {
-            throw URLError(.badURL)
-        }
+func acceptFriend(id: String) async throws -> String { try await friendAction("accept", id: id) }
+func rejectFriend(id: String) async throws -> String { try await friendAction("decline", id: id) }
+func removeFriend(id: String) async throws -> String { try await friendAction("remove", id: id) }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let parameters: [String : Any] = [
-            "friendId": id
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
-    
-        let config = URLSessionConfiguration.default
-        config.httpShouldSetCookies = true
-        config.httpCookieAcceptPolicy = .always
-        config.httpCookieStorage = .shared
-        let session = URLSession(configuration: config)
-        
-        let (data, response) = try await session.data(for: request)
-        print("Accept Friend Data: \(String(data: data, encoding: .utf8))")
-        print("Accept Friend Response: \(response)")
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-
-        let json = try JSON(data: data)
-        let dict = json.dictionaryValue
-        if let message = dict["message"]?.stringValue {
-            return message
-        }
-        else if let error = dict["error"]?.stringValue {
-            return error
-        }
-    return "Function ran but did not end in a valid route?"
-}
-
-func rejectFriend(id: String) async throws -> String {
-        guard let serverID = UserDefaults.standard.string(forKey: "savedServerID") else {
-            throw URLError(.badURL)
-        }
-        guard let url = URL(string: "https://api.maple.music/user/friends/decline/\(serverID)") else {
-            throw URLError(.badURL)
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let parameters: [String : Any] = [
-            "friendId": id
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
-    
-        let config = URLSessionConfiguration.default
-        config.httpShouldSetCookies = true
-        config.httpCookieAcceptPolicy = .always
-        config.httpCookieStorage = .shared
-        let session = URLSession(configuration: config)
-        
-        let (data, response) = try await session.data(for: request)
-        print("Reject Friend Data: \(String(data: data, encoding: .utf8))")
-        print("Reject Friend Response: \(response)")
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-
-        let json = try JSON(data: data)
-        let dict = json.dictionaryValue
-        if let message = dict["message"]?.stringValue {
-            return message
-        }
-        else if let error = dict["error"]?.stringValue {
-            return error
-        }
-    return "Function ran but did not end in a valid route?"
-}
-
-func removeFriend(id: String) async throws -> String {
-        guard let serverID = UserDefaults.standard.string(forKey: "savedServerID") else {
-            throw URLError(.badURL)
-        }
-        guard let url = URL(string: "https://api.maple.music/user/friends/remove/\(serverID)") else {
-            throw URLError(.badURL)
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let parameters: [String : Any] = [
-            "friendId": id
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
-    
-        let config = URLSessionConfiguration.default
-        config.httpShouldSetCookies = true
-        config.httpCookieAcceptPolicy = .always
-        config.httpCookieStorage = .shared
-        let session = URLSession(configuration: config)
-        
-        let (data, response) = try await session.data(for: request)
-        print("Remove Friend Data: \(String(data: data, encoding: .utf8))")
-        print("Remove Friend Response: \(response)")
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-
-        let json = try JSON(data: data)
-        let dict = json.dictionaryValue
-        if let message = dict["message"]?.stringValue {
-            return message
-        }
-        else if let error = dict["error"]?.stringValue {
-            return error
-        }
-    return "Function ran but did not end in a valid route?"
-}
-
-func getReqList(serverID: String) async throws -> ([[String : JSON]], [Data?]) {
-    guard let url = URL(string: "https://api.maple.music/user/friends/get/requests/\(serverID)") else {
-        throw URLError(.badURL)
-    }
-
-    var request = URLRequest(url: url)
-    request.httpMethod = "GET"
-    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-    
-    let config = URLSessionConfiguration.default
-    config.httpShouldSetCookies = true
-    config.httpCookieAcceptPolicy = .always
-    config.httpCookieStorage = .shared
-    let session = URLSession(configuration: config)
-
-    let (data, response) = try await session.data(for: request)
-    guard let httpResponse = response as? HTTPURLResponse else {
-        throw URLError(.badServerResponse)
-    }
-
-    let json = try JSON(data: data)
-    let friends = json.arrayValue.compactMap { friend in
-        friend["friend_id"].stringValue == serverID ? friend["user_id"].stringValue : friend["friend_id"].stringValue
-    }
-
-    var userInfoArray: [[String : JSON]] = []
-    var pfps: [Data?] = []
-    for friend in friends {
-        let publicUser = try await publicUserId(serverID: friend)
-        userInfoArray.append(publicUser)
-        let pfp = try await getPublicPfp(serverID: friend)
-        if pfp != nil {
-            pfps.append(pfp)
-        }
-        else {
-            pfps.append(nil)
-        }
-    }
-    return (userInfoArray, pfps)
+func getReqList(serverID: String) async throws -> ([[String: JSON]], [Data?]) {
+    try await fetchRelationships(serverID: serverID, kind: "requests")
 }
 
 func uploadPfp(serverID: String, pfp: Data) async throws -> String {
-    guard let url = URL(string: "https://api.maple.music/user/manage/setProfile/\(serverID)") else {
-        throw URLError(.badURL)
-    }
-
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    let boundary = UUID().uuidString
-    request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-
-    var body = Data()
-    let boundaryStart = "--\(boundary)\r\n"
-    let boundaryEnd = "--\(boundary)--\r\n"
-
-    body.append(boundaryStart.data(using: .utf8)!)
-    body.append("Content-Disposition: form-data; name=\"pfp\"; filename=\"pfp.jpg\"\r\n".data(using: .utf8)!)
-    body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
-    body.append(pfp)
-    body.append("\r\n".data(using: .utf8)!)
-    body.append(boundaryStart.data(using: .utf8)!)
-    body.append("Content-Disposition: form-data; name=\"id\"\r\n\r\n".data(using: .utf8)!)
-    body.append("\(serverID)\r\n".data(using: .utf8)!)
-    body.append(boundaryEnd.data(using: .utf8)!)
-
-    request.httpBody = body
-
-    let config = URLSessionConfiguration.default
-    config.httpShouldSetCookies = true
-    config.httpCookieAcceptPolicy = .always
-    config.httpCookieStorage = .shared
-    let session = URLSession(configuration: config)
-    request.addValue("\(body.count)", forHTTPHeaderField: "Content-Length")
-
-    let (data, response) = try await session.data(for: request)
-    guard let httpResponse = response as? HTTPURLResponse else {
-        throw URLError(.badServerResponse)
-    }
-    return "\(httpResponse)"
+    let data = try await MapleAPI.shared.upload(["user", "manage", "setProfile", serverID], field: "pfp", image: pfp)
+    return try JSON(data: data)["message"].stringValue
 }
 
 func uploadName(serverID: String, name: String) async throws -> String {
-    guard let url = URL(string: "https://api.maple.music/user/manage/setDisplayName/\(serverID)") else {
-        throw URLError(.badURL)
-    }
-
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-
-    let parameters: [String : Any] = [
-        "displayName" : name
-    ]
-    request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
-    
-    let config = URLSessionConfiguration.default
-    config.httpShouldSetCookies = true
-    config.httpCookieAcceptPolicy = .always
-    config.httpCookieStorage = .shared
-    let session = URLSession(configuration: config)
-    
-    
-    let (data, response) = try await session.data(for: request)
-    
-    guard let httpResponse = response as? HTTPURLResponse else {
-        throw URLError(.badServerResponse)
-    }
-    return "\(httpResponse)"
+    let data = try await MapleAPI.shared.request(["user", "manage", "setDisplayName", serverID], method: "POST", json: ["displayName": name])
+    return try JSON(data: data)["message"].stringValue
 }
 
 func deleteAccount(serverID: String) async throws -> String {
-    guard let url = URL(string: "https://api.maple.music/user/manage/delete/\(serverID)") else {
-        throw URLError(.badURL)
-    }
-
-    var request = URLRequest(url: url)
-    request.httpMethod = "DELETE"
-    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-
-    let parameters: [String : Any] = [
-        "id" : serverID
-    ]
-    request.httpBody = try JSONSerialization.data(withJSONObject: parameters)
-
-    let config = URLSessionConfiguration.default
-    config.httpShouldSetCookies = true
-    config.httpCookieAcceptPolicy = .always
-    config.httpCookieStorage = .shared
-    let session = URLSession(configuration: config)
-
-    let (data, response) = try await session.data(for: request)
-    guard let httpResponse = response as? HTTPURLResponse else {
-        throw URLError(.badServerResponse)
-    }
-    if let json = try? JSON(data: data){
-        let dict = json.dictionaryValue
-        if let message = dict["message"]?.stringValue {
-            return message
-        }
-        else if let error = dict["error"]?.stringValue {
-            throw NSError(domain: "DeleteAccountError", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Error: \(error) (Code: \(httpResponse.statusCode))"])
-        }
-        else {
-            throw NSError(domain: "DeleteAccountError", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Server error: \(httpResponse.statusCode)"]) 
-        }
-    }
-    else {
-        throw NSError(domain: "DeleteAccountError", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Server error: \(httpResponse.statusCode)"])
-    }
+    let data = try await MapleAPI.shared.request(["user", "manage", "delete", serverID], method: "DELETE")
+    return try JSON(data: data)["message"].stringValue
 }
 
+@MainActor
+func logout() async throws {
+    AppSocketManager.shared.disconnect()
+    defer { clearMapleSession() }
+    if let id = UserDefaults.standard.string(forKey: "savedServerID"), !id.isEmpty {
+        _ = try await MapleAPI.shared.request(["get", "logout", id])
+    }
+}
 
 struct Login: View {
     @State private var username: String = ""
@@ -808,10 +275,6 @@ struct Login: View {
 
     
     init() {
-        if let savedCookies = loadCookies() {
-            restoreCookies(savedCookies)
-        }
-        
       if let savedServerID = UserDefaults.standard.string(forKey: "savedServerID") {
             _serverID = State(initialValue: savedServerID)
         }  
@@ -911,7 +374,7 @@ struct Login: View {
             if let cookies = HTTPCookieStorage.shared.cookies(for: URL(string: "https://api.maple.music")!) {
                 saveCookies(cookies)
             }
-            await AppSocketManager.shared.connect()
+            AppSocketManager.shared.connect()
             snackbarSuccess = Snackbar(title: "Success", message: "Login successful! Please wait.")
         } catch {
             // errorMessage = "Login failed: \(error.localizedDescription)"
@@ -930,8 +393,12 @@ struct Login: View {
             userStatus = response.response
             if userStatus == 200 {
                 isLoggedIn = true
+                AppSocketManager.shared.connect()
             }
+        } catch let error as MapleAPIError where error.statusCode == 401 || error.statusCode == 403 {
+            await deleteCookies()
         } catch {
+            snackbarError = Snackbar(title: "Unable to restore session", message: error.localizedDescription)
         }
     }
 }
@@ -1066,7 +533,6 @@ struct LoggedIn: View {
             let response = try await deleteAccount(serverID: serverID)
             if response.lowercased().contains("success") {
                 await deleteCookies()
-                await AppSocketManager.shared.disconnect()
                 isLoggedIn = false
             } else {
                 snackbar = Snackbar(title: "Error", message: "Error deleting account: \(response)")
@@ -1269,7 +735,8 @@ func saveCookies(_ cookies: [HTTPCookie]) {
             value: cookie.value,
             domain: cookie.domain,
             path: cookie.path,
-            expiresDate: cookie.expiresDate
+            expiresDate: cookie.expiresDate,
+            isSecure: cookie.isSecure
         )
     }
     
@@ -1288,11 +755,14 @@ func loadCookies() -> [CookieData]? {
 
 func restoreCookies(_ cookieData: [CookieData]) {
     for data in cookieData {
+        guard data.domain == "api.maple.music" || data.domain == ".maple.music" else { continue }
+        if let expiry = data.expiresDate, expiry <= Date() { continue }
         var properties: [HTTPCookiePropertyKey: Any] = [
             .name: data.name,
             .value: data.value,
             .domain: data.domain,
-            .path: data.path
+            .path: data.path,
+            .secure: data.isSecure ?? true
         ]
         
         if let expiresDate = data.expiresDate {
@@ -1305,19 +775,22 @@ func restoreCookies(_ cookieData: [CookieData]) {
     }
 }
 
-func deleteCookies() async {
-    if let cookies = HTTPCookieStorage.shared.cookies {
-        for cookie in cookies {
-            HTTPCookieStorage.shared.deleteCookie(cookie)
-        }
+func clearMapleSession() {
+    for cookie in HTTPCookieStorage.shared.cookies(for: MapleAPI.baseURL) ?? [] {
+        HTTPCookieStorage.shared.deleteCookie(cookie)
     }
     UserDefaults.standard.removeObject(forKey: "savedCookies")
+    UserDefaults.standard.removeObject(forKey: "savedServerID")
 }
 
-
-
+@MainActor
+func deleteCookies() async {
+    AppSocketManager.shared.disconnect()
+    clearMapleSession()
+}
 
 struct FriendList: View {
+    @ObservedObject private var socketManager = AppSocketManager.shared
     @Binding var isLoggedIn: Bool
     @Binding var showingAlert: Bool
         @State private var userInfoArray: [[String : JSON]] = []
@@ -1438,8 +911,8 @@ struct FriendList: View {
                     .alert("Warning!", isPresented: $showingAlert, actions: { 
                         Button(role: .destructive) {
                             Task {
-                                await deleteCookies()
-                                await AppSocketManager.shared.disconnect()
+                                do { try await logout() }
+                                catch { snackbar = Snackbar(title: "Logout", message: error.localizedDescription) }
                                 isLoggedIn = false
                             }
 
@@ -1455,6 +928,18 @@ struct FriendList: View {
                 }, message: {
                     Text("This will log you out of Maple and delete all saved cookies within the app. This will not modify your library in any way!")
                 })
+            }
+        }
+        .onChange(of: socketManager.friendsRevision) { _, _ in
+            Task { await friendMoment() }
+        }
+        .onChange(of: socketManager.friendPlayback) { _, updates in
+            friends = friends.map { friend in
+                guard let update = updates[friend.id] else { return friend }
+                let playing = NowPlaying(id: friend.id, song: update["title"].stringValue,
+                                         album: update["album"].stringValue, artist: update["artist"].stringValue,
+                                         discord: update["discord"].boolValue)
+                return Friend(id: friend.id, name: friend.name, username: friend.username, pfp: friend.pfp, nowPlaying: playing)
             }
         }
         .refreshable {
@@ -1475,6 +960,7 @@ struct FriendList: View {
 
             userInfoArray = response
             pfpArray = pfps
+            friends = []
             for (index, friend) in userInfoArray.enumerated() {
                 let nowPlayingDict = friend["nowPlaying"]?.dictionaryValue
                 let nowPlaying = NowPlaying(id: nowPlayingDict?["id"]?.stringValue ?? "", song: nowPlayingDict?["title"]?.stringValue ?? "Unknown Song", album: nowPlayingDict?["album"]?.stringValue ?? "Unknown Album", artist: nowPlayingDict?["artist"]?.stringValue ?? "Unknown Artist", discord: nowPlayingDict?["discord"]?.boolValue ?? false)
@@ -1492,6 +978,7 @@ struct FriendList: View {
 
             userInfoArrayReq = response
             pfpArrayReq = pfps
+            requests = []
             for (index, friend) in userInfoArrayReq.enumerated() {
                 let nowPlayingDict = friend["nowPlaying"]?.dictionaryValue
                 let nowPlaying = NowPlaying(id: nowPlayingDict?["id"]?.stringValue ?? "", song: nowPlayingDict?["title"]?.stringValue ?? "Unknown Song", album: nowPlayingDict?["album"]?.stringValue ?? "Unknown Album", artist: nowPlayingDict?["artist"]?.stringValue ?? "Unknown Artist", discord: nowPlayingDict?["discord"]?.boolValue ?? false)
@@ -1551,10 +1038,8 @@ struct FriendList: View {
     private func friendMoment() async {
         friends.removeAll()
         requests.removeAll()
-        Task {
-            await friendList()
-            await reqList()
-        }
+        await friendList()
+        await reqList()
     }
 
 }

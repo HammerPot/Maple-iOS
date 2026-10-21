@@ -44,21 +44,23 @@ struct Settings: View {
                         
                 }
                 VStack{
-                    Toggle("Enable SocketIO?", isOn: $socketIO)
+                    Toggle("Enable social connection", isOn: $socketIO)
                     .onChange(of: self.socketIO) {
                             UserDefaults.standard.set(socketIO, forKey: "socketIO")
+                            AppSocketManager.shared.settingsChanged()
                     }
                 }
                 VStack{
-                    Toggle("Enable MapleRPC for Discord?", isOn: $mapleRPC)
+                    Toggle("Share playback with Discord", isOn: $mapleRPC)
                     .onChange(of: self.mapleRPC) {
                             UserDefaults.standard.set(mapleRPC, forKey: "mapleRPC")
+                            AppSocketManager.shared.settingsChanged()
                     }
                 }
             } header: {
                 Text("Social Features")
             } footer: {
-                Text("Toggling SocketIO will require restarting the app to take effect. You must have SocketIO enabled to use MapleRPC")
+                Text("Sign in and enable the social connection to share listening activity with friends. Discord sharing also requires MapleRPC on your computer. Changes take effect immediately.")
             }
             Section{
                 MusicButton()

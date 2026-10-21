@@ -8,6 +8,7 @@ import MusicKit
 
 
 
+@MainActor
 class AudioPlayerManager: NSObject, ObservableObject {
     @ObservedObject private var amPlayer = AMPlayer.shared
     static let shared = AudioPlayerManager()
@@ -20,9 +21,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     private var nowPlayingInfo = [String: Any]()
     @Published var currentSong: Song?
     private var isHandlingRemoteControl = false
-    private var serverID: String = ""
-    private var mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC")
-    private var rpcTask = false
+    private var lastWebhookTrack: UUID?
 
     
     
@@ -49,42 +48,53 @@ class AudioPlayerManager: NSObject, ObservableObject {
         
         commandCenter.playCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
-            self.isHandlingRemoteControl = true
-            self.play()
-            self.isHandlingRemoteControl = false
+            Task { @MainActor in
+                self.isHandlingRemoteControl = true
+                self.play()
+                self.isHandlingRemoteControl = false
+            }
             return .success
         }
         
         commandCenter.pauseCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
-            self.isHandlingRemoteControl = true
-            self.pause()
-            self.isHandlingRemoteControl = false
+            Task { @MainActor in
+                self.isHandlingRemoteControl = true
+                self.pause()
+                self.isHandlingRemoteControl = false
+            }
             return .success
         }
         
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
-            self.isHandlingRemoteControl = true
-            self.playNext()
-            self.isHandlingRemoteControl = false
+            Task { @MainActor in
+                self.isHandlingRemoteControl = true
+                self.playNext()
+                self.isHandlingRemoteControl = false
+            }
             return .success
         }
         
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
-            self.isHandlingRemoteControl = true
-            self.playPrevious()
-            self.isHandlingRemoteControl = false
+            Task { @MainActor in
+                self.isHandlingRemoteControl = true
+                self.playPrevious()
+                self.isHandlingRemoteControl = false
+            }
             return .success
         }
         
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let self = self,
                   let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-            self.isHandlingRemoteControl = true
-            self.seek(to: event.positionTime)
-            self.isHandlingRemoteControl = false
+            let position = event.positionTime
+            Task { @MainActor in
+                self.isHandlingRemoteControl = true
+                self.seek(to: position)
+                self.isHandlingRemoteControl = false
+            }
             return .success
         }
     }
@@ -124,6 +134,10 @@ class AudioPlayerManager: NSObject, ObservableObject {
                 play()
             }
         } catch {
+            audioPlayer = nil
+            isPlaying = false
+            stopTimer()
+            reportPlayback(claim: false)
             print("Error loading audio: \(error.localizedDescription)")
         }
     }
@@ -184,67 +198,49 @@ class AudioPlayerManager: NSObject, ObservableObject {
     
     func play() {
         amPlayer.Stop()
-        print("Play called - current audio player exists: \(audioPlayer != nil)")
-        audioPlayer?.play()
+        guard audioPlayer?.play() == true else {
+            isPlaying = false
+            reportPlayback(claim: false)
+            return
+        }
         isPlaying = true
-        mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC")
         startTimer()
         if let song = currentSong {
             updateNowPlayingInfo(song: song)
-
-            print("rpcTask: \(rpcTask)")
-            if !rpcTask {
-                if let savedServerID = UserDefaults.standard.string(forKey: "savedServerID") {
-                    if let _artwork = song.artwork {
-                        let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(_artwork)
-                        if let artwork = UIImage(contentsOfFile: artworkPath.path)?.pngData(){
-                            Task { 
-                                do {
-                                    try await setAlbumArt(serverID: savedServerID, albumArt: artwork)
-                                } catch {
-                                    print("Error setting album art: \(error)")
-                                }
-                                do {
-                                    try await sendWebhook(song: song, serverID: savedServerID)
-                                } catch {
-                                    print("Error sending webhook: \(error)")
-                                }
-                            }
-                        }
-                    }
-                    else {
-                        print("No artwork found for song: \(song.title)")
-                        Task {
-                            do {
-                                try await setAlbumArt(serverID: savedServerID, albumArt: UIImage(named: "Maple")!.pngData()!)
-                            } catch {
-                                print("Error setting album art: \(error)")
-                            }
-                            do {
-                                try await sendWebhook(song: song, serverID: savedServerID)
-                            } catch {
-                                print("Error sending webhook: \(error)")
-                            }
-                        }
-                    }
-                    AppSocketManager.shared.nowPlaying(song: song, id: savedServerID, discord: mapleRPC)
+            reportPlayback(claim: true)
+            if lastWebhookTrack != song.id,
+               let id = UserDefaults.standard.string(forKey: "savedServerID"),
+               !(UserDefaults.standard.string(forKey: "webhookURL") ?? "").isEmpty {
+                lastWebhookTrack = song.id
+                Task {
+                    do { _ = try await sendWebhook(song: song, serverID: id) }
+                    catch { print("Unable to send webhook: \(error.localizedDescription)") }
                 }
-                else {
-                    AppSocketManager.shared.nowPlaying(song: song, id: serverID, discord: mapleRPC)
-                }
-                rpcTask = true
-                print("inner rpcTask: \(rpcTask)")
             }
-            print("end rpcTask: \(rpcTask)")
         }
-        amPlayer.Stop()
     }
-    
+
+    func playbackSnapshot() -> MaplePlaybackSnapshot? {
+        guard let song = currentSong else { return nil }
+        return MaplePlaybackSnapshot(trackID: song.id.uuidString, source: "iOS", title: song.title,
+                                     artist: song.artist, album: song.album, playing: audioPlayer?.isPlaying == true,
+                                     position: audioPlayer?.currentTime ?? 0, duration: audioPlayer?.duration ?? 0,
+                                     playbackRate: Double(audioPlayer?.rate ?? 1))
+    }
+
+    private func reportPlayback(claim: Bool) {
+        let artwork = currentSong?.artwork.flatMap {
+            UIImage(contentsOfFile: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent($0).path)?.jpegData(compressionQuality: 0.85)
+        } ?? UIImage(named: "Maple")?.jpegData(compressionQuality: 0.85)
+        AppSocketManager.shared.updatePlayback({ [weak self] in self?.playbackSnapshot() }, artwork: artwork, claim: claim)
+    }
+
     func pause() {
         print("Pause called - current audio player exists: \(audioPlayer != nil)")
         audioPlayer?.pause()
         isPlaying = false
         stopTimer()
+        reportPlayback(claim: false)
         if let song = currentSong {
             updateNowPlayingInfo(song: song)
         }
@@ -257,6 +253,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
         isPlaying = false
         currentTime = 0
         stopTimer()
+        reportPlayback(claim: false)
         if let song = currentSong {
             updateNowPlayingInfo(song: song)
         }
@@ -265,17 +262,19 @@ class AudioPlayerManager: NSObject, ObservableObject {
     func seek(to time: TimeInterval) {
         audioPlayer?.currentTime = time
         currentTime = time
+        reportPlayback(claim: isPlaying)
         if let song = currentSong {
             updateNowPlayingInfo(song: song)
         }
     }
     
     private func startTimer() {
+        stopTimer()
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self = self, let player = self.audioPlayer else { return }
-            self.currentTime = player.currentTime
-            if let song = self.currentSong {
-                self.updateNowPlayingInfo(song: song)
+            Task { @MainActor in
+                guard let self, let player = self.audioPlayer else { return }
+                self.currentTime = player.currentTime
+                if let song = self.currentSong { self.updateNowPlayingInfo(song: song) }
             }
         }
     }
@@ -286,7 +285,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
     
     deinit {
-        stopTimer()
+        timer?.invalidate()
     }
     
     func playNext() {
@@ -297,7 +296,6 @@ class AudioPlayerManager: NSObject, ObservableObject {
         print("Loading next song: \(nextSong.title)")
         loadSong(nextSong)
 
-        rpcTask = false
             
         play()
     }
@@ -315,9 +313,23 @@ class AudioPlayerManager: NSObject, ObservableObject {
 
 
 extension AudioPlayerManager: AVAudioPlayerDelegate {
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        if flag {
-            playNext()
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        let playerID = ObjectIdentifier(player)
+        Task { @MainActor [weak self] in
+            guard let self, self.audioPlayer.map(ObjectIdentifier.init) == playerID else { return }
+            self.isPlaying = false
+            self.reportPlayback(claim: false)
+            if flag { self.playNext() }
+        }
+    }
+
+    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        let playerID = ObjectIdentifier(player)
+        Task { @MainActor [weak self] in
+            guard let self, self.audioPlayer.map(ObjectIdentifier.init) == playerID else { return }
+            self.isPlaying = false
+            self.stopTimer()
+            self.reportPlayback(claim: false)
         }
     }
 }
