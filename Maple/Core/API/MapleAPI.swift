@@ -13,6 +13,10 @@ struct MapleAPI: Sendable {
     func artwork(id: String, artwork: String) async throws -> Data {
         try await http.raw("public/get/albumArt/" + Self.segment(id) + "/" + Self.segment(artwork))
     }
+    /// URL of a user's current/last-played artwork, for `ArtworkView`. Visible only while their listening is public.
+    static func artworkURL(userID: String, artwork: String) -> URL? {
+        try? MapleHTTP.requestURL(path: "public/get/albumArt/" + segment(userID) + "/" + segment(artwork))
+    }
     func setDisplayName(_ name: String) async throws {
         try await message("user/manage/me", method: "PATCH", body: ["displayName": name])
     }

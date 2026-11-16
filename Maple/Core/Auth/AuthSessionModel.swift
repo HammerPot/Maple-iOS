@@ -49,7 +49,8 @@ final class AuthSessionModel {
         revision += 1
         needsLegacyEnrollment = false
         do {
-            if identifier.contains("@") {
+            // Same rule as the web client: only a valid email address uses the email route.
+            if AccountRules.isEmail(identifier) {
                 _ = try await client.signIn.email(with: .init(email: identifier, password: password))
             } else {
                 _ = try await client.signIn.username(with: .init(username: identifier, password: password))
@@ -103,6 +104,24 @@ final class AuthSessionModel {
         let ceremony = MaplePasskeyCeremony()
         try await ceremony.signIn(client: client)
         try await refresh()
+    }
+    // MARK: Account feature additions
+
+    /// Side-effect-free check used by the verification-pending screen. Unlike `refresh()`, a missing session
+    /// does not sign out or notify; it only transitions when a verified session actually exists.
+    func refreshIfVerified() async throws -> Bool {
+        let session: SessionReply? = try await api.http.request("api/auth/get-session")
+        guard let session, session.user.emailVerified else { return false }
+        try await refresh()
+        return user != nil
+    }
+    /// The current Better Auth session and its user (email, session ID for the "this device" marker).
+    func currentSession() async throws -> SessionReply? { try await api.http.request("api/auth/get-session") }
+    /// Revokes every session including this one (Better Auth `/revoke-sessions`, as the web client's
+    /// "Sign out everywhere"), then clears local state. A follow-up `/sign-out` would only fail.
+    func signOutEverywhere() async throws {
+        _ = try await client.revokeSessions()
+        await invalidate()
     }
     func listPasskeys() async throws -> [PasskeyModel] { try await client.passkey.listUserPasskeys().data }
     func deletePasskey(id: String) async throws { _ = try await client.passkey.deletePasskey(with: .init(id: id)) }
