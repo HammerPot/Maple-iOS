@@ -3,13 +3,17 @@ import Observation
 
 @MainActor @Observable
 final class ToastCenter {
-    struct Notice: Identifiable { let id = UUID(); let message: String }
+    struct Action { let title: String; let perform: @MainActor () -> Void }
+    struct Notice: Identifiable { let id = UUID(); let message: String; var action: Action? = nil }
     var notice: Notice?
     @ObservationIgnored private var dismissal: Task<Void, Never>?
-    func show(_ message: String) {
-        dismissal?.cancel(); notice = Notice(message: message)
+    func show(_ message: String) { show(message, action: nil) }
+    /// A notice with one action button stays a little longer so there is time to use it.
+    func show(_ message: String, action: Action?) {
+        dismissal?.cancel(); notice = Notice(message: message, action: action)
+        let seconds = action == nil ? 5 : 8
         dismissal = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            do { try await Task.sleep(for: .seconds(seconds)) } catch { return }
             self?.notice = nil
         }
     }
@@ -27,10 +31,14 @@ struct ToastOverlay: ViewModifier {
                 HStack {
                     Image(systemName: "info.circle")
                     Text(notice.message).font(.callout)
+                    if let action = notice.action {
+                        Button(action.title) { toasts.notice = nil; action.perform() }
+                            .buttonStyle(.borderedProminent).controlSize(.small)
+                    }
                     Button("Dismiss", systemImage: "xmark") { toasts.notice = nil }.labelStyle(.iconOnly)
                 }
                 .padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-                .padding().accessibilityElement(children: .combine)
+                .padding().accessibilityElement(children: notice.action == nil ? .combine : .contain)
                 .accessibilityAddTraits(.updatesFrequently)
             }
         }

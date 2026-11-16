@@ -4,7 +4,16 @@ import SwiftUI
 struct AccountTab: View {
     var body: some View {
         NavigationStack {
-            Login()
+            AccountRoot()
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        NavigationLink {
+                            Settings()
+                        } label: {
+                            Label("Settings", systemImage: "gear")
+                        }
+                    }
+                }
         }
     }
 }
