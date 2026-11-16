@@ -23,11 +23,16 @@ private struct LibraryOverview: View {
             }
             if library.isLoaded && library.tracks.isEmpty {
                 Section {
-                    ContentUnavailableView {
-                        Label("Make It Yours", systemImage: "music.note")
-                    } description: {
+                    // Not ContentUnavailableView: its greedy layout collapses inside a List row.
+                    VStack(spacing: 12) {
+                        Image(systemName: "music.note").font(.largeTitle).foregroundStyle(.secondary)
+                        Text("Make It Yours").font(.title3.bold())
                         Text("Add files or a folder of music to build your library.")
-                    } actions: { MusicButton(style: .prominent) }
+                            .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        MusicButton(style: .prominent).padding(.top, 4)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
                 }
                 .listRowBackground(Color.clear)
             } else if !recentAlbums.isEmpty {
