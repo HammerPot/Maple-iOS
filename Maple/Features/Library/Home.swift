@@ -30,6 +30,7 @@ private struct HomeContent: View {
     @Environment(LibraryStore.self) private var library
     @Environment(LibraryActions.self) private var actions
     @ObservedObject private var appleMusic = AppleMusicManager.shared
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         if !library.isLoaded {
@@ -79,7 +80,8 @@ private struct HomeContent: View {
     }
 
     private var shortcuts: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+        // One column at accessibility text sizes so labels never break mid-word.
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 320 : 150), spacing: 10)], spacing: 10) {
             HomeShortcut(title: "Shuffle All", systemImage: "shuffle") { LibraryPlayback.play(library.tracks, shuffle: true) }
             HomeShortcut(title: "Playlists", systemImage: "music.note.list", route: .playlists)
             HomeShortcut(title: "Albums", systemImage: "square.stack", route: .albums)
@@ -134,7 +136,11 @@ private struct HomeShortcut: View {
         Button {
             if let route { open(route) } else { action?() }
         } label: {
-            Label(title, systemImage: systemImage)
+            Label {
+                Text(title).foregroundStyle(.primary)
+            } icon: {
+                Image(systemName: systemImage).foregroundStyle(.tint)
+            }
                 .font(.subheadline.weight(.semibold))
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .padding(.horizontal, 14)

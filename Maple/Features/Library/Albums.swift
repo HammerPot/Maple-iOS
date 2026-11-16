@@ -41,6 +41,7 @@ struct Albums: View {
 }
 
 struct AlbumDetailView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(LibraryStore.self) private var library
     @Environment(LibraryActions.self) private var actions
     @Environment(\.openLibraryRoute) private var open
@@ -54,6 +55,7 @@ struct AlbumDetailView: View {
             content(album)
         } else {
             ContentUnavailableView("Album Removed", systemImage: "square.stack")
+                .task { dismiss() } // deleted from here or elsewhere: go back
         }
     }
 

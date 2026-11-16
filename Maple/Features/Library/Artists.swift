@@ -47,7 +47,9 @@ struct Artists: View {
 }
 
 struct ArtistDetailView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(LibraryStore.self) private var library
+    @Environment(\.openLibraryRoute) private var open
     let artistID: String
     private var sort = LibrarySortState("artistDetail", default: TrackSort.album)
 
@@ -58,6 +60,7 @@ struct ArtistDetailView: View {
             content(artist)
         } else {
             ContentUnavailableView("Artist Removed", systemImage: "music.mic")
+                .task { dismiss() } // deleted from here or elsewhere: go back
         }
     }
 
@@ -76,7 +79,7 @@ struct ArtistDetailView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(alignment: .top, spacing: 14) {
                             ForEach(albums) { album in
-                                NavigationLink(value: LibraryRoute.album(album.id)) {
+                                Button { open(.album(album.id)) } label: {
                                     AlbumCard(album: album, subtitle: album.year > 0 ? String(album.year) : LibraryActions.tracks(album.trackIDs.count))
                                         .frame(width: 150)
                                 }

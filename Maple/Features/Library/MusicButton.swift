@@ -11,6 +11,9 @@ struct MusicButton: View {
     @State private var picker: PickerKind?
     @State private var showingProgress = false
 
+    /// `.audio` plus extensions some systems don't declare as audio (Opus is playable on iOS 26).
+    private static let audioTypes: [UTType] = [.audio] + ["opus", "flac", "m4b"].compactMap { UTType(filenameExtension: $0) }
+
     private enum PickerKind: Identifiable {
         case files, folder
         var id: Self { self }
@@ -20,7 +23,7 @@ struct MusicButton: View {
         content
             .disabled(!library.isLoaded || library.progress != nil)
             .fileImporter(isPresented: Binding(get: { picker != nil }, set: { if !$0 { picker = nil } }),
-                          allowedContentTypes: picker == .folder ? [.folder] : [.audio],
+                          allowedContentTypes: picker == .folder ? [.folder] : Self.audioTypes,
                           allowsMultipleSelection: true, onCompletion: importSelection)
             .sheet(isPresented: $showingProgress) { LibraryImportSheet() }
     }

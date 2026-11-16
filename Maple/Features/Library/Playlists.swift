@@ -136,6 +136,7 @@ struct PlaylistMenu: View {
 }
 
 struct PlaylistDetailView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(LibraryStore.self) private var library
     @Environment(LibraryActions.self) private var actions
     let playlistID: UUID
@@ -151,6 +152,7 @@ struct PlaylistDetailView: View {
             content(playlist)
         } else {
             ContentUnavailableView("Playlist Removed", systemImage: "music.note.list")
+                .task { dismiss() } // deleted from here or elsewhere: go back
         }
     }
 
@@ -172,7 +174,9 @@ struct PlaylistDetailView: View {
                     LibraryTrackRow(track: track, queue: tracks, playlist: playlist)
                 }
                 .onMove(perform: canReorder ? { library.moveTracks(in: playlist.id, fromOffsets: $0, toOffset: $1) } : nil)
-                .onDelete { offsets in actions.remove(offsets.map { tracks[$0] }, from: playlist) }
+                // No `.onDelete`: SwiftUI's List expects that deletion to happen synchronously and
+                // crashes ("invalid number of items") if it waits for a confirmation. Removal goes
+                // through the row's swipe action and context menu, which confirm first.
             } footer: {
                 if tracks.isEmpty {
                     Text("Add tracks from your library, or long-press any track and choose Add to Playlist.")

@@ -10,6 +10,7 @@ struct LibraryTab: View {
 
 private struct LibraryOverview: View {
     @Environment(LibraryStore.self) private var library
+    @Environment(\.openLibraryRoute) private var open
 
     var body: some View {
         List {
@@ -33,7 +34,8 @@ private struct LibraryOverview: View {
                 Section {
                     LazyVGrid(columns: LibraryGrid.columns, spacing: 20) {
                         ForEach(recentAlbums) { album in
-                            NavigationLink(value: LibraryRoute.album(album.id)) { AlbumCard(album: album) }
+                            // A Button, not a NavigationLink: inside a List row a link would add a chevron.
+                            Button { open(.album(album.id)) } label: { AlbumCard(album: album) }
                                 .buttonStyle(.plain)
                                 .contextMenu { LibraryGroupMenu(album: album) }
                         }

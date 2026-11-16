@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import OSLog
 
@@ -157,8 +158,13 @@ actor LibraryDisk {
         try Task.checkCancellation()
         try FileManager.default.moveItem(at: temporary, to: target)
     }
+    /// Content-addressed: identical covers (every track of an album) share one file, so
+    /// playlist mosaics show distinct artwork and the library does not store N copies.
+    /// References are counted by the store before any file is removed.
     func saveArtwork(_ data: Data) throws -> String {
-        let reference = "images/\(UUID().uuidString).image"
+        let digest = SHA256.hash(data: data).prefix(16).map { String(format: "%02x", $0) }.joined()
+        let reference = "images/\(digest).image"
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("images"), withIntermediateDirectories: true)
         try data.write(to: root.appendingPathComponent(reference), options: .atomic)
         return reference
     }

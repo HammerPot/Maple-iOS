@@ -105,7 +105,9 @@ struct LibraryTrackRow: View {
         .accessibilityValue(MapleFormat.duration(track.duration))
         .accessibilityHint("Plays this track")
         .contextMenu { menu } preview: {
-            TrackPreview(track: track)
+            // The preview is hosted outside this hierarchy and does not inherit
+            // `@Environment` objects, so the store is passed in explicitly.
+            TrackPreview(track: track).environment(library)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") { LibraryPlayback.enqueue([track], next: true) }
@@ -168,8 +170,11 @@ private struct TrackPreview: View {
 /// Play and Shuffle, side by side, as on album and playlist headers.
 struct LibraryPlayButtons: View {
     let tracks: [LibraryTrack]
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     var body: some View {
-        HStack(spacing: 12) {
+        // Stacked at accessibility sizes so "Shuffle" never wraps mid-word.
+        let layout = dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 12)) : AnyLayout(HStackLayout(spacing: 12))
+        layout {
             Button { LibraryPlayback.play(tracks) } label: {
                 Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity)
             }
@@ -273,8 +278,10 @@ struct LibraryDetailHeader<Artwork: View>: View {
 
 enum LibraryText {
     static func summary(tracks count: Int, duration: Double) -> String {
-        let length = Duration.seconds(max(0, duration.isFinite ? duration : 0))
-            .formatted(.units(allowed: [.hours, .minutes], width: .wide, maximumUnitCount: 2))
+        let seconds = max(0, duration.isFinite ? duration : 0)
+        let units: Set<Duration.UnitsFormatStyle.Unit> = seconds < 60 ? [.seconds] : [.hours, .minutes]
+        let length = Duration.seconds(seconds)
+            .formatted(.units(allowed: units, width: .wide, maximumUnitCount: 2))
         return "\(LibraryActions.tracks(count)), \(length)"
     }
 }

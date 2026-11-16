@@ -253,4 +253,23 @@ struct LibraryStoreTests {
         #expect(first.imported == 1); #expect(second.imported == 0); #expect(second.duplicates == 0)
         #expect(store.tracks.first?.fileName == "dropped.wav")
     }
+    @Test func identicalCoversShareOneFileUntilTheLastTrackGoes() async throws {
+        let root = try directory(); let source = try directory()
+        defer { try? FileManager.default.removeItem(at: root); try? FileManager.default.removeItem(at: source) }
+        let cover = Data("same album cover".utf8)
+        let reader = FixtureMetadataReader(fixtures: [
+            "1.mp3": ImportedAudio(track: LibraryTrack(fileName: "1.mp3", title: "One", album: "A"), artwork: cover),
+            "2.mp3": ImportedAudio(track: LibraryTrack(fileName: "2.mp3", title: "Two", album: "A"), artwork: cover)])
+        for name in ["1.mp3", "2.mp3"] { try Data("audio".utf8).write(to: source.appendingPathComponent(name)) }
+        let store = LibraryStore(root: root, metadata: reader); await store.load()
+        #expect(await store.importFiles([source]).imported == 2)
+        let references = Set(store.tracks.compactMap(\.artwork))
+        #expect(references.count == 1)
+        let reference = try #require(references.first)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("images").path).count == 1)
+        try await store.deleteTracks([store.tracks[0].id])
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(reference).path))
+        try await store.deleteTracks([store.tracks[0].id])
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent(reference).path))
+    }
 }

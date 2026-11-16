@@ -39,14 +39,14 @@ final class LibraryActions {
     func delete(album: LibraryAlbum) {
         confirmation = Confirmation(
             title: "Delete Album?",
-            message: "“\(album.name)” and its \(Self.tracks(album.trackIDs.count)) will be permanently deleted from this device, along with their artwork and play history. They will be removed from any playlists.",
+            message: "“\(album.name)” by \(album.artist) and its \(Self.tracks(album.trackIDs.count)) will be permanently deleted from this device, along with their play history and any artwork no other track uses. They will be removed from any playlists.",
             button: "Delete Album") { try await $0.deleteTracks(Set(album.trackIDs)) }
     }
 
     func delete(artist: LibraryArtist) {
         confirmation = Confirmation(
             title: "Delete Artist?",
-            message: "All \(Self.tracks(artist.trackIDs.count)) by “\(artist.name)” will be permanently deleted from this device, along with their artwork and play history. They will be removed from any playlists.",
+            message: "All \(Self.tracks(artist.trackIDs.count)) by “\(artist.name)” will be permanently deleted from this device, along with their play history and any artwork no other track uses. They will be removed from any playlists.",
             button: "Delete Artist") { try await $0.deleteTracks(Set(artist.trackIDs)) }
     }
 

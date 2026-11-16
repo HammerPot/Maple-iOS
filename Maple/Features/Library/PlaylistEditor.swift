@@ -79,7 +79,8 @@ struct PlaylistEditor: View {
 
     @ViewBuilder private var artworkPreview: some View {
         if let newArtwork {
-            Image(uiImage: newArtwork).resizable().scaledToFill()
+            Color.clear
+                .overlay { Image(uiImage: newArtwork).resizable().scaledToFill() }
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .accessibilityHidden(true)
         } else if let playlist {

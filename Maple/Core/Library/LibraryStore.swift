@@ -34,9 +34,10 @@ final class LibraryStore {
 
     @ObservationIgnored private let disk: LibraryDisk
     @ObservationIgnored private let metadata: any LibraryMetadataReading
-    @ObservationIgnored private var trackIndex: [UUID: LibraryTrack] = [:]
-    @ObservationIgnored private var albumIndex: [String: LibraryAlbum] = [:]
-    @ObservationIgnored private var artistIndex: [String: LibraryArtist] = [:]
+    // Observed on purpose: detail screens look items up by id and must refresh when they change.
+    private var trackIndex: [UUID: LibraryTrack] = [:]
+    private var albumIndex: [String: LibraryAlbum] = [:]
+    private var artistIndex: [String: LibraryArtist] = [:]
     @ObservationIgnored private var revision: UInt64 = 0
     @ObservationIgnored private var pendingFileRemovals: [String] = []
     /// Listening time is reported many times a second; it is folded into `statistics` in batches.
@@ -224,7 +225,7 @@ final class LibraryStore {
                     do {
                         if !adoptInPlace { try await disk.stageAudio(from: url, fileName: name, moving: scan) }
                     } catch {
-                        if let reference = imported.track.artwork { try? await disk.removeFiles([reference]) }
+                        if let reference = imported.track.artwork, !usedArtwork.contains(reference) { try? await disk.removeFiles([reference]) }
                         throw error
                     }
                     tracks.append(imported.track)
@@ -275,7 +276,7 @@ final class LibraryStore {
     func setPlaylistArtwork(_ id: UUID, data: Data?) async throws {
         let reference: String? = if let data { try await disk.saveArtwork(data) } else { nil }
         guard let index = playlists.firstIndex(where: { $0.id == id }) else {
-            if let reference { try? await disk.removeFiles([reference]) }
+            if let reference, !usedArtwork.contains(reference) { try? await disk.removeFiles([reference]) }
             return
         }
         let old = playlists[index].artwork
