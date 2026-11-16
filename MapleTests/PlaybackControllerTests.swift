@@ -152,4 +152,33 @@ import Testing
         #expect(restored.queue.index == 2); #expect(newEngine.position == 23)
         #expect(!restored.isPlaying); #expect(restored.currentItem?.id == "A")
     }
+    @Test func systemMusicSameEntryRepeatStartsANewReportedPlayWithoutReloadingAudio() async {
+        let apple = PlaybackFakeEngine(), reporter = PlaybackFakeReporter()
+        let controller = PlaybackController(local: PlaybackFakeEngine(), apple: apple, reporter: reporter, automaticSampling: false)
+        await controller.start([PlaybackItem(source: .appleMusic, id: "A", title: "A")])
+        controller.setRepeat(.one)
+        apple.position = 179; controller.sample()
+        let original = controller.snapshot?.identity
+        apple.position = 0.4; controller.sample()
+        await controller.waitForReports()
+        #expect(controller.snapshot?.identity != original)
+        #expect(reporter.snapshots.last?.position == 0.4)
+        #expect(apple.loaded?.id == "A")
+        let repeated = controller.snapshot?.identity
+        apple.position = 179; controller.sample()
+        await controller.seek(to: 0.5); controller.sample()
+        #expect(controller.snapshot?.identity == repeated)
+        controller.stop()
+    }
+    @Test func aQueuedEndNotificationCannotAdvanceANewerPlay() async {
+        let engine = PlaybackFakeEngine()
+        let controller = PlaybackController(local: engine, apple: PlaybackFakeEngine(), reporter: PlaybackFakeReporter(), automaticSampling: false)
+        await controller.start([item("A")])
+        engine.onEvent?(.ended)
+        await controller.start([item("B"), item("C")])
+        for _ in 0..<5 { await Task.yield() }
+        #expect(controller.currentItem?.title == "B")
+        controller.stop()
+    }
+
 }

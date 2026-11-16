@@ -174,8 +174,19 @@ final class PlaybackController {
     }
     func sample() {
         guard currentItem != nil, !isLoading else { return }
-        settleListening()
-        position.seconds = engine.position
+        let nextPosition = engine.position
+        // Music.app can repeat one queue entry without changing its entry ID or playback status.
+        // Reuse the cheap position sample to recognize that boundary; explicit Maple seeks update
+        // position immediately and therefore cannot look like a natural wrap on the next sample.
+        let repeatsCurrent = queue.repeatMode == .one || (queue.repeatMode == .all && queue.entries.count == 1)
+        if currentItem?.source == .appleMusic, repeatsCurrent, isPlaying, engine.isPlaying,
+           duration > 4, position.seconds >= duration - 2, nextPosition <= 2 {
+            endPlay(completed: true); playID = UUID()
+            reconcile(); publish(); save()
+        } else {
+            settleListening()
+            position.seconds = nextPosition
+        }
         ticks += 1
         if ticks % 10 == 0 { save() }
     }
@@ -220,7 +231,11 @@ final class PlaybackController {
             reconcile(); publish()
         case .ended:
             guard currentItem?.source == source else { return }
-            Task { await next(natural: true) }
+            let ticket = generation
+            Task { [weak self] in
+                guard let self, self.generation == ticket, !self.isLoading else { return }
+                await self.next(natural: true)
+            }
         case .failed(let error):
             guard currentItem?.source == source else { return }
             stop(); onError(error)
