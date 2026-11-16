@@ -26,6 +26,7 @@ struct ForgotPasswordView: View {
             } else {
                 Section {
                     TextField("Email", text: $model.email)
+                        .accessibilityLabel("Email")
                         .identifierField(email: true)
                         .submitLabel(.send)
                         .onSubmit { Task { await model.send() } }
@@ -44,6 +45,7 @@ struct ForgotPasswordView: View {
                 }
             }
         }
+        .accountFormKeyboard()
         .navigationTitle("Reset Password")
         .navigationBarTitleDisplayMode(.inline)
         .announcing(model.errorMessage)

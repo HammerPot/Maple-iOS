@@ -14,11 +14,13 @@ struct SignInView: View {
         Form {
             Section {
                 TextField("Email or Username", text: $model.identifier)
+                    .accessibilityLabel("Email or Username")
                     .identifierField()
                     .focused($focus, equals: .identifier)
                     .submitLabel(.next)
                     .onSubmit { focus = .password }
                 SecureField("Password", text: $model.password)
+                    .accessibilityLabel("Password")
                     .textContentType(.password)
                     .focused($focus, equals: .password)
                     .submitLabel(.go)
@@ -53,6 +55,7 @@ struct SignInView: View {
                 Text("Had a Maple account before email sign-in? Sign in with your old username and password and we’ll help you move it.")
             }
         }
+        .accountFormKeyboard()
         .navigationTitle("Account")
         .announcing(model.errorMessage)
         .onChange(of: model.identifier) { model.clearError() }

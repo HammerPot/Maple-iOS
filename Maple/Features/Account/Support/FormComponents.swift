@@ -16,9 +16,9 @@ struct AccountFormHeader: View {
                 }
             }
             .accessibilityHidden(true)
-            Text(title).font(.title2.bold()).foregroundStyle(.primary)
+            Text(title).font(.title2.bold()).foregroundStyle(Color.primary)
                 .accessibilityAddTraits(.isHeader)
-            Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
+            Text(subtitle).font(.subheadline).foregroundStyle(Color.secondary)
         }
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity)
@@ -89,4 +89,24 @@ extension View {
             if let new { AccessibilityNotification.Announcement(new).post() }
         }
     }
+}
+
+/// A visible dismissal control keeps long account forms usable with secure keyboards and large text.
+private struct AccountFormKeyboard: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .scrollDismissesKeyboard(.interactively)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                }
+            }
+    }
+}
+
+extension View {
+    func accountFormKeyboard() -> some View { modifier(AccountFormKeyboard()) }
 }

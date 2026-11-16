@@ -12,7 +12,7 @@ struct FriendDetailView: View {
             List {
                 Section {
                     VStack(spacing: 8) {
-                        AvatarView(userID: friend.id).frame(width: avatarSize, height: avatarSize)
+                        AvatarView(userID: friend.id).frame(width: min(avatarSize, 112), height: min(avatarSize, 112))
                         Text(friend.profile.label).font(.title2.bold())
                         if friend.profile.label != friend.username {
                             Text("@" + friend.username).font(.subheadline).foregroundStyle(.secondary)
@@ -104,7 +104,7 @@ private struct RequestRow<Actions: View>: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AvatarView(userID: profile.id).frame(width: avatarSize, height: avatarSize)
+            AvatarView(userID: profile.id).frame(width: min(avatarSize, 112), height: min(avatarSize, 112))
             VStack(alignment: .leading, spacing: 1) {
                 Text(profile.label).font(.headline).lineLimit(1)
                 Text("@" + profile.username).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)

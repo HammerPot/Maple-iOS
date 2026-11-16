@@ -21,6 +21,7 @@ struct EditDisplayNameView: View {
         Form {
             Section {
                 TextField("Display Name", text: $name)
+                    .accessibilityLabel("Display Name")
                     .textContentType(.name)
                     .submitLabel(.done)
                     .focused($focused)
@@ -31,6 +32,7 @@ struct EditDisplayNameView: View {
                 else { Text("Friends see this instead of your username. Up to 64 characters.") }
             }
         }
+        .accountFormKeyboard()
         .navigationTitle("Display Name")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

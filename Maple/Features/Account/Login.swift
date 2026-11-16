@@ -4,17 +4,16 @@ import SwiftUI
 /// navigation stack. It shows the same content as `AccountTab`, and — because that shell has no Friends
 /// tab — a toolbar link to Friends. Delete once the shell uses `AccountTab()` and `FriendsTab()`.
 struct Login: View {
-    @Environment(AuthSessionModel.self) private var auth
     var body: some View {
         AccountRoot()
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                        NavigationLink {
-                            FriendsRoot()
-                        } label: {
-                            Label("Friends", systemImage: "person.2")
-                        }
+                    NavigationLink {
+                        FriendsRoot()
+                    } label: {
+                        Label("Friends", systemImage: "person.2")
                     }
+                }
                 #if DEBUG
                 if AccountVerificationSupport.showsChecks {
                     ToolbarItem(placement: .topBarLeading) {

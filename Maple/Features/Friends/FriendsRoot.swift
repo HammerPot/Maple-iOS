@@ -41,6 +41,7 @@ struct FriendsRoot: View {
 
 struct FriendsListView: View {
     @State private var model: FriendsScreenModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showsAddFriend = false
     @State private var removing: Profile?
     private let session: any SessionEnding
@@ -53,18 +54,20 @@ struct FriendsListView: View {
 
     var body: some View {
         List {
-            if model.hasRequests {
-                Section {
-                    NavigationLink(value: FriendsRoute.requests) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Label("Friend Requests", systemImage: "person.crop.circle.badge.plus")
+            Section {
+                NavigationLink {
+                    RequestsView(model: model)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Label("Friend Requests", systemImage: "person.crop.circle.badge.plus")
+                        if model.hasRequests {
                             Text(requestSummary).font(.subheadline).foregroundStyle(.secondary)
                                 .padding(.leading, 36)
                         }
                     }
-                    .badge(model.incomingCount)
-                    .accessibilityLabel("Friend Requests, \(requestSummary)")
                 }
+                .badge(model.incomingCount)
+                .accessibilityLabel("Friend Requests, \(requestSummary)")
             }
             if !model.listeningNow.isEmpty {
                 Section("Listening Now") { rows(model.listeningNow) }
@@ -73,17 +76,11 @@ struct FriendsListView: View {
                 Section(model.listeningNow.isEmpty ? "Friends" : "Other Friends") { rows(model.others) }
             }
         }
-        .animation(.default, value: model.listeningNow.map(\.id))
+        .animation(reduceMotion ? nil : .default, value: model.listeningNow.map(\.id))
         .overlay { overlay }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Add Friend", systemImage: "person.badge.plus") { showsAddFriend = true }
-            }
-        }
-        .navigationDestination(for: FriendsRoute.self) { route in
-            switch route {
-            case .requests: RequestsView(model: model)
-            case .friend(let id): FriendDetailView(id: id, model: model)
             }
         }
         .sheet(isPresented: $showsAddFriend) {
@@ -98,12 +95,14 @@ struct FriendsListView: View {
         var parts: [String] = []
         if model.incomingCount > 0 { parts.append("\(model.incomingCount) received") }
         if model.outgoingCount > 0 { parts.append("\(model.outgoingCount) sent") }
-        return parts.joined(separator: " · ")
+        return parts.isEmpty ? "No pending requests" : parts.joined(separator: " · ")
     }
 
     private func rows(_ list: [ListeningProfile]) -> some View {
         ForEach(list) { friend in
-            NavigationLink(value: FriendsRoute.friend(friend.id)) {
+            NavigationLink {
+                FriendDetailView(id: friend.id, model: model)
+            } label: {
                 FriendRow(friend: friend, receivedAt: model.receivedAt(friend.id))
             }
             .swipeActions {
@@ -142,22 +141,26 @@ struct FriendsListView: View {
 struct FriendRow: View {
     let friend: ListeningProfile
     let receivedAt: Date
+    @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric private var avatarSize = 44
     @ScaledMetric private var artworkSize = 44
 
     var body: some View {
         let status = ListeningStatus(friend.listening)
-        HStack(spacing: 12) {
-            AvatarView(userID: friend.id).frame(width: avatarSize, height: avatarSize)
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 12))
+        layout {
+            AvatarView(userID: friend.id).frame(width: min(avatarSize, 64), height: min(avatarSize, 64))
             VStack(alignment: .leading, spacing: 3) {
-                Text(friend.profile.label).font(.headline).lineLimit(1)
+                Text(friend.profile.label).font(.headline).lineLimit(typeSize.isAccessibilitySize ? nil : 1)
                 switch status {
                 case .current, .lastPlayed: ListeningLine(status: status, receivedAt: receivedAt)
                 case .nothing, .hidden: Text("@" + friend.username).font(.subheadline).foregroundStyle(.secondary)
                 }
             }
-            Spacer(minLength: 0)
-            if let artwork = status.artworkID {
+            if !typeSize.isAccessibilitySize { Spacer(minLength: 0) }
+            if !typeSize.isAccessibilitySize, let artwork = status.artworkID {
                 ArtworkView(url: MapleAPI.artworkURL(userID: friend.id, artwork: artwork))
                     .frame(width: artworkSize, height: artworkSize)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -166,15 +169,22 @@ struct FriendRow: View {
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityText(status))
+        .modifier(ListeningAccessibilityUpdate(playing: isPlaying(status)) { now in
+            accessibilityText(status, now: now)
+        })
+    }
+
+    private func isPlaying(_ status: ListeningStatus) -> Bool {
+        if case .current(let current) = status { return current.playing }
+        return false
     }
 
     private func isCurrent(_ status: ListeningStatus) -> Bool { if case .current = status { return true }; return false }
 
-    private func accessibilityText(_ status: ListeningStatus) -> String {
+    private func accessibilityText(_ status: ListeningStatus, now: Date) -> String {
         var parts = [friend.profile.label]
         if friend.profile.label != friend.username { parts.append("@" + friend.username) }
-        if let listening = ListeningAccessibility.label(status, receivedAt: receivedAt) { parts.append(listening) }
+        if let listening = ListeningAccessibility.label(status, receivedAt: receivedAt, now: now) { parts.append(listening) }
         return parts.joined(separator: ", ")
     }
 }

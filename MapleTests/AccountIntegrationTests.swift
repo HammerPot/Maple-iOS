@@ -4,6 +4,19 @@ import Testing
 
 @MainActor
 struct AccountIntegrationTests {
+    @Test func lateVerificationCheckCannotRestoreSignedOutSession() async throws {
+        let sent = TestGate(); let release = TestGate()
+        let http = try testHTTP { request in
+            await sent.open(); await release.wait()
+            return signedInReply(request)
+        }
+        let auth = AuthSessionModel(api: MapleAPI(http: http))
+        let checking = Task { try await auth.refreshIfVerified() }
+        await sent.wait(); await auth.invalidate(); await release.open()
+        #expect(try await checking.value == false)
+        #expect(auth.user == nil && http.sessionToken == nil)
+    }
+
     @Test func registrationCannotUseLegacyEnrollmentToChangeEmail() async {
         let service = FakeSignInService()
         let context = VerificationContext(email: "first@example.test", username: "newuser", password: "Secret123", origin: .register)

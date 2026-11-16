@@ -132,7 +132,7 @@ private struct ProfileHeader: View {
             PhotosPicker(selection: $photo, matching: .images, photoLibrary: .shared()) {
                 AvatarView(userID: user.id, data: user.pfp)
                     .id(user.pfp)
-                    .frame(width: avatarSize, height: avatarSize)
+                    .frame(width: min(avatarSize, 112), height: min(avatarSize, 112))
                     .overlay {
                         if isUploading {
                             Circle().fill(.ultraThinMaterial)

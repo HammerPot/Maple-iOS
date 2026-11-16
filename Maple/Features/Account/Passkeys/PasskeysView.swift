@@ -53,6 +53,7 @@ struct PasskeysView: View {
         .refreshable { await model.load() }
         .alert("Rename Passkey", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } }), presenting: renaming) { item in
             TextField("Name", text: $newName)
+                .accessibilityLabel("Name")
             Button("Save") { Task { await model.rename(item, to: newName) } }
             Button("Cancel", role: .cancel) {}
         }

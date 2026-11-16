@@ -25,6 +25,7 @@ struct RegisterView: View {
         return Form {
             Section {
                 TextField("Email", text: $model.email)
+                    .accessibilityLabel("Email")
                     .identifierField(email: true)
                     .focused($focus, equals: .email)
                     .submitLabel(.next)
@@ -37,6 +38,7 @@ struct RegisterView: View {
             }
             Section {
                 TextField("Username", text: $model.username)
+                    .accessibilityLabel("Username")
                     .textContentType(.username)
                     .keyboardType(.asciiCapable)
                     .textInputAutocapitalization(.never)
@@ -50,6 +52,7 @@ struct RegisterView: View {
             }
             Section {
                 SecureField("Password", text: $model.password)
+                    .accessibilityLabel("Password")
                     .textContentType(.newPassword)
                     .focused($focus, equals: .password)
                     .submitLabel(.join)
@@ -67,6 +70,7 @@ struct RegisterView: View {
                 if let error = model.errorMessage { FormMessage(text: error) }
             }
         }
+        .accountFormKeyboard()
         .navigationTitle("Create Account")
         .navigationBarTitleDisplayMode(.inline)
         .announcing(model.errorMessage)

@@ -2,11 +2,6 @@ import Foundation
 import Observation
 import OSLog
 
-enum FriendsRoute: Hashable {
-    case requests
-    case friend(String)
-}
-
 /// Loading, error and action state for the Friends screens on top of the shared `FriendsModel`.
 @MainActor @Observable
 final class FriendsScreenModel {

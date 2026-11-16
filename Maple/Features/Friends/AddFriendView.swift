@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AddFriendView: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.dismiss) private var dismiss
     @Environment(ToastCenter.self) private var toasts
     @State private var model: AddFriendModel
@@ -19,6 +20,7 @@ struct AddFriendView: View {
                     HStack {
                         Text("@").foregroundStyle(.secondary).accessibilityHidden(true)
                         TextField("Username", text: $model.username)
+                            .accessibilityLabel("Username")
                             .keyboardType(.asciiCapable)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
@@ -42,7 +44,7 @@ struct AddFriendView: View {
                 if let profile = model.found {
                     Section {
                         HStack(spacing: 14) {
-                            AvatarView(userID: profile.id).frame(width: avatarSize, height: avatarSize)
+                            AvatarView(userID: profile.id).frame(width: min(avatarSize, 72), height: min(avatarSize, 72))
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(profile.label).font(.headline)
                                 Text("@" + profile.username).font(.subheadline).foregroundStyle(.secondary)
@@ -56,6 +58,7 @@ struct AddFriendView: View {
                     }
                 }
             }
+            .accountFormKeyboard()
             .navigationTitle("Add Friend")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -67,7 +70,7 @@ struct AddFriendView: View {
                 if let message { toasts.show(message); dismiss() }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.medium, .large])
     }
 
     @ViewBuilder private func action(for profile: Profile) -> some View {

@@ -3,6 +3,7 @@ import SwiftUI
 struct VerifyEmailView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var model: VerifyEmailModel
     @State private var showsChangeEmail = false
 
@@ -14,7 +15,7 @@ struct VerifyEmailView: View {
         @Bindable var model = model
         Form {
             Section {
-                Text("Open the link on this iPhone or any other device. Verification finishes in your browser — then come back to Maple.")
+                Text("Open the link on this device or another device. Verification finishes in your browser — then come back to Maple.")
                     .foregroundStyle(.secondary)
             } header: {
                 AccountFormHeader(title: "Check Your Email", subtitle: sentLine, systemImage: "envelope.badge")
@@ -50,6 +51,7 @@ struct VerifyEmailView: View {
                 Section {
                     if showsChangeEmail {
                         TextField("New Email Address", text: $model.newEmail)
+                            .accessibilityLabel("New Email Address")
                             .identifierField(email: true)
                             .submitLabel(.send)
                             .onSubmit { Task { await sendToNewEmail() } }
@@ -58,7 +60,7 @@ struct VerifyEmailView: View {
                         }
                         .disabled(!model.canChangeEmail)
                     } else {
-                        Button("Use a Different Email") { withAnimation { showsChangeEmail = true } }
+                        Button("Use a Different Email") { withAnimation(reduceMotion ? nil : .default) { showsChangeEmail = true } }
                     }
                 } footer: {
                     if let problem = model.changeEmailError ?? model.newEmailProblem { FormMessage(text: problem) }
@@ -69,6 +71,7 @@ struct VerifyEmailView: View {
                 Button("Back to Sign In") { dismiss() }
             }
         }
+        .accountFormKeyboard()
         .navigationTitle("Verify Email")
         .navigationBarTitleDisplayMode(.inline)
         .announcing(model.statusMessage ?? model.errorMessage)
@@ -84,6 +87,6 @@ struct VerifyEmailView: View {
         return "We sent a verification link to your email address."
     }
     private func sendToNewEmail() async {
-        if await model.changeEmail() { withAnimation { showsChangeEmail = false } }
+        if await model.changeEmail() { withAnimation(reduceMotion ? nil : .default) { showsChangeEmail = false } }
     }
 }

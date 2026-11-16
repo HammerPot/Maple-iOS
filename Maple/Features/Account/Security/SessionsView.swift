@@ -58,6 +58,7 @@ struct SessionsView: View {
                 }
             }
         }
+        .accountFormKeyboard()
         .navigationTitle("Signed-In Devices")
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }

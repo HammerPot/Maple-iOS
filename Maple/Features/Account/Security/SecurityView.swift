@@ -55,6 +55,7 @@ struct SecurityView: View {
                 }
             }
         }
+        .accountFormKeyboard()
         .navigationTitle("Password & Security")
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }
@@ -89,6 +90,7 @@ struct ChangeEmailView: View {
                 }
                 Section {
                     TextField("New Email Address", text: $model.newEmail)
+                        .accessibilityLabel("New Email Address")
                         .identifierField(email: true)
                         .submitLabel(.send)
                         .onSubmit { Task { await model.submit() } }
@@ -123,11 +125,13 @@ struct ChangePasswordView: View {
         Form {
             Section {
                 SecureField("Current Password", text: $model.currentPassword).textContentType(.password)
+                    .accessibilityLabel("Current Password")
             } footer: {
                 if let error = model.currentError { FormMessage(text: error) }
             }
             Section {
                 SecureField("New Password", text: $model.newPassword).textContentType(.newPassword)
+                    .accessibilityLabel("New Password")
             } footer: {
                 if let error = model.newError { FormMessage(text: error) }
                 else { Text(AccountRules.passwordHint) }

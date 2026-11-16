@@ -38,6 +38,7 @@ struct DeleteAccountView: View {
                 .disabled(!model.canDelete)
             }
         }
+        .accountFormKeyboard()
         .navigationTitle("Delete Account")
         .navigationBarTitleDisplayMode(.inline)
         .announcing(model.errorMessage)

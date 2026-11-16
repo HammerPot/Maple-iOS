@@ -51,7 +51,7 @@ final class ProfileModel {
         }
         isUploadingPhoto = true; defer { isUploadingPhoto = false }
         do {
-            // `setAvatar` converts other formats and oversized images to a JPEG under 3 MB before uploading.
+            // `setAvatar` re-encodes supported images without metadata and enforces the upload size limit.
             try await api.setAvatar(data)
             try await session.refresh()
         } catch {

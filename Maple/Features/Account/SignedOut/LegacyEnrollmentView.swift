@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct LegacyEnrollmentView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let session: any SignInService
     @Environment(\.dismiss) private var dismiss
     @State private var model: LegacyEnrollmentModel
@@ -32,10 +33,12 @@ struct LegacyEnrollmentView: View {
             } else {
                 Section {
                     TextField("Original Username", text: $model.username)
+                        .accessibilityLabel("Original Username")
                         .textContentType(.username)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     SecureField("Password", text: $model.password)
+                        .accessibilityLabel("Password")
                         .textContentType(.password)
                 } header: {
                     AccountFormHeader(title: "Move Your Account",
@@ -48,6 +51,7 @@ struct LegacyEnrollmentView: View {
 
             Section {
                 TextField("Email", text: $model.email)
+                    .accessibilityLabel("Email")
                     .identifierField(email: true)
             } footer: {
                 if let error = model.emailError { FormMessage(text: error) }
@@ -57,6 +61,7 @@ struct LegacyEnrollmentView: View {
             if model.needsNewUsername {
                 Section {
                     TextField("New Username", text: $model.newUsername)
+                        .accessibilityLabel("New Username")
                         .textContentType(.username)
                         .keyboardType(.asciiCapable)
                         .textInputAutocapitalization(.never)
@@ -81,10 +86,11 @@ struct LegacyEnrollmentView: View {
                 if let error = model.errorMessage { FormMessage(text: error) }
             }
         }
+        .accountFormKeyboard()
         .navigationTitle("Move Account")
         .navigationBarTitleDisplayMode(.inline)
         .announcing(model.errorMessage)
-        .animation(.default, value: model.needsNewUsername)
+        .animation(reduceMotion ? nil : .default, value: model.needsNewUsername)
         .disabled(model.isBusy)
     }
 }

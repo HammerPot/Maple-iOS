@@ -4,6 +4,7 @@ import SwiftUI
 struct ListeningLine: View {
     let status: ListeningStatus
     let receivedAt: Date
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         switch status {
@@ -14,13 +15,13 @@ struct ListeningLine: View {
                     Text("\(Text(current.title).foregroundStyle(.primary))\(Text(current.artist.isEmpty ? "" : " · \(current.artist)").foregroundStyle(.secondary))")
                 }
                 .font(.subheadline)
-                .lineLimit(1)
+                .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
                 ListeningProgressBar(clock: ListeningClock(current, receivedAt: receivedAt))
             }
         case .lastPlayed(let last):
             TimelineView(.periodic(from: .now, by: 60)) { context in
                 Text(LastPlayedText.line(last, now: context.date))
-                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(typeSize.isAccessibilitySize ? nil : 1)
             }
         case .nothing, .hidden:
             EmptyView()
@@ -99,13 +100,14 @@ struct ListeningCard: View {
     let status: ListeningStatus
     let receivedAt: Date
     var hiddenText = "Listening activity is private."
+    @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .title) private var artworkSize = 220
 
     var body: some View {
         switch status {
         case .current(let current):
             VStack(spacing: 14) {
-                artwork(current.artwork, size: artworkSize)
+                artwork(current.artwork, size: min(artworkSize, 220))
                 VStack(spacing: 4) {
                     Label(current.playing ? "Now Playing" : "Paused", systemImage: current.playing ? "waveform" : "pause.fill")
                         .font(.caption.weight(.semibold)).textCase(.uppercase)
@@ -119,9 +121,14 @@ struct ListeningCard: View {
             }
             .frame(maxWidth: .infinity)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(ListeningAccessibility.label(status, receivedAt: receivedAt) ?? "")
+            .modifier(ListeningAccessibilityUpdate(playing: current.playing) { now in
+                ListeningAccessibility.label(status, receivedAt: receivedAt, now: now) ?? ""
+            })
         case .lastPlayed(let last):
-            HStack(spacing: 14) {
+            let layout = typeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14))
+                : AnyLayout(HStackLayout(spacing: 14))
+            layout {
                 artwork(last.artwork, size: 64)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Last Played").font(.caption.weight(.semibold)).textCase(.uppercase).foregroundStyle(.secondary)
@@ -133,8 +140,9 @@ struct ListeningCard: View {
                         }
                     }
                 }
-                Spacer(minLength: 0)
+                if !typeSize.isAccessibilitySize { Spacer(minLength: 0) }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
         case .nothing:
             Label("Nothing played yet.", systemImage: "music.note").foregroundStyle(.secondary)
@@ -170,6 +178,18 @@ struct ElapsedTimeline: View {
                 }
             }
             .accessibilityHidden(true)
+        }
+    }
+}
+
+/// Refresh the spoken elapsed time alongside the visual progress, rather than only on socket events.
+struct ListeningAccessibilityUpdate: ViewModifier {
+    let playing: Bool
+    let label: (Date) -> String
+
+    func body(content: Content) -> some View {
+        TimelineView(.periodic(from: .now, by: playing ? 1 : 60)) { context in
+            content.accessibilityLabel(label(context.date))
         }
     }
 }
