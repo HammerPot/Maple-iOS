@@ -18,7 +18,15 @@ import MediaPlayer
     var position: Double { max(0, player.playbackTime.isFinite ? player.playbackTime : 0) }
     var duration: Double { currentItem?.duration ?? 0 }
     var rate: Double { let rate = Double(player.state.playbackRate); return rate > 0 ? rate : 1 }
-    var isPlaying: Bool { active && player.state.playbackStatus == .playing }
+    private var allowed: Bool {
+        UserDefaults.standard.bool(forKey: "musicKit") && MusicAuthorization.currentStatus == .authorized
+    }
+    var isPlaying: Bool { allowed && player.state.playbackStatus == .playing }
+    func externalPlayback() -> ExternalPlaybackState? {
+        guard allowed, !active, !preparing, player.state.playbackStatus == .playing,
+              let item = currentItem, let entry = player.queue.currentEntry else { return nil }
+        return ExternalPlaybackState(item: item, occurrence: String(describing: entry.id))
+    }
     private var currentItem: PlaybackItem? {
         guard let entry = player.queue.currentEntry else { return nil }
         switch entry.item {
@@ -45,7 +53,7 @@ import MediaPlayer
     }
     func configure(_ queue: PlaybackQueue) async throws {
         configured = queue
-        player.state.repeatMode = queue.repeatMode == .one ? .one : (queue.repeatMode == .all ? .all : MusicKit.MusicPlayer.RepeatMode.none)
+        player.state.repeatMode = AppleMusicQueuePolicy.repeatMode(for: queue)
         // The controller already supplies shuffled order, including occurrence identity.
         player.state.shuffleMode = .off
     }
@@ -67,11 +75,7 @@ import MediaPlayer
         preparing = true
         defer { preparing = false }
         // Give Music.app the full contiguous Apple Music context so it can advance while Maple is suspended.
-        let current = configured.index ?? 0
-        var lower = current, upper = current
-        while lower > 0 && configured.entries[lower - 1].item.source == .appleMusic { lower -= 1 }
-        while upper + 1 < configured.entries.count && configured.entries[upper + 1].item.source == .appleMusic { upper += 1 }
-        let context = configured.entries.indices.contains(current) ? Array(configured.entries[lower...upper]) : [PlaybackEntry(item: item)]
+        let context = AppleMusicQueuePolicy.context(for: configured, fallback: item)
         var entries: [MusicKit.MusicPlayer.Queue.Entry] = []
         var selected: MusicKit.MusicPlayer.Queue.Entry?
         occurrences = [:]
@@ -97,9 +101,15 @@ import MediaPlayer
         guard active else { return }
         active = false; player.stop(); lastOccurrence = nil
     }
+    /// Only an explicit Maple Stop may stop observed playback that Maple did not install.
+    func stopExternalPlayback() {
+        guard allowed else { return }
+        player.stop(); lastOccurrence = nil
+    }
     func seek(to seconds: Double) async { player.playbackTime = seconds }
     private func changed() {
-        guard active, !preparing else { return }
+        guard allowed, !preparing else { return }
+        guard active || externalPlayback() != nil else { onEvent?(.stateChanged); return }
         let occurrence = player.queue.currentEntry.map { String(describing: $0.id) }
         if occurrence != lastOccurrence, let item = currentItem, let occurrence {
             lastOccurrence = occurrence; onEvent?(.itemChanged(item, occurrence: occurrence, queueEntryID: occurrences[occurrence]))

@@ -9,15 +9,21 @@ import Testing
     var rate = 1.0
     var isPlaying = false
     var loaded: PlaybackItem?
+    var external: ExternalPlaybackState?
+    var externalAllowed = true
+    var loadCount = 0
+    var stopCount = 0
+    func externalPlayback() -> ExternalPlaybackState? { externalAllowed && isPlaying ? external : nil }
     var failLoad = false
     var seeks: [Double] = []
     func load(_ item: PlaybackItem) async throws {
+        loadCount += 1
         if failLoad { throw LibraryError.unreadableAudio }
         loaded = item; position = 0
     }
     func play() async throws { isPlaying = true }
     func pause() { isPlaying = false }
-    func stop() { isPlaying = false; loaded = nil; position = 0 }
+    func stop() { stopCount += 1; isPlaying = false; loaded = nil; position = 0 }
     func seek(to seconds: Double) async { position = seconds; seeks.append(seconds) }
 }
 @MainActor final class PlaybackFakeReporter: PlaybackReporting {

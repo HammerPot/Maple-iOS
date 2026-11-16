@@ -8,6 +8,11 @@ enum PlaybackEngineEvent {
     case failed(Error)
 }
 
+struct ExternalPlaybackState {
+    let item: PlaybackItem
+    let occurrence: String
+}
+
 @MainActor protocol PlaybackEngine: AnyObject {
     var onEvent: ((PlaybackEngineEvent) -> Void)? { get set }
     var position: Double { get }
@@ -15,15 +20,19 @@ enum PlaybackEngineEvent {
     var rate: Double { get }
     var isPlaying: Bool { get }
     func configure(_ queue: PlaybackQueue) async throws
+    func externalPlayback() -> ExternalPlaybackState?
     func load(_ item: PlaybackItem) async throws
     func play() async throws
     func pause()
     func stop()
+    func stopExternalPlayback()
     func seek(to seconds: Double) async
 }
 
 extension PlaybackEngine {
     func configure(_ queue: PlaybackQueue) async throws {}
+    func externalPlayback() -> ExternalPlaybackState? { nil }
+    func stopExternalPlayback() {}
 }
 
 /// Only scrubbers/lyrics observe this clock. Metadata, mini-player and the tab shell do not.

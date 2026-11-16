@@ -27,6 +27,10 @@ final class PlaybackController {
     @ObservationIgnored private var reporting: Task<Void, Never>?
     @ObservationIgnored private var saving: Task<Void, Never>?
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
+    @ObservationIgnored private var loading: Task<Void, Never>?
+    @ObservationIgnored private var wantsPlayback = false
+    @ObservationIgnored private var intendedPosition = 0.0
+    @ObservationIgnored private var intentRevision = 0
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var playID = UUID()
     @ObservationIgnored private var started = false
@@ -63,41 +67,62 @@ final class PlaybackController {
         await loadCurrent(autoplay: true)
     }
     private func loadCurrent(autoplay: Bool, at seconds: Double = 0) async {
+        wantsPlayback = autoplay; intendedPosition = seconds; intentRevision += 1
         generation += 1
         let ticket = generation
         local.stop(); apple.stop()
         currentItem = nil; isPlaying = false; isLoading = true; listenedAt = nil
         artworkData = nil; artworkTask?.cancel()
         position.seconds = 0; duration = 0; started = false; playID = UUID()
-        guard let item = queue.current?.item else { isLoading = false; return }
-        let target = item.source == .local ? local : apple
-        do {
-            try await target.configure(queue)
-            try await target.load(item)
-            guard generation == ticket else { return }
-            currentItem = item
-            duration = target.duration > 0 ? target.duration : item.duration
-            if seconds > 0 { await target.seek(to: min(seconds, max(0, duration))) }
-            guard generation == ticket else { return }
-            position.seconds = target.position; isLoading = false
-            loadArtwork(item, ticket: ticket)
-            if autoplay {
-                try activateAudio(item.source)
-                try await target.play()
-                guard generation == ticket else { return }
+        await scheduleLoad(ticket: ticket, userInitiated: autoplay).value
+    }
+    /// Serialize engine mutations: an obsolete prepare must finish before a newer queue is installed.
+    /// Generation fences superseded edits; intentRevision fences commands received across awaits.
+    private func scheduleLoad(ticket: Int, userInitiated: Bool) -> Task<Void, Never> {
+        let previous = loading, context = queue
+        let task = Task { [weak self] in
+            await previous?.value
+            guard let self, self.generation == ticket else { return }
+            guard let item = context.current?.item else { self.isLoading = false; return }
+            let target = item.source == .local ? self.local : self.apple
+            do {
+                try await target.configure(context)
+                guard self.generation == ticket else { return }
+                try await target.load(item)
+                guard self.generation == ticket else { return }
+                self.currentItem = item
+                self.duration = target.duration > 0 ? target.duration : item.duration
+                while self.generation == ticket {
+                    let revision = self.intentRevision
+                    let seconds = min(self.intendedPosition, max(0, self.duration))
+                    if seconds > 0 || target.position != seconds { await target.seek(to: seconds) }
+                    guard self.generation == ticket else { return }
+                    if revision != self.intentRevision { continue }
+                    if self.wantsPlayback {
+                        try self.activateAudio(item.source)
+                        try await target.play()
+                    } else { target.pause() }
+                    guard self.generation == ticket else { return }
+                    if revision == self.intentRevision { break }
+                }
+                self.isLoading = false
+                self.loadArtwork(item, ticket: ticket)
+                self.reconcile(); self.publish(userInitiated: userInitiated && self.wantsPlayback)
+                self.save()
+            } catch {
+                guard self.generation == ticket else { return }
+                target.stop(); self.currentItem = nil; self.isPlaying = false; self.isLoading = false
+                self.duration = 0; self.position.seconds = 0; self.started = false
+                self.publishStop(); self.stateChanged(); self.save()
+                if !(error is CancellationError) { self.onError(error) }
             }
-            reconcile()
-            if autoplay { publish(userInitiated: true) } else { stateChanged() }
-            save()
-        } catch {
-            guard generation == ticket else { return }
-            target.stop(); currentItem = nil; isPlaying = false; isLoading = false
-            duration = 0; position.seconds = 0; started = false
-            publishStop(); stateChanged(); save()
-            if !(error is CancellationError) { onError(error) }
         }
+        loading = task
+        return task
     }
     func resume() async {
+        wantsPlayback = true; intentRevision += 1
+        if isLoading { return }
         guard currentItem != nil else { await loadCurrent(autoplay: true); return }
         do {
             try activateAudio(currentItem?.source ?? .local)
@@ -106,12 +131,15 @@ final class PlaybackController {
         } catch { onError(error) }
     }
     func pause() {
+        wantsPlayback = false; intentRevision += 1
+        if isLoading { local.pause(); apple.pause(); isPlaying = false; return }
         settleListening(); engine.pause(); isPlaying = false; listenedAt = nil
         position.seconds = engine.position; publish(); save()
     }
     func stop() {
-        generation += 1; endPlay(completed: false)
-        local.stop(); apple.stop(); artworkTask?.cancel()
+        generation += 1; wantsPlayback = false; intentRevision += 1; endPlay(completed: false)
+        if currentItem?.source == .appleMusic { apple.stopExternalPlayback() }
+        local.stop(); apple.stop(); artworkTask?.cancel(); externalOccurrence = nil
         currentItem = nil; artworkData = nil; isPlaying = false; isLoading = false
         position.seconds = 0; duration = 0
         publishStop(); stateChanged(); save()
@@ -127,7 +155,9 @@ final class PlaybackController {
     }
     /// Called once on release, by a lyric line or by a remote command, never per slider tick.
     func seek(to seconds: Double) async {
-        guard currentItem != nil, seconds.isFinite else { return }
+        guard (currentItem ?? queue.current?.item) != nil, seconds.isFinite else { return }
+        intendedPosition = max(0, seconds); intentRevision += 1
+        if isLoading { position.seconds = intendedPosition; return }
         settleListening(); listenedAt = nil
         let ticket = generation
         await engine.seek(to: min(max(0, seconds), max(0, duration)))
@@ -148,24 +178,21 @@ final class PlaybackController {
         queue.removeLibraryTracks(ids); synchronizeEngineQueue(reload: true); save()
     }
     private func synchronizeEngineQueue(reload: Bool = false) {
-        guard currentItem?.source == .appleMusic else { return }
-        let ticket = generation, queue = queue, seconds = engine.position, playing = isPlaying
-        Task { [weak self] in
-            guard let self, self.generation == ticket else { return }
-            do {
-                try await self.apple.configure(queue)
-                if reload, let item = self.currentItem {
-                    self.isLoading = true
-                    defer { self.isLoading = false }
-                    try await self.apple.load(item)
-                    guard self.generation == ticket else { return }
-                    await self.apple.seek(to: seconds)
-                    if playing { try await self.apple.play() }
-                    self.reconcile(); self.publish()
-                }
-            } catch { self.onError(error) }
+        guard (currentItem ?? queue.current?.item)?.source == .appleMusic else { return }
+        if !reload, !isLoading {
+            let previous = loading, context = queue, ticket = generation
+            loading = Task { [weak self] in
+                await previous?.value
+                guard let self, self.generation == ticket else { return }
+                do { try await self.apple.configure(context) } catch { self.onError(error) }
+            }
+            return
         }
+        if !isLoading { intendedPosition = engine.position; wantsPlayback = isPlaying }
+        generation += 1; isLoading = true
+        _ = scheduleLoad(ticket: generation, userInitiated: false)
     }
+    func waitForLoad() async { await loading?.value }
     var snapshot: TrackSnapshot? {
         guard let item = currentItem else { return nil }
         return TrackSnapshot(identity: "\(item.source == .local ? "local" : "apple"):\(item.id):\(playID)",
@@ -190,7 +217,24 @@ final class PlaybackController {
         ticks += 1
         if ticks % 10 == 0 { save() }
     }
-    func refresh() { reconcile(); publish() }
+    func refresh() {
+        if adoptExternalPlayback() { return }
+        reconcile(); publish()
+    }
+    /// Observation does not confer ownership of Music.app's queue; never configure/load on adoption.
+    @discardableResult private func adoptExternalPlayback() -> Bool {
+        guard !isLoading, let state = apple.externalPlayback(),
+              currentItem?.source != .appleMusic || externalOccurrence != state.occurrence else { return false }
+        endPlay(completed: false)
+        local.stop()
+        generation += 1; artworkTask?.cancel()
+        queue.replace([state.item], startingAt: 0, shuffle: false)
+        currentItem = state.item; externalOccurrence = state.occurrence
+        playID = UUID(); artworkData = nil; wantsPlayback = true
+        loadArtwork(state.item, ticket: generation)
+        reconcile(); publish(); save()
+        return true
+    }
     private func reconcile() {
         guard currentItem != nil, !isLoading else { return }
         settleListening()
@@ -220,13 +264,17 @@ final class PlaybackController {
         guard !isLoading else { return }
         switch event {
         case .itemChanged(let item, let occurrence, let queueEntryID):
-            guard source == .appleMusic, currentItem?.source == .appleMusic, externalOccurrence != occurrence else { return }
+            guard source == .appleMusic else { return }
+            if queueEntryID == nil, adoptExternalPlayback() { return }
+            if currentItem?.source != .appleMusic { _ = adoptExternalPlayback(); return }
+            guard externalOccurrence != occurrence else { return }
             externalOccurrence = occurrence
             if let queueEntryID { queue.select(queueEntryID) }
             // Music.app can move its system queue independently of Maple.
             endPlay(completed: false); currentItem = item; playID = UUID(); artworkData = nil
             loadArtwork(item, ticket: generation); reconcile(); publish(); save()
         case .stateChanged:
+            if source == .appleMusic, currentItem?.source != .appleMusic, adoptExternalPlayback() { return }
             guard currentItem?.source == source else { return }
             reconcile(); publish()
         case .ended:
@@ -279,6 +327,7 @@ final class PlaybackController {
         }
     }
     func restore(localItem: (UUID) -> PlaybackItem?) async {
+        if adoptExternalPlayback() { return }
         guard let persistence else { return }
         do {
             guard let saved = try await persistence.load(), currentItem == nil, queue.entries.isEmpty else { return }
