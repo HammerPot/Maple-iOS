@@ -395,6 +395,15 @@ final class LibraryStore {
         changed(); try await flush()
     }
 
+    /// Replaces embedded/external lyrics in the catalog without changing the audio file.
+    func setLyrics(_ text: String?, for id: UUID) async throws {
+        guard isLoaded else { throw LibraryError.notLoaded }
+        guard let index = tracks.firstIndex(where: { $0.id == id }) else { return }
+        tracks[index].lyrics = text
+        trackIndex[id] = tracks[index]
+        changed(); try await flush()
+    }
+
     // MARK: Recently played and statistics (called by the player)
 
     /// A track began playing (not a resume). Counts a play and moves it to the front of

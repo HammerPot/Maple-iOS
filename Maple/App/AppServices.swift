@@ -10,7 +10,11 @@ final class AppServices {
     let playback: PlaybackReporter
     let friends: FriendsModel
     let toasts: ToastCenter
-    private let webhook = WebhookReporter()
+    let player: PlaybackController
+    let music: AppleMusicService
+    let settings: SettingsModel
+    private let webhook: WebhookReporter
+    private let systemControls = PlaybackSystemControls()
     /// Audio and artwork stay in Documents (visible in the Files app, as before); the catalog
     /// lives privately in Application Support.
     let library = LibraryStore(root: URL.documentsDirectory,
@@ -32,11 +36,22 @@ final class AppServices {
         self.http = http
         let api = MapleAPI(http: http)
         self.api = api
+        let credentials = WebhookCredentials()
+        settings = SettingsModel(credentials: credentials)
+        webhook = WebhookReporter(configuredURL: {
+            let value = (try? await credentials.read()) ?? ""
+            return DiscordWebhookURL.isValid(value) ? value : ""
+        })
         auth = AuthSessionModel(api: api)
         friends = FriendsModel(api: api)
         let realtime = MapleRealtime()
         self.realtime = realtime
         playback = PlaybackReporter(transport: realtime, upload: { try await api.setAlbumArt($0, playbackId: $1) }, reportError: { toasts.show($0) })
+        let apple = AppleMusicPlaybackEngine()
+        music = AppleMusicService(engine: apple)
+        let player = PlaybackController(local: LocalPlaybackEngine(), apple: apple, reporter: playback,
+            persistence: PlaybackPersistence(url: URL.applicationSupportDirectory.appendingPathComponent("Playback/queue.json")))
+        self.player = player
         playback.didStart = { [weak self] snapshot, artwork in
             guard snapshot.identity.hasPrefix("local:"), let userID = self?.auth.user?.id else { return }
             Task { @MainActor [weak self] in
@@ -84,22 +99,38 @@ final class AppServices {
             catch let error as MapleError where error.status == 401 { await auth.invalidate(); return .invalid }
             catch { return .unreachable }
         }
-        AudioPlayerManager.shared.libraryStore = library
-        library.willDeleteTracks = { ids in AudioPlayerManager.shared.removeLibraryTracks(ids) }
-        AudioPlayerManager.shared.playbackReporter = playback
-        AMPlayer.shared.playbackReporter = playback
-        playback.snapshotProvider = {
-            if AMPlayer.shared.initialized { return AMPlayer.shared.mapleSnapshot() }
-            return AudioPlayerManager.shared.mapleSnapshot()
+        player.onError = { [weak toasts] in toasts?.show($0) }
+        let library = library
+        player.recordStart = { [weak library] in library?.recordStart($0) }
+        player.recordListening = { [weak library] in library?.recordListening($0, seconds: $1) }
+        player.recordEnd = { [weak library] in library?.recordEnd($0, completed: $1) }
+        library.willDeleteTracks = { [weak player] in player?.removeLibraryTracks($0) }
+        LibraryPlayback.start = { [weak player, weak library] tracks, id, shuffle in
+            guard let player, let library else { return }
+            let items = tracks.map { PlaybackItem(track: $0, library: library) }
+            let index = tracks.firstIndex { $0.id == id } ?? 0
+            Task { await player.start(items, startingAt: index, shuffle: shuffle) }
         }
+        LibraryPlayback.add = { [weak player, weak library] tracks, next in
+            guard let player, let library else { return }
+            player.enqueue(tracks.map { PlaybackItem(track: $0, library: library) }, next: next)
+        }
+        playback.snapshotProvider = { [weak player] in player?.snapshot }
+        playback.artworkProvider = { [weak player] identity in await player?.artworkForClaim(identity: identity) }
+        systemControls.bind(player)
     }
     func start() async {
         async let restored: Void = auth.restore()
+        do { try await settings.load() } catch { toasts.show(error) }
         await library.load()
+        await player.restore { [library] id in library.track(id).map { PlaybackItem(track: $0, library: library) } }
+        await music.refreshAuthorization()
         library.scanForNewFiles(silently: true)
         await restored
     }
     func sceneBecameActive() async {
+        player.refresh()
+        await music.refreshAuthorization()
         await auth.sceneBecameActive()
         realtime.sceneBecameActive()
         await playback.sceneBecameActive()

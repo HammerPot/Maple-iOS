@@ -6,6 +6,7 @@ import Foundation
     private let player = AVPlayer()
     private var endObserver: NSObjectProtocol?
     private var failureObserver: NSObjectProtocol?
+    private var itemStatusObserver: NSKeyValueObservation?
     private var statusObserver: NSKeyValueObservation?
     private var generation = 0
     var position: Double { let t = player.currentTime().seconds; return t.isFinite ? max(0, t) : 0 }
@@ -29,6 +30,13 @@ import Foundation
         guard generation == ticket else { throw CancellationError() }
         let new = AVPlayerItem(asset: asset)
         player.replaceCurrentItem(with: new)
+        itemStatusObserver = new.observe(\.status, options: [.new]) { [weak self] item, _ in
+            guard item.status == .failed else { return }
+            Task { @MainActor in
+                guard let self, self.generation == ticket else { return }
+                self.onEvent?(.failed(LibraryError.unreadableAudio))
+            }
+        }
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: new, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.generation == ticket else { return }
@@ -53,7 +61,7 @@ import Foundation
         player.pause(); player.replaceCurrentItem(with: nil)
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         if let failureObserver { NotificationCenter.default.removeObserver(failureObserver) }
-        endObserver = nil; failureObserver = nil
+        endObserver = nil; failureObserver = nil; itemStatusObserver = nil
     }
     func seek(to seconds: Double) async {
         await player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)

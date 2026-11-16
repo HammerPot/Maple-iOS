@@ -4,7 +4,7 @@ import Observation
 enum PlaybackEngineEvent {
     case stateChanged
     case ended
-    case itemChanged(PlaybackItem, occurrence: String)
+    case itemChanged(PlaybackItem, occurrence: String, queueEntryID: UUID? = nil)
     case failed(Error)
 }
 
@@ -14,11 +14,16 @@ enum PlaybackEngineEvent {
     var duration: Double { get }
     var rate: Double { get }
     var isPlaying: Bool { get }
+    func configure(_ queue: PlaybackQueue) async throws
     func load(_ item: PlaybackItem) async throws
     func play() async throws
     func pause()
     func stop()
     func seek(to seconds: Double) async
+}
+
+extension PlaybackEngine {
+    func configure(_ queue: PlaybackQueue) async throws {}
 }
 
 /// Only scrubbers/lyrics observe this clock. Metadata, mini-player and the tab shell do not.

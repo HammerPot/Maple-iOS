@@ -123,6 +123,21 @@ import Testing
         await controller.waitForReports(); #expect(reporter.snapshots.last?.playbackRate == 1.5)
         await controller.start([item("Local")]); #expect(!apple.isPlaying); #expect(local.isPlaying)
     }
+    @Test func externalMusicChangesSelectTheActualQueueOccurrenceAndRefreshIdentity() async {
+        let apple = PlaybackFakeEngine(), reporter = PlaybackFakeReporter()
+        let controller = PlaybackController(local: PlaybackFakeEngine(), apple: apple, reporter: reporter, automaticSampling: false)
+        let a = PlaybackItem(source: .appleMusic, id: "A", title: "A", artworkURL: URL(fileURLWithPath: "/nonexistent/A"))
+        let b = PlaybackItem(source: .appleMusic, id: "B", title: "B", artworkURL: URL(fileURLWithPath: "/nonexistent/B"))
+        await controller.start([a, b, a])
+        let occurrence = controller.queue.entries[2].id
+        let previousIdentity = controller.snapshot?.identity
+        apple.onEvent?(.itemChanged(a, occurrence: "system-occurrence-3", queueEntryID: occurrence))
+        await controller.waitForReports()
+        #expect(controller.queue.index == 2)
+        #expect(controller.snapshot?.identity != previousIdentity)
+        #expect(reporter.snapshots.last?.title == "A")
+        controller.stop()
+    }
     @Test func restoresQueueOccurrenceAndPositionPaused() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("queue.json")
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

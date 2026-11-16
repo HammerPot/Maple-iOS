@@ -45,7 +45,7 @@ final class PlaybackReporter {
     private(set) var ownsPlayback = false
     private(set) var snapshot: TrackSnapshot?
     @ObservationIgnored var didStart: ((TrackSnapshot, Data?) -> Void)?
-    @ObservationIgnored var artworkProvider: (() async -> Data?)?
+    @ObservationIgnored var artworkProvider: ((String) async -> Data?)?
     @ObservationIgnored var snapshotProvider: (() -> TrackSnapshot?)?
     @ObservationIgnored private let transport: PlaybackTransport
     @ObservationIgnored private let discord: () -> Bool
@@ -121,7 +121,7 @@ final class PlaybackReporter {
         }
         ownsPlayback = true; startRejected = false; lastAcknowledgedAt = now()
         if artwork == nil, let artworkProvider {
-            let data = await artworkProvider()
+            let data = await artworkProvider(snapshot?.identity ?? "")
             guard epoch == version, playbackId == id else { return }
             artwork = data
         }

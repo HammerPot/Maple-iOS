@@ -72,6 +72,7 @@ final class PlaybackController {
         guard let item = queue.current?.item else { isLoading = false; return }
         let target = item.source == .local ? local : apple
         do {
+            try await target.configure(queue)
             try await target.load(item)
             guard generation == ticket else { return }
             currentItem = item
@@ -86,7 +87,7 @@ final class PlaybackController {
                 guard generation == ticket else { return }
             }
             reconcile()
-            publish(userInitiated: autoplay)
+            if autoplay { publish(userInitiated: true) } else { stateChanged() }
             save()
         } catch {
             guard generation == ticket else { return }
@@ -134,17 +135,36 @@ final class PlaybackController {
         position.seconds = engine.position; listenedAt = isPlaying ? clock() : nil
         publish(); save()
     }
-    func setShuffle(_ enabled: Bool) { queue.setShuffle(enabled); save() }
-    func setRepeat(_ mode: PlaybackRepeat) { queue.repeatMode = mode; save() }
-    func enqueue(_ items: [PlaybackItem], next: Bool) { queue.enqueue(items, next: next); save() }
-    func moveUpcoming(from offsets: IndexSet, to destination: Int) { queue.moveUpcoming(from: offsets, to: destination); save() }
+    func setShuffle(_ enabled: Bool) { queue.setShuffle(enabled); synchronizeEngineQueue(reload: true); save() }
+    func setRepeat(_ mode: PlaybackRepeat) { queue.repeatMode = mode; synchronizeEngineQueue(); save() }
+    func enqueue(_ items: [PlaybackItem], next: Bool) { queue.enqueue(items, next: next); synchronizeEngineQueue(reload: true); save() }
+    func moveUpcoming(from offsets: IndexSet, to destination: Int) { queue.moveUpcoming(from: offsets, to: destination); synchronizeEngineQueue(reload: true); save() }
     func removeEntries(_ ids: Set<UUID>) {
         if let id = queue.currentID, ids.contains(id) { stop() }
-        queue.remove(ids); save()
+        queue.remove(ids); synchronizeEngineQueue(reload: true); save()
     }
     func removeLibraryTracks(_ ids: Set<UUID>) {
-        if currentItem?.libraryID.map(ids.contains) == true { stop() }
-        queue.removeLibraryTracks(ids); save()
+        if (currentItem?.libraryID ?? queue.current?.item.libraryID).map(ids.contains) == true { stop() }
+        queue.removeLibraryTracks(ids); synchronizeEngineQueue(reload: true); save()
+    }
+    private func synchronizeEngineQueue(reload: Bool = false) {
+        guard currentItem?.source == .appleMusic else { return }
+        let ticket = generation, queue = queue, seconds = engine.position, playing = isPlaying
+        Task { [weak self] in
+            guard let self, self.generation == ticket else { return }
+            do {
+                try await self.apple.configure(queue)
+                if reload, let item = self.currentItem {
+                    self.isLoading = true
+                    defer { self.isLoading = false }
+                    try await self.apple.load(item)
+                    guard self.generation == ticket else { return }
+                    await self.apple.seek(to: seconds)
+                    if playing { try await self.apple.play() }
+                    self.reconcile(); self.publish()
+                }
+            } catch { self.onError(error) }
+        }
     }
     var snapshot: TrackSnapshot? {
         guard let item = currentItem else { return nil }
@@ -188,9 +208,10 @@ final class PlaybackController {
     private func receive(_ event: PlaybackEngineEvent, source: PlaybackItem.Source) {
         guard !isLoading else { return }
         switch event {
-        case .itemChanged(let item, let occurrence):
+        case .itemChanged(let item, let occurrence, let queueEntryID):
             guard source == .appleMusic, currentItem?.source == .appleMusic, externalOccurrence != occurrence else { return }
             externalOccurrence = occurrence
+            if let queueEntryID { queue.select(queueEntryID) }
             // Music.app can move its system queue independently of Maple.
             endPlay(completed: false); currentItem = item; playID = UUID(); artworkData = nil
             loadArtwork(item, ticket: generation); reconcile(); publish(); save()
@@ -228,9 +249,10 @@ final class PlaybackController {
 
         }
     }
-    func artworkForClaim() async -> Data? {
-        guard let item = currentItem, let url = item.artworkURL else { return nil }
-        return await artworkLoader.read(url)
+    func artworkForClaim(identity: String) async -> Data? {
+        guard snapshot?.identity == identity, let item = currentItem, let url = item.artworkURL else { return nil }
+        let data = await artworkLoader.read(url)
+        return snapshot?.identity == identity ? data : nil
     }
     func save() {
         guard let persistence else { return }
