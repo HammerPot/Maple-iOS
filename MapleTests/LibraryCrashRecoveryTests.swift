@@ -28,19 +28,22 @@ struct LibraryCrashRecoveryTests {
         try FileManager.default.createDirectory(at: tracks.appendingPathComponent(".staging"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
         let same = audio("a.mp3", title: "Same")
-        let reader = StubMetadataReader(fixtures: ["a.mp3": same, "b.mp3": audio("b.mp3", title: "Same")])
+        let reader = StubMetadataReader(fixtures: ["a.mp3": same, "b.mp3": audio("b.mp3", title: "Same"), "c.mp3": audio("c.mp3", title: "Same")])
         try write(["a.mp3", "b.mp3"], in: tracks)
+        // A duplicate dropped elsewhere in Documents is rejected by the scan; Clear must not leave it to be adopted next launch.
+        let inbox = root.appendingPathComponent("zInbox"); try FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
+        try write(["c.mp3"], in: inbox)
         try Data("legacy".utf8).write(to: tracks.appendingPathComponent("tracks.json"))
         try Data("orphan cover".utf8).write(to: images.appendingPathComponent("unused.image"))
         let store = LibraryStore(root: root, metadata: reader); await store.load()
         let scan = await store.importFiles([root], scan: true)
-        #expect(scan.imported == 1); #expect(scan.duplicates == 1)
+        #expect(scan.imported == 1); #expect(scan.duplicates == 2)
         try FileManager.default.createDirectory(at: tracks.appendingPathComponent(".staging"), withIntermediateDirectories: true)
         try Data("partial".utf8).write(to: tracks.appendingPathComponent(".staging/x.import")) // an import in flight when Clear was tapped
 
         try await store.clearLibrary()
         #expect(names(root, "tracks").isEmpty); #expect(names(root, "images").isEmpty)
-        #expect(!exists(root, "tracks/.staging"))
+        #expect(!exists(root, "tracks/.staging")); #expect(!exists(root, "zInbox/c.mp3"))
 
         let relaunched = LibraryStore(root: root, metadata: reader); await relaunched.load()
         let again = await relaunched.importFiles([root], scan: true)

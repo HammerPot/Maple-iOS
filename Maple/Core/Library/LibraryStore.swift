@@ -432,6 +432,9 @@ final class LibraryStore {
         guard isLoaded else { throw LibraryError.notLoaded }
         guard progress == nil, !deleting, !importing else { throw LibraryError.busy }
         deleting = true; defer { deleting = false }
+        // Files the scan rejected (a duplicate of a track about to be cleared, an unplayable file)
+        // would otherwise be adopted again at the next launch.
+        await disk.removeRejectedFiles(Array(scanIgnored))
         let inventory = try await disk.mediaInventory()
         let ids = Set(tracks.map(\.id))
         if !ids.isEmpty { willDeleteTracks?(ids) }

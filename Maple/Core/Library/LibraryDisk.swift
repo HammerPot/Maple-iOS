@@ -124,6 +124,25 @@ actor LibraryDisk {
         return references
     }
 
+    /// Deletes audio files the scan already examined and rejected (duplicates, unplayable) that
+    /// sit loose in the media root, e.g. a copy dropped into Documents. Anything outside the media
+    /// root, inside the catalog folder, or not audio is left alone. Returns how many were removed.
+    @discardableResult
+    func removeRejectedFiles(_ paths: [String]) -> Int {
+        let base = root.resolvingSymlinksInPath().path + "/"
+        let catalog = catalogDirectory.resolvingSymlinksInPath().path + "/"
+        var removed = 0
+        for path in paths {
+            let url = URL(fileURLWithPath: path)
+            let resolved = url.resolvingSymlinksInPath().path
+            guard resolved.hasPrefix(base), !resolved.hasPrefix(catalog), AudioMetadataReader.isCandidate(url),
+                  (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
+            do { try fileSystem.remove(url); removed += 1 }
+            catch { logger.error("Could not remove a rejected file: \(error.localizedDescription, privacy: .public)") }
+        }
+        return removed
+    }
+
     /// One-shot import of the pre-5.0 JSON files. Runs only when no catalog (or backup) exists,
     /// and the result is saved immediately, so it can never run twice. Audio is left in place.
     ///
