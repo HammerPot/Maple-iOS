@@ -80,7 +80,7 @@ private struct PlayerTransport: View {
             Button("Repeat", systemImage: player.queue.repeatMode == .one ? "repeat.1" : "repeat") { player.setRepeat(player.queue.repeatMode.next) }
                 .symbolVariant(player.queue.repeatMode == .off ? .none : .circle.fill)
                 .accessibilityValue(player.queue.repeatMode.rawValue.capitalized)
-        }.labelStyle(.iconOnly).buttonStyle(.borderless)
+        }.labelStyle(.iconOnly).buttonStyle(PlayerControlButtonStyle())
             .frame(minHeight: 44)
     }
 }
@@ -89,4 +89,15 @@ private struct AirPlayPicker: UIViewRepresentable {
         let view = AVRoutePickerView(); view.prioritizesVideoDevices = false; return view
     }
     func updateUIView(_ uiView: AVRoutePickerView, context: Context) { uiView.tintColor = .label }
+}
+
+/// Keep the existing symbols and tint while giving transport controls full touch targets.
+private struct PlayerControlButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+            .foregroundStyle(.tint)
+            .opacity(configuration.isPressed ? 0.6 : 1)
+    }
 }

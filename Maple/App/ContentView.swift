@@ -11,7 +11,7 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if #available(iOS 26, *) {
+            if #available(iOS 26, *), !usesFallbackPlayer {
                 tabs.tabViewBottomAccessory { NowPlayingBar(showPlayer: $showPlayer) }
             } else {
                 tabs.safeAreaInset(edge: .bottom, spacing: 0) {
@@ -41,6 +41,13 @@ struct ContentView: View {
             if let message { toasts.show(message); library.announcement = nil }
         }
         .libraryActionPresenter()
+    }
+    private var usesFallbackPlayer: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--maple-player-fallback")
+        #else
+        false
+        #endif
     }
     private var tabs: some View {
         TabView {
