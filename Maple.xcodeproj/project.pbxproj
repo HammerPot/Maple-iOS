@@ -7,12 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		6912110C2DB091B000E3AA06 /* SwiftyJSON in Frameworks */ = {isa = PBXBuildFile; productRef = 6912110B2DB091B000E3AA06 /* SwiftyJSON */; };
-		6912110F2DB14E3000E3AA06 /* Alamofire in Frameworks */ = {isa = PBXBuildFile; productRef = 6912110E2DB14E3000E3AA06 /* Alamofire */; };
 		695459992DB69EB300A3DB11 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 695459982DB69EB300A3DB11 /* SocketIO */; };
 		695459A22DB9D1A200A3DB11 /* SwiftVibrantium in Frameworks */ = {isa = PBXBuildFile; productRef = 695459A12DB9D1A200A3DB11 /* SwiftVibrantium */; };
 		69922A662E2307A1004EFE79 /* SwiftUISnackbar in Frameworks */ = {isa = PBXBuildFile; productRef = 69922A652E2307A1004EFE79 /* SwiftUISnackbar */; };
 		69D43B432E19D5F200DFE8B0 /* MusadoraKit in Frameworks */ = {isa = PBXBuildFile; productRef = 69D43B422E19D5F200DFE8B0 /* MusadoraKit */; };
+		A10000000000000000000020 /* BetterAuth in Frameworks */ = { isa = PBXBuildFile; productRef = A10000000000000000000010; };
+		A10000000000000000000021 /* BetterAuthUsername in Frameworks */ = { isa = PBXBuildFile; productRef = A10000000000000000000011; };
+		A10000000000000000000022 /* BetterAuthPasskey in Frameworks */ = { isa = PBXBuildFile; productRef = A10000000000000000000012; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -74,11 +75,12 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000000000000000000022 /* BetterAuthPasskey in Frameworks */,
+				A10000000000000000000021 /* BetterAuthUsername in Frameworks */,
+				A10000000000000000000020 /* BetterAuth in Frameworks */,
 				69D43B432E19D5F200DFE8B0 /* MusadoraKit in Frameworks */,
 				69922A662E2307A1004EFE79 /* SwiftUISnackbar in Frameworks */,
-				6912110C2DB091B000E3AA06 /* SwiftyJSON in Frameworks */,
 				695459A22DB9D1A200A3DB11 /* SwiftVibrantium in Frameworks */,
-				6912110F2DB14E3000E3AA06 /* Alamofire in Frameworks */,
 				695459992DB69EB300A3DB11 /* SocketIO in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -140,8 +142,9 @@
 			);
 			name = Maple;
 			packageProductDependencies = (
-				6912110B2DB091B000E3AA06 /* SwiftyJSON */,
-				6912110E2DB14E3000E3AA06 /* Alamofire */,
+				A10000000000000000000012 /* BetterAuthPasskey */,
+				A10000000000000000000011 /* BetterAuthUsername */,
+				A10000000000000000000010 /* BetterAuth */,
 				695459982DB69EB300A3DB11 /* SocketIO */,
 				695459A12DB9D1A200A3DB11 /* SwiftVibrantium */,
 				69D43B422E19D5F200DFE8B0 /* MusadoraKit */,
@@ -230,8 +233,7 @@
 			mainGroup = 69D91D0D2D90F84500456238;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				6912110A2DB091B000E3AA06 /* XCRemoteSwiftPackageReference "SwiftyJSON" */,
-				6912110D2DB14E3000E3AA06 /* XCRemoteSwiftPackageReference "Alamofire" */,
+				A10000000000000000000001 /* XCRemoteSwiftPackageReference "BetterAuthSwift" */,
 				695459972DB69EB300A3DB11 /* XCRemoteSwiftPackageReference "socket" */,
 				695459A02DB9D1A200A3DB11 /* XCRemoteSwiftPackageReference "swift-vibrantium" */,
 				69D43B412E19D5F200DFE8B0 /* XCRemoteSwiftPackageReference "MusadoraKit" */,
@@ -444,6 +446,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = Maple/Maple.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -481,6 +484,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = Maple/Maple.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -626,28 +630,12 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		6912110A2DB091B000E3AA06 /* XCRemoteSwiftPackageReference "SwiftyJSON" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/SwiftyJSON/SwiftyJSON.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 5.0.2;
-			};
-		};
-		6912110D2DB14E3000E3AA06 /* XCRemoteSwiftPackageReference "Alamofire" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/Alamofire/Alamofire.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 5.10.2;
-			};
-		};
 		695459972DB69EB300A3DB11 /* XCRemoteSwiftPackageReference "socket" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/socketio/socket.io-client-swift";
 			requirement = {
-				branch = master;
-				kind = branch;
+				kind = exactVersion;
+				version = 16.1.1;
 			};
 		};
 		695459A02DB9D1A200A3DB11 /* XCRemoteSwiftPackageReference "swift-vibrantium" */ = {
@@ -674,19 +662,14 @@
 				kind = branch;
 			};
 		};
+		A10000000000000000000001 /* XCRemoteSwiftPackageReference "BetterAuthSwift" */ = {
+            isa = XCRemoteSwiftPackageReference;
+            repositoryURL = "https://github.com/ouwargui/BetterAuthSwift.git";
+            requirement = { kind = exactVersion; version = 2.1.0; };
+        };
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		6912110B2DB091B000E3AA06 /* SwiftyJSON */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 6912110A2DB091B000E3AA06 /* XCRemoteSwiftPackageReference "SwiftyJSON" */;
-			productName = SwiftyJSON;
-		};
-		6912110E2DB14E3000E3AA06 /* Alamofire */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 6912110D2DB14E3000E3AA06 /* XCRemoteSwiftPackageReference "Alamofire" */;
-			productName = Alamofire;
-		};
 		695459982DB69EB300A3DB11 /* SocketIO */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 695459972DB69EB300A3DB11 /* XCRemoteSwiftPackageReference "socket" */;
@@ -707,6 +690,9 @@
 			package = 69D43B412E19D5F200DFE8B0 /* XCRemoteSwiftPackageReference "MusadoraKit" */;
 			productName = MusadoraKit;
 		};
+		A10000000000000000000010 /* BetterAuth */ = { isa = XCSwiftPackageProductDependency; package = A10000000000000000000001; productName = BetterAuth; };
+		A10000000000000000000011 /* BetterAuthUsername */ = { isa = XCSwiftPackageProductDependency; package = A10000000000000000000001; productName = BetterAuthUsername; };
+		A10000000000000000000012 /* BetterAuthPasskey */ = { isa = XCSwiftPackageProductDependency; package = A10000000000000000000001; productName = BetterAuthPasskey; };
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 69D91D0E2D90F84500456238 /* Project object */;

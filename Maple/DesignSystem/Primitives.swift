@@ -1,0 +1,78 @@
+import SwiftUI
+import Observation
+
+@MainActor @Observable
+final class ToastCenter {
+    struct Notice: Identifiable { let id = UUID(); let message: String }
+    var notice: Notice?
+    @ObservationIgnored private var dismissal: Task<Void, Never>?
+    func show(_ message: String) {
+        dismissal?.cancel(); notice = Notice(message: message)
+        dismissal = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            self?.notice = nil
+        }
+    }
+    func show(_ error: Error) { show(MapleError.normalize(error).localizedDescription) }
+}
+struct ToastOverlay: ViewModifier {
+    @Environment(ToastCenter.self) private var toasts
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .top) {
+            if let notice = toasts.notice {
+                HStack {
+                    Image(systemName: "info.circle")
+                    Text(notice.message).font(.callout)
+                    Button("Dismiss", systemImage: "xmark") { toasts.notice = nil }.labelStyle(.iconOnly)
+                }
+                .padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                .padding().accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.updatesFrequently)
+            }
+        }
+    }
+}
+
+struct ArtworkView: View {
+    var url: URL?
+    var data: Data? = nil
+    @State private var localData: Data?
+    var body: some View {
+        Group {
+            if let data = data ?? localData, let image = UIImage(data: data) { Image(uiImage: image).resizable().scaledToFill() }
+            else if let url, !url.isFileURL {
+                AsyncImage(url: url) { image in image.resizable().scaledToFill() } placeholder: { fallback }
+            } else { fallback }
+        }
+        .clipped().accessibilityHidden(true)
+        .task(id: url) {
+            localData = nil
+            if let url, url.isFileURL { localData = try? await Task.detached { try Data(contentsOf: url) }.value }
+        }
+    }
+    private var fallback: some View { Rectangle().fill(.quaternary).overlay { Image(systemName: "music.note").foregroundStyle(.secondary) } }
+}
+struct AvatarView: View {
+    let userID: String
+    var data: Data? = nil
+    @Environment(AppServices.self) private var services
+    @State private var downloaded: Data?
+    var body: some View {
+        Group {
+            if let data = data ?? downloaded, let image = UIImage(data: data) { Image(uiImage: image).resizable().scaledToFill() }
+            else { Image(systemName: "person.crop.circle.fill").resizable().foregroundStyle(.secondary) }
+        }
+        .clipShape(Circle()).accessibilityHidden(true)
+        .task(id: userID) { downloaded = try? await services.api.avatar(id: userID) }
+    }
+}
+enum MapleFormat {
+    static func duration(_ seconds: Double) -> String {
+        let safe = seconds.isFinite ? min(max(seconds, 0), 86400) : 0
+        return Duration.seconds(safe).formatted(.time(pattern: safe >= 3600 ? .hourMinuteSecond : .minuteSecond))
+    }
+    static func relative(_ date: Date, to now: Date = .now) -> String {
+        let formatter = RelativeDateTimeFormatter(); formatter.unitsStyle = .short
+        return formatter.localizedString(for: date, relativeTo: now)
+    }
+}
