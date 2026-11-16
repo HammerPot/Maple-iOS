@@ -4,8 +4,7 @@ import SwiftUI
 struct FriendsTab: View {
     var body: some View {
         NavigationStack {
-            FriendList()
-                .navigationTitle("Friends")
+            FriendsRoot()
         }
     }
 }
