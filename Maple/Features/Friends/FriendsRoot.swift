@@ -12,6 +12,8 @@ struct FriendsRoot: View {
             if let user = auth.user {
                 FriendsListView(friends: friends, session: auth, myID: user.id, report: { toasts.show($0) })
                     .id(user.id)
+            } else if auth.sessionUnreachable {
+                SessionUnreachableView()
             } else if auth.isRestoring {
                 ProgressView()
             } else {

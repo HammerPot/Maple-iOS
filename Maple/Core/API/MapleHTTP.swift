@@ -96,14 +96,24 @@ actor MapleHTTP {
     }
     /// Revokes the captured old session without reading or modifying a subsequent sign-in's cookie jar.
     func revokeSession(cookies: [HTTPCookie]) async {
+        try? await revokeCapturedSession(cookies: cookies, everywhere: false)
+    }
+    /// Explicit sign-out uses the captured cookie after local invalidation, without touching a later session.
+    func revokeCapturedSession(cookies: [HTTPCookie], everywhere: Bool) async throws {
         guard !cookies.isEmpty else { return }
-        var request = URLRequest(url: Self.baseURL.appendingPathComponent("api/auth/sign-out"))
+        let path = everywhere ? "api/auth/revoke-sessions" : "api/auth/sign-out"
+        var request = URLRequest(url: Self.baseURL.appendingPathComponent(path))
         request.httpMethod = "POST"; request.httpShouldHandleCookies = false; request.timeoutInterval = 5
         request.setValue(Self.origin, forHTTPHeaderField: "Origin")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(HTTPCookie.requestHeaderFields(with: cookies)["Cookie"], forHTTPHeaderField: "Cookie")
         request.httpBody = Data("{}".utf8)
-        _ = try? await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
+        guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        guard (200..<300).contains(response.statusCode) else {
+            throw MapleError.response(status: response.statusCode, data: data,
+                                      contentType: response.value(forHTTPHeaderField: "Content-Type"))
+        }
     }
     nonisolated func clearCookies() { cookies.removeCookies(since: .distantPast) }
     nonisolated var sessionToken: String? { sessionCookies.first { $0.name == Self.sessionCookieName }?.value }

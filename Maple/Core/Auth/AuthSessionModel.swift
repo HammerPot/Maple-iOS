@@ -183,18 +183,19 @@ final class AuthSessionModel {
     /// Side-effect-free check used by the verification-pending screen. Unlike `refresh()`, a missing session
     /// does not sign out or notify; it only transitions when a verified session actually exists.
     func refreshIfVerified() async throws -> Bool {
+        let version = revision
         let session: SessionReply? = try await api.http.request("api/auth/get-session")
-        guard let session, session.user.emailVerified else { return false }
+        guard version == revision, let session, session.user.emailVerified else { return false }
         try await refresh()
         return user != nil
     }
     /// The current Better Auth session and its user (email, session ID for the "this device" marker).
     func currentSession() async throws -> SessionReply? { try await api.http.request("api/auth/get-session") }
-    /// Revokes every session including this one (Better Auth `/revoke-sessions`, as the web client's
-    /// "Sign out everywhere"), then clears local state. A follow-up `/sign-out` would only fail.
+    /// Clear locally first, then revoke every session with the captured cookie and a bounded request.
     func signOutEverywhere() async throws {
-        _ = try await client.revokeSessions()
+        let cookies = api.http.sessionCookies
         await invalidate()
+        try await api.http.revokeCapturedSession(cookies: cookies, everywhere: true)
     }
     func listPasskeys() async throws -> [PasskeyModel] { try await client.passkey.listUserPasskeys().data }
     func deletePasskey(id: String) async throws { _ = try await client.passkey.deletePasskey(with: .init(id: id)) }

@@ -8,15 +8,20 @@ struct Login: View {
     var body: some View {
         AccountRoot()
             .toolbar {
-                if auth.user != nil {
-                    ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarTrailing) {
                         NavigationLink {
                             FriendsRoot()
                         } label: {
                             Label("Friends", systemImage: "person.2")
                         }
                     }
+                #if DEBUG
+                if AccountVerificationSupport.showsChecks {
+                    ToolbarItem(placement: .topBarLeading) {
+                        NavigationLink("Account Checks") { AccountVerificationChecks() }
+                    }
                 }
+                #endif
             }
     }
 }

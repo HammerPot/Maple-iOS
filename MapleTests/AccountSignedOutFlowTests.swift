@@ -36,7 +36,7 @@ struct AccountSignInTests {
         guard case .verify(let context) = model.route else { Issue.record("Expected verification route"); return }
         #expect(context.username == "tester" && context.email == nil)
         #expect(context.password == "Secret123" && context.origin == .signIn)
-        #expect(context.canSignIn && context.canChangeEmail)
+        #expect(context.canSignIn && !context.canChangeEmail)
         #expect(model.password.isEmpty && model.errorMessage == nil)
     }
 
@@ -241,7 +241,8 @@ struct AccountVerifyEmailTests {
 
     @Test func changeEmailUsesEnrollmentAndUpdatesTheAddress() async {
         let session = FakeSignInService(); let clock = TestClock()
-        let model = makeModel(registered, session: session, clock: clock)
+        var legacy = registered; legacy.origin = .legacy
+        let model = makeModel(legacy, session: session, clock: clock)
         model.newEmail = "new@example.com"
         #expect(model.newEmailProblem == "That’s the address we already sent to.")
         model.newEmail = " Fixed@Example.com "
@@ -255,7 +256,8 @@ struct AccountVerifyEmailTests {
     @Test func changeEmailReportsUnavailableAddress() async {
         let session = FakeSignInService(); let clock = TestClock()
         session.enrollResults = [Fixture.error(409, code: "EMAIL_UNAVAILABLE")]
-        let model = makeModel(registered, session: session, clock: clock)
+        var legacy = registered; legacy.origin = .legacy
+        let model = makeModel(legacy, session: session, clock: clock)
         model.newEmail = "used@example.com"
         #expect(await model.changeEmail() == false)
         #expect(model.changeEmailError == "That email is used by another account. Use a different email address.")
@@ -265,7 +267,8 @@ struct AccountVerifyEmailTests {
     @Test func changeEmailDeliveryFailureStillMovesTheAddress() async {
         let session = FakeSignInService(); let clock = TestClock()
         session.enrollResults = [Fixture.error(503, code: "EMAIL_DELIVERY_FAILED")]
-        let model = makeModel(registered, session: session, clock: clock)
+        var legacy = registered; legacy.origin = .legacy
+        let model = makeModel(legacy, session: session, clock: clock)
         model.newEmail = "fixed@example.com"
         #expect(await model.changeEmail())
         #expect(model.context.email == "fixed@example.com")

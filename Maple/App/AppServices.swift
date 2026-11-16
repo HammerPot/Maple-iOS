@@ -17,9 +17,14 @@ final class AppServices {
         UserDefaults.standard.register(defaults: ["socketIO": true])
         let toasts = ToastCenter()
         self.toasts = toasts
+        #if DEBUG
+        let configuration = AccountVerificationSupport.configuration
+        #else
+        let configuration = URLSessionConfiguration.ephemeral
+        #endif
         let http = MapleHTTP(cookies: MapleHTTP.persistentCookies(onSaveFailure: { error in
             Task { @MainActor in toasts.show(error) }
-        }))
+        }), configuration: configuration)
         self.http = http
         let api = MapleAPI(http: http)
         self.api = api
@@ -50,14 +55,23 @@ final class AppServices {
             self?.friends.listening(event)
             self?.auth.receiveListening(event)
         }
+        friends.announce = { [weak self] notice in
+            guard let self else { return }
+            let accept = notice.acceptRequestID.map { id in
+                ToastCenter.Action(title: "Accept") { [weak self] in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        do { try await self.friends.accept(id: id) } catch { self.toasts.show(error) }
+                    }
+                }
+            }
+            self.toasts.show(notice.message, action: accept)
+        }
         realtime.onFriendship = { [weak self] name, event in
             Task { @MainActor in
                 guard let self else { return }
-                do {
-                    try await self.friends.friendship(name, event: event)
-                    if name == "friendRequest" { self.toasts.show("New friend request") }
-                    else if name != "friendRemoved" { self.toasts.show("Friend list updated") }
-                } catch { self.toasts.show(error) }
+                // FriendsModel announces each event (with Accept for incoming requests) once the lists are updated.
+                do { try await self.friends.friendship(name, event: event) } catch { self.toasts.show(error) }
             }
         }
         realtime.validateSession = { [weak auth] in

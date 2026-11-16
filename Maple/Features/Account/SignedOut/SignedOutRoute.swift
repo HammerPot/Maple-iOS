@@ -14,7 +14,7 @@ struct VerificationContext: Hashable {
     var canSignIn: Bool { (username ?? email) != nil && password?.isEmpty == false }
     /// `/legacy/enroll` is the only route that can change the address of an unverified account without a
     /// session. It needs the username and password, so it is offered only when both are known.
-    var canChangeEmail: Bool { username?.isEmpty == false && password?.isEmpty == false }
+    var canChangeEmail: Bool { origin == .legacy && username != nil && password?.isEmpty == false }
 }
 
 struct LegacyContext: Hashable {

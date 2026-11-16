@@ -9,6 +9,9 @@ struct AccountRoot: View {
         if let user = auth.user {
             AccountHomeView(user: user, api: services.api, session: auth)
                 .id(user.id)
+        } else if auth.sessionUnreachable {
+            SessionUnreachableView()
+                .navigationTitle("Account")
         } else if auth.isRestoring {
             ProgressView("Restoring Session…")
                 .navigationTitle("Account")
