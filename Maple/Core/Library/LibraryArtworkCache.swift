@@ -14,9 +14,10 @@ final class LibraryArtworkCache: @unchecked Sendable {
     func cached(_ url: URL, pixels: Int) -> UIImage? { cache.object(forKey: key(url, pixels)) }
 
     func thumbnail(at url: URL, pixels: Int) async -> UIImage? {
+        guard !Task.isCancelled else { return nil }
         let key = key(url, pixels)
         if let hit = cache.object(forKey: key) { return hit }
-        let image = await Task.detached(priority: .userInitiated) { () -> UIImage? in
+        let work = Task.detached(priority: .userInitiated) { () -> UIImage? in
             guard !Task.isCancelled,
                   let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
                   let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [
@@ -26,11 +27,14 @@ final class LibraryArtworkCache: @unchecked Sendable {
                       kCGImageSourceThumbnailMaxPixelSize: max(pixels, 1),
                   ] as CFDictionary) else { return nil }
             return UIImage(cgImage: cgImage)
-        }.value
+        }
+        let image = await withTaskCancellationHandler { await work.value } onCancel: { work.cancel() }
         if let image {
             cache.setObject(image, forKey: key, cost: Int(image.size.width * image.size.height * 4))
         }
-        return image
+        // The decoded image stays cached for the next request, but a cancelled caller gets nothing
+        // so it cannot publish a result that no longer belongs to it.
+        return Task.isCancelled ? nil : image
     }
 
     func removeAll() { cache.removeAllObjects() }
