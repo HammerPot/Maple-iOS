@@ -74,9 +74,47 @@ struct UploadImage {
             guard let destination = CGImageDestinationCreateWithData(output, type as CFString, 1, nil) else { continue }
             CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
             if CGImageDestinationFinalize(destination), output.length <= maxBytes {
-                return UploadImage(data: output as Data, mime: alpha ? "image/png" : "image/jpeg", ext: alpha ? "png" : "jpg")
+                let encoded = try removingEncoderMetadata(output as Data, png: alpha)
+                return UploadImage(data: encoded, mime: alpha ? "image/png" : "image/jpeg", ext: alpha ? "png" : "jpg")
             }
         }
         throw MapleError(status: 413)
     }
+    /// ImageIO may synthesize an EXIF block with dimensions/color space even when no source properties
+    /// are copied. Remove metadata containers from our freshly encoded image as a final privacy boundary.
+    private static func removingEncoderMetadata(_ data: Data, png: Bool) throws -> Data {
+        let bytes = [UInt8](data)
+        func invalid() -> MapleError { MapleError(status: 400, message: "That image couldn’t be prepared. Choose another photo.") }
+        if png {
+            guard bytes.count >= 8 else { throw invalid() }
+            var output = Data(bytes.prefix(8))
+            var offset = 8
+            while offset + 12 <= bytes.count {
+                let length = bytes[offset..<offset + 4].reduce(0) { ($0 << 8) | Int($1) }
+                guard length <= bytes.count - offset - 12 else { throw invalid() }
+                let end = offset + length + 12
+                let type = String(bytes: bytes[offset + 4..<offset + 8], encoding: .ascii)
+                if !["eXIf", "tEXt", "zTXt", "iTXt"].contains(type) { output.append(contentsOf: bytes[offset..<end]) }
+                offset = end
+            }
+            guard offset == bytes.count else { throw invalid() }
+            return output
+        }
+        guard bytes.starts(with: [0xff, 0xd8]) else { throw invalid() }
+        var output = Data(bytes.prefix(2))
+        var offset = 2
+        while offset + 4 <= bytes.count {
+            guard bytes[offset] == 0xff else { throw invalid() }
+            let marker = bytes[offset + 1]
+            // The scan and its compressed data are preserved byte-for-byte.
+            if marker == 0xda { output.append(contentsOf: bytes[offset...]); return output }
+            let length = Int(bytes[offset + 2]) << 8 | Int(bytes[offset + 3])
+            guard length >= 2, length <= bytes.count - offset - 2 else { throw invalid() }
+            let end = offset + length + 2
+            if marker != 0xe1 && marker != 0xfe { output.append(contentsOf: bytes[offset..<end]) }
+            offset = end
+        }
+        throw invalid()
+    }
+
 }
