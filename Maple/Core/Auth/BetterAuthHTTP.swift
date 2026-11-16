@@ -1,4 +1,5 @@
 import Foundation
+import CoreFoundation
 import BetterAuth
 
 /// The stock client's middleware doesn't run on all routes. This adapter sets Origin unconditionally,
@@ -12,8 +13,7 @@ actor BetterAuthHTTP: HTTPClientProtocol {
         let encoded = try body.map { try encoder.encode($0) }
         var items: [URLQueryItem] = []
         if let query {
-            let object = try JSONSerialization.jsonObject(with: encoder.encode(query)) as? [String: Any] ?? [:]
-            items = object.map { URLQueryItem(name: $0.key, value: String(describing: $0.value)) }
+            items = Self.queryItems(from: try JSONSerialization.jsonObject(with: encoder.encode(query)) as? [String: Any] ?? [:])
         }
         let data = try await http.raw("api/auth" + route.path, method: route.method, body: encoded, query: items)
         return try JSONDecoder.maple.decode(APIResource<T, C>.self, from: data)
@@ -29,5 +29,15 @@ actor BetterAuthHTTP: HTTPClientProtocol {
     }
     func perform<T, C>(route: AuthRoutable, query: EncodableAndSendable, responseType: T.Type) async throws -> APIResource<T, C> {
         try await perform(action: nil, route: route, body: nil, query: query, responseType: responseType)
+    }
+    /// JSONSerialization hands booleans back as NSNumber, which `String(describing:)` renders as 1/0.
+    static func queryItems(from object: [String: Any]) -> [URLQueryItem] {
+        object.sorted { $0.key < $1.key }.compactMap { key, value in
+            if value is NSNull { return nil }
+            if let number = value as? NSNumber {
+                return URLQueryItem(name: key, value: CFGetTypeID(number) == CFBooleanGetTypeID() ? (number.boolValue ? "true" : "false") : number.stringValue)
+            }
+            return URLQueryItem(name: key, value: String(describing: value))
+        }
     }
 }

@@ -54,7 +54,7 @@ final class MaplePasskeyCeremony: NSObject, ASAuthorizationControllerDelegate, A
         let pending = continuation; continuation = nil; self.controller = nil; pending?.resume(returning: authorization)
     }
     func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
-        let pending = continuation; continuation = nil; self.controller = nil; pending?.resume(throwing: error)
+        let pending = continuation; continuation = nil; self.controller = nil; pending?.resume(throwing: (error as? ASAuthorizationError)?.code == .canceled ? CancellationError() : error)
     }
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
         UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows).first(where: \.isKeyWindow) ?? ASPresentationAnchor()

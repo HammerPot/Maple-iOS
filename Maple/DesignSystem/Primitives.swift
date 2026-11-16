@@ -13,7 +13,11 @@ final class ToastCenter {
             self?.notice = nil
         }
     }
-    func show(_ error: Error) { show(MapleError.normalize(error).localizedDescription) }
+    func show(_ error: Error) {
+        // The user dismissing a passkey sheet or a cancelled task is not an error worth a toast.
+        if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
+        show(MapleError.normalize(error).localizedDescription)
+    }
 }
 struct ToastOverlay: ViewModifier {
     @Environment(ToastCenter.self) private var toasts
