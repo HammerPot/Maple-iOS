@@ -20,6 +20,9 @@ class AudioPlayerManager: NSObject, ObservableObject {
     @Published var currentSong: Song?
     private var isHandlingRemoteControl = false
     weak var playbackReporter: PlaybackReporter?
+    weak var libraryStore: LibraryStore?
+    private var startedTrackID: UUID?
+    private var lastListeningSample: TimeInterval?
     private var mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC")
     private var rpcTask = false
 
@@ -89,16 +92,19 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
     
     func setQueue(_ songs: [Song], startingAt index: Int = 0) {
+        if let id = startedTrackID { libraryStore?.recordEnd(id, completed: false); startedTrackID = nil }
         queue = songs
         currentIndex = index
-        if index < songs.count {
+        if songs.indices.contains(index) {
             loadSong(songs[index])
         }
     }
     
     private func loadSong(_ song: Song) {
 		print("loadSong: \(song.title)")
-        loadAudio(from: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("tracks").appendingPathComponent(song.url.lastPathComponent))
+        currentSong = song
+        lastListeningSample = nil
+        loadAudio(from: libraryStore?.audioURL(for: song) ?? URL.documentsDirectory.appendingPathComponent("tracks").appendingPathComponent(song.fileName))
         updateNowPlayingInfo(song: song)
     }
     
@@ -184,7 +190,11 @@ class AudioPlayerManager: NSObject, ObservableObject {
     func play() {
         amPlayer.Stop()
         print("Play called - current audio player exists: \(audioPlayer != nil)")
-        audioPlayer?.play()
+        guard audioPlayer?.play() == true else { return }
+        if let id = currentSong?.id, startedTrackID != id {
+            libraryStore?.recordStart(id); startedTrackID = id
+        }
+        lastListeningSample = audioPlayer?.currentTime
         isPlaying = true
         startTimer()
         reportPlayback()
@@ -219,6 +229,8 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
     
     func stop() {
+        startedTrackID = nil
+        lastListeningSample = nil
         Task { @MainActor in await playbackReporter?.stop() }
         print("Stop called - current audio player exists: \(audioPlayer != nil)")
         audioPlayer?.stop()
@@ -232,6 +244,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
     
     func seek(to time: TimeInterval) {
+        lastListeningSample = time
         audioPlayer?.currentTime = time
         currentTime = time
         reportPlayback()
@@ -244,6 +257,11 @@ class AudioPlayerManager: NSObject, ObservableObject {
         stopTimer()
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self = self, let player = self.audioPlayer else { return }
+            if self.isPlaying, let id = self.currentSong?.id, let last = self.lastListeningSample {
+                let seconds = player.currentTime - last
+                Task { @MainActor [weak self] in self?.libraryStore?.recordListening(id, seconds: seconds) }
+            }
+            self.lastListeningSample = player.currentTime
             self.currentTime = player.currentTime
             if let song = self.currentSong {
                 self.updateNowPlayingInfo(song: song)
@@ -262,6 +280,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     
     func playNext() {
         guard !queue.isEmpty else { return }
+        if let id = startedTrackID { libraryStore?.recordEnd(id, completed: false); startedTrackID = nil }
         print("playNext")
         currentIndex = (currentIndex + 1) % queue.count
         let nextSong = queue[currentIndex]
@@ -275,6 +294,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     
     func playPrevious() {
         guard !queue.isEmpty else { return }
+        if let id = startedTrackID { libraryStore?.recordEnd(id, completed: false); startedTrackID = nil }
         print("playPrevious")
         currentIndex = (currentIndex - 1 + queue.count) % queue.count
         let previousSong = queue[currentIndex]
@@ -282,12 +302,30 @@ class AudioPlayerManager: NSObject, ObservableObject {
         loadSong(previousSong)
         play()
     }
+    func enqueueLibraryTracks(_ tracks: [LibraryTrack], next: Bool) {
+        if queue.isEmpty { setQueue(tracks); return }
+        if next { queue.insert(contentsOf: tracks, at: min(currentIndex + 1, queue.count)) }
+        else { queue.append(contentsOf: tracks) }
+    }
+
+    func removeLibraryTracks(_ ids: Set<UUID>) {
+        let currentID = currentSong?.id
+        if let currentID, ids.contains(currentID) { stop(); currentSong = nil; audioPlayer = nil }
+        queue.removeAll { ids.contains($0.id) }
+        currentIndex = currentID.flatMap { id in queue.firstIndex { $0.id == id } } ?? -1
+    }
+
 }
 
 
 extension AudioPlayerManager: AVAudioPlayerDelegate {
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         if flag {
+            if let id = startedTrackID {
+                if let last = lastListeningSample { libraryStore?.recordListening(id, seconds: player.duration - last) }
+                libraryStore?.recordEnd(id, completed: true)
+                startedTrackID = nil
+            }
             playNext()
         }
     }
@@ -383,7 +421,7 @@ struct AudioPlayerView: View {
         .padding()
         .onAppear {
             if !hasInitializedQueue {
-                if let index = allSongs.firstIndex(where: { $0.url == song.url }) {
+                if let index = allSongs.firstIndex(where: { $0.id == song.id }) {
                     audioManager.setQueue(allSongs, startingAt: index)
                     hasInitializedQueue = true
                 }

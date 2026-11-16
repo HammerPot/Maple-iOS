@@ -14,6 +14,7 @@
 		A10000000000000000000020 /* BetterAuth in Frameworks */ = { isa = PBXBuildFile; productRef = A10000000000000000000010; };
 		A10000000000000000000021 /* BetterAuthUsername in Frameworks */ = { isa = PBXBuildFile; productRef = A10000000000000000000011; };
 		A10000000000000000000022 /* BetterAuthPasskey in Frameworks */ = { isa = PBXBuildFile; productRef = A10000000000000000000012; };
+		B20000000000000000000020 /* MapleTagReader in Frameworks */ = { isa = PBXBuildFile; productRef = B20000000000000000000010; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -75,6 +76,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B20000000000000000000020 /* MapleTagReader in Frameworks */,
 				A10000000000000000000022 /* BetterAuthPasskey in Frameworks */,
 				A10000000000000000000021 /* BetterAuthUsername in Frameworks */,
 				A10000000000000000000020 /* BetterAuth in Frameworks */,
@@ -142,6 +144,7 @@
 			);
 			name = Maple;
 			packageProductDependencies = (
+				B20000000000000000000010 /* MapleTagReader */,
 				A10000000000000000000012 /* BetterAuthPasskey */,
 				A10000000000000000000011 /* BetterAuthUsername */,
 				A10000000000000000000010 /* BetterAuth */,
@@ -233,6 +236,7 @@
 			mainGroup = 69D91D0D2D90F84500456238;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				B20000000000000000000001 /* MapleTagReader */,
 				A10000000000000000000001 /* XCRemoteSwiftPackageReference "BetterAuthSwift" */,
 				695459972DB69EB300A3DB11 /* XCRemoteSwiftPackageReference "socket" */,
 				695459A02DB9D1A200A3DB11 /* XCRemoteSwiftPackageReference "swift-vibrantium" */,
@@ -629,6 +633,10 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		B20000000000000000000001 /* MapleTagReader */ = { isa = XCLocalSwiftPackageReference; relativePath = Packages/MapleTagReader; };
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		695459972DB69EB300A3DB11 /* XCRemoteSwiftPackageReference "socket" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -693,6 +701,7 @@
 		A10000000000000000000010 /* BetterAuth */ = { isa = XCSwiftPackageProductDependency; package = A10000000000000000000001; productName = BetterAuth; };
 		A10000000000000000000011 /* BetterAuthUsername */ = { isa = XCSwiftPackageProductDependency; package = A10000000000000000000001; productName = BetterAuthUsername; };
 		A10000000000000000000012 /* BetterAuthPasskey */ = { isa = XCSwiftPackageProductDependency; package = A10000000000000000000001; productName = BetterAuthPasskey; };
+		B20000000000000000000010 /* MapleTagReader */ = { isa = XCSwiftPackageProductDependency; productName = MapleTagReader; };
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 69D91D0E2D90F84500456238 /* Project object */;

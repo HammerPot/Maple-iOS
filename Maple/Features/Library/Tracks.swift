@@ -1,41 +1,53 @@
 import SwiftUI
-import AVFoundation
 
 struct Tracks: View {
-	@State private var songs: [Song] = []
-    @State private var isLoading = true
-	var body: some View {
-        VStack {
-            if isLoading {
-                ProgressView("Loading tracks...")
-            } else if songs.isEmpty {
-                Text("No music files found")
-                    .font(.headline)
-                    .foregroundColor(.gray)
-                    .padding()
-            } else {
-                List {
-                    ForEach(songs.sorted(by: { $0.title < $1.title })) { song in
-                        NavigationLink(destination: AudioPlayerView(song: song, allSongs: songs.sorted(by: { $0.title < $1.title }))) {
-                            Text(song.title)
-                        }
-                    }
+    @Environment(LibraryStore.self) private var library
+    private var sort = LibrarySortState("tracks", default: TrackSort.title)
+    @State private var query = ""
+
+    private var visible: [LibraryTrack] {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matches = term.isEmpty ? library.tracks : library.tracks.filter {
+            $0.title.localizedStandardContains(term) || $0.artist.localizedStandardContains(term) || $0.album.localizedStandardContains(term)
+        }
+        return sort.apply(matches)
+    }
+
+    var body: some View {
+        let tracks = visible
+        List {
+            if !tracks.isEmpty {
+                Section {
+                    LibraryPlayButtons(tracks: tracks)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                }
+                Section {
+                    ForEach(tracks) { track in LibraryTrackRow(track: track, queue: tracks) }
+                } footer: {
+                    Text(LibraryText.summary(tracks: tracks.count, duration: tracks.reduce(0) { $0 + $1.duration }))
                 }
             }
         }
-        .navigationTitle("Tracks")
-		.onAppear {
-            Task{
-                loadSongsJ()
+        .listStyle(.plain)
+        .overlay {
+            if library.tracks.isEmpty {
+                ContentUnavailableView {
+                    Label("No Tracks Yet", systemImage: "music.note")
+                } description: {
+                    Text("Add audio files to see your tracks here.")
+                } actions: { MusicButton(style: .prominent) }
+            } else if tracks.isEmpty {
+                ContentUnavailableView.search(text: query)
             }
-		}
-	}
-
-    private func loadSongsJ(){
-        isLoading = true
-        Task {
-            songs = await loadSongsFromJson()
         }
-        isLoading = false
+        .navigationTitle("Tracks")
+        .searchable(text: $query, prompt: "Filter tracks")
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                LibrarySortMenu(state: sort, options: TrackSort.library)
+                MusicButton()
+            }
+        }
     }
 }

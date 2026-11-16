@@ -7,9 +7,10 @@ struct MapleApp: App {
     @State private var wasInBackground = false
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            root
                 .modifier(ToastOverlay())
                 .environment(services)
+                .environment(services.library)
                 .environment(services.auth)
                 .environment(services.friends)
                 .environment(services.toasts)
@@ -24,5 +25,17 @@ struct MapleApp: App {
                     }
                 }
         }
+    }
+
+    @ViewBuilder private var root: some View {
+        #if DEBUG
+        if AccountVerificationSupport.showsChecks {
+            NavigationStack { AccountVerificationChecks() }
+        } else {
+            ContentView()
+        }
+        #else
+        ContentView()
+        #endif
     }
 }

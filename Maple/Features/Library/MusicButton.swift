@@ -1,265 +1,138 @@
-//
-//  MusicButton.swift
-//  Maple
-//
-//  Created by Potter on 3/26/25.
-//
-
 import SwiftUI
 import UniformTypeIdentifiers
-import AVFoundation
 
+/// "Add music" entry point: files, a folder, or files already copied in with the Files app.
+/// `prominent` renders the two primary choices as buttons for empty states.
 struct MusicButton: View {
-	@State private var importing = false
-	@State private var localFiles: [URL] = []
-	
-	var body: some View {
-			Button("Add Music") {
-				importing = true
-			}
-			.fileImporter(
-				isPresented: $importing,
-				allowedContentTypes: [.audio],
-				allowsMultipleSelection: true
-			) { result in
-				switch result {
-				case .success(let files):
-					for file in files {
-						guard file.startAccessingSecurityScopedResource() else {
-							print("Failed to access the file")
-							continue
-						}
-						
-						let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-						print("Documents directory: \(documentsDirectory)")
-						let songFolder = documentsDirectory.appendingPathComponent("tracks")
-						do {
-							if !FileManager.default.fileExists(atPath: songFolder.path) {
-								try FileManager.default.createDirectory(at: songFolder, withIntermediateDirectories: true, attributes: nil)
-							}
-						} catch {
-							print("Error creating song folder: \(error.localizedDescription)")
-						}
-						let UUID = UUID()
-						let fileExt = file.pathExtension
-						let fileName = UUID.uuidString + "." + fileExt
-						let destinationURL = songFolder.appendingPathComponent(fileName)
-						print("Destination URL: \(destinationURL)")
-						
-						do {
-							if FileManager.default.fileExists(atPath: destinationURL.path) {
-								print("EXTREME EDGE CASE: File already exists with the same UUID, this should never happen. File is being removed and replaced.")
-								try FileManager.default.removeItem(at: destinationURL)
-							}
-							
-							try FileManager.default.copyItem(at: file, to: destinationURL)
+    enum Style { case menu, prominent }
+    var style: Style = .menu
+    @Environment(LibraryStore.self) private var library
+    @Environment(ToastCenter.self) private var toasts
+    @State private var picker: PickerKind?
+    @State private var showingProgress = false
 
-							Task {
-								do {
-									let metadata = await extractMetadata(from: destinationURL, id: UUID)
-									var song = Song(id: UUID,
-										title: metadata.title, 
-										artist: metadata.artist, 
-										album: metadata.album,
-										year: metadata.year,
-										genre: metadata.genre,
-										duration: metadata.duration,
-										artwork: metadata.artwork,
-										trackNumber: metadata.trackNumber,
-										discNumber: metadata.discNumber,
-										ext: metadata.ext,
-										url: destinationURL)
+    /// `.audio` plus extensions some systems don't declare as audio (Opus is playable on iOS 26).
+    private static let audioTypes: [UTType] = [.audio] + ["opus", "flac", "m4b"].compactMap { UTType(filenameExtension: $0) }
 
-									let jsonURL = songFolder.appendingPathComponent("tracks.json")
-									let jsonDecoder = JSONDecoder()
-									let jsonEncoder = JSONEncoder()
+    private enum PickerKind: Identifiable {
+        case files, folder
+        var id: Self { self }
+    }
 
-									var songs: [Song] = []
-									if !FileManager.default.fileExists(atPath: jsonURL.path) {
-										songs.append(song)
-										let _jsonData = try jsonEncoder.encode(songs)
-										try _jsonData.write(to: jsonURL)
-									}
-									else {
-										let jsonData = try Data(contentsOf: jsonURL)
-										var songs:[Song] = try jsonDecoder.decode([Song].self, from: jsonData)
-										songs.append(song)
-										let _jsonData = try jsonEncoder.encode(songs)
-										try _jsonData.write(to: jsonURL)
-									}
-									loadAlbums(song: song)
-									loadArtist(song: song)
-									print("Song \(destinationURL.lastPathComponent) has finished doing its last do-task in theory")
-								}
-							}
-							print("Song \(destinationURL.lastPathComponent) this print should be AFTER do-task's")
-							
-							
-						} catch {
-							print("Error copying file: \(error.localizedDescription)")
-						}
-						
-						file.stopAccessingSecurityScopedResource()
-					}
-					loadLocalFiles()
-					
-				case .failure(let error):
-					print("Error importing files: \(error.localizedDescription)")
-				}
-				importing = false
-			}
-			
-	}
-	private func formatFileSize(file: URL) -> String {
-		do {
-			let resourceValues = try file.resourceValues(forKeys: [.fileSizeKey])
-			let fileSize = resourceValues.fileSize ?? 0
-			let byteCountFormatter = ByteCountFormatter()
-			byteCountFormatter.allowedUnits = [.useMB]
-			byteCountFormatter.countStyle = .file
-			return byteCountFormatter.string(fromByteCount: Int64(fileSize))
-		} catch {
-			return "Unknown size"
-		}
-	}
+    var body: some View {
+        content
+            .disabled(!library.isLoaded || library.progress != nil)
+            .fileImporter(isPresented: Binding(get: { picker != nil }, set: { if !$0 { picker = nil } }),
+                          allowedContentTypes: picker == .folder ? [.folder] : Self.audioTypes,
+                          allowsMultipleSelection: true, onCompletion: importSelection)
+            .sheet(isPresented: $showingProgress) { LibraryImportSheet() }
+    }
+
+    @ViewBuilder private var content: some View {
+        switch style {
+        case .menu:
+            Menu {
+                Button("Choose Files", systemImage: "doc.badge.plus") { picker = .files }
+                Button("Choose Folder", systemImage: "folder.badge.plus") { picker = .folder }
+                Divider()
+                Button("Check Files App Folder", systemImage: "arrow.clockwise") {
+                    library.scanForNewFiles(); showingProgress = true
+                }
+            } label: {
+                Label("Add Music", systemImage: "plus")
+            }
+        case .prominent:
+            VStack(spacing: 10) {
+                Button { picker = .files } label: {
+                    Label("Choose Files", systemImage: "doc.badge.plus").frame(maxWidth: 260)
+                }
+                .buttonStyle(.borderedProminent)
+                Button { picker = .folder } label: {
+                    Label("Choose a Folder", systemImage: "folder.badge.plus").frame(maxWidth: 260)
+                }
+                .buttonStyle(.bordered)
+            }
+            .controlSize(.large)
+        }
+    }
+
+    private func importSelection(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls) where !urls.isEmpty:
+            library.startImport(urls); showingProgress = true
+        case .success: break
+        case .failure(let error): toasts.show(error)
+        }
+    }
 }
 
-struct MusicButtonPlus: View {
-	@State private var importing = false
-	@State private var localFiles: [URL] = []
-	
-	var body: some View {
-			Button() {
-				importing = true
-			} label: {
-				Image(systemName: "plus")
-					.font(.title.weight(.semibold))
-					.padding()
-					.background(Color.accentColor)
-					.foregroundColor(.white)
-					.clipShape(Circle())
-					.shadow(radius: 4, x: 0, y: 4)
-			}
-			.fileImporter(
-				isPresented: $importing,
-				allowedContentTypes: [.audio],
-				allowsMultipleSelection: true
-			) { result in
-				switch result {
-				case .success(let files):
-					for file in files {
-						guard file.startAccessingSecurityScopedResource() else {
-							print("Failed to access the file")
-							continue
-						}
-						
-						let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-						print("Documents directory: \(documentsDirectory)")
-						let songFolder = documentsDirectory.appendingPathComponent("tracks")
-						do {
-							if !FileManager.default.fileExists(atPath: songFolder.path) {
-								try FileManager.default.createDirectory(at: songFolder, withIntermediateDirectories: true, attributes: nil)
-							}
-						} catch {
-							print("Error creating song folder: \(error.localizedDescription)")
-						}
-						let UUID = UUID()
-						let fileExt = file.pathExtension
-						let fileName = UUID.uuidString + "." + fileExt
-						let destinationURL = songFolder.appendingPathComponent(fileName)
-						print("Destination URL: \(destinationURL)")
-						
-						do {
-							if FileManager.default.fileExists(atPath: destinationURL.path) {
-								print("EXTREME EDGE CASE: File already exists with the same UUID, this should never happen. File is being removed and replaced.")
-								try FileManager.default.removeItem(at: destinationURL)
-							}
-							
-							try FileManager.default.copyItem(at: file, to: destinationURL)
+struct LibraryImportSheet: View {
+    @Environment(LibraryStore.self) private var library
+    @Environment(\.dismiss) private var dismiss
 
-							Task {
-								do {
-									let metadata = await extractMetadata(from: destinationURL, id: UUID)
-									var song = Song(id: UUID,
-										title: metadata.title, 
-										artist: metadata.artist, 
-										album: metadata.album,
-										year: metadata.year,
-										genre: metadata.genre,
-										duration: metadata.duration,
-										artwork: metadata.artwork,
-										trackNumber: metadata.trackNumber,
-										discNumber: metadata.discNumber,
-										ext: metadata.ext,
-										url: destinationURL)
-
-									let jsonURL = songFolder.appendingPathComponent("tracks.json")
-									let jsonDecoder = JSONDecoder()
-									let jsonEncoder = JSONEncoder()
-
-									var songs: [Song] = []
-									if !FileManager.default.fileExists(atPath: jsonURL.path) {
-										songs.append(song)
-										let _jsonData = try jsonEncoder.encode(songs)
-										try _jsonData.write(to: jsonURL)
-									}
-									else {
-										let jsonData = try Data(contentsOf: jsonURL)
-										var songs:[Song] = try jsonDecoder.decode([Song].self, from: jsonData)
-										songs.append(song)
-										let _jsonData = try jsonEncoder.encode(songs)
-										try _jsonData.write(to: jsonURL)
-									}
-									loadAlbums(song: song)
-									loadArtist(song: song)
-									print("Song \(destinationURL.lastPathComponent) has finished doing its last do-task in theory")
-								}
-							}
-							print("Song \(destinationURL.lastPathComponent) this print should be AFTER do-task's")
-							
-							
-						} catch {
-							print("Error copying file: \(error.localizedDescription)")
-						}
-						
-						file.stopAccessingSecurityScopedResource()
-					}
-					loadLocalFiles()
-					
-				case .failure(let error):
-					print("Error importing files: \(error.localizedDescription)")
-				}
-				importing = false
-			}
-			
-	}
-	private func formatFileSize(file: URL) -> String {
-		do {
-			let resourceValues = try file.resourceValues(forKeys: [.fileSizeKey])
-			let fileSize = resourceValues.fileSize ?? 0
-			let byteCountFormatter = ByteCountFormatter()
-			byteCountFormatter.allowedUnits = [.useMB]
-			byteCountFormatter.countStyle = .file
-			return byteCountFormatter.string(fromByteCount: Int64(fileSize))
-		} catch {
-			return "Unknown size"
-		}
-	}
+    var body: some View {
+        NavigationStack {
+            List {
+                if let progress = library.progress {
+                    Section {
+                        VStack(alignment: .leading, spacing: 10) {
+                            if progress.total > 0 {
+                                ProgressView(value: Double(progress.completed), total: Double(progress.total))
+                                Text("\(progress.completed) of \(progress.total) files")
+                                    .font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                            } else {
+                                ProgressView()
+                            }
+                            Text(progress.fileName).font(.headline).lineLimit(2)
+                        }
+                        .padding(.vertical, 6)
+                        .accessibilityElement(children: .combine)
+                        Button("Stop Importing", role: .destructive) { library.cancelImport() }
+                    } footer: {
+                        Text("Tracks imported so far are kept if you stop.")
+                    }
+                } else if let summary = library.importSummary {
+                    Section {
+                        LabeledContent { Text(summary.imported.formatted()) } label: {
+                            Label("Added", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                        }
+                        LabeledContent { Text(summary.duplicates.formatted()) } label: {
+                            Label("Already in Library", systemImage: "square.on.square").foregroundStyle(.secondary)
+                        }
+                        LabeledContent { Text(summary.failures.count.formatted()) } label: {
+                            Label("Couldn’t Import", systemImage: "exclamationmark.triangle.fill").foregroundStyle(summary.failures.isEmpty ? Color.secondary : Color.orange)
+                        }
+                    } header: {
+                        Text(summary.cancelled ? "Import Stopped" : "Import Complete")
+                    } footer: {
+                        if summary.duplicates > 0 {
+                            Text("Files with the same title and artist as a track in your library are skipped without being copied.")
+                        }
+                    }
+                    if !summary.failures.isEmpty {
+                        Section("Couldn’t Import") {
+                            ForEach(Array(summary.failures.enumerated()), id: \.offset) { Text($0.element).font(.callout) }
+                        }
+                    }
+                } else {
+                    Section { Text("No new music found.").foregroundStyle(.secondary) }
+                }
+            }
+            .navigationTitle("Add Music")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { library.dismissImportSummary(); dismiss() }.disabled(library.progress != nil)
+                }
+            }
+            .interactiveDismissDisabled(library.progress != nil)
+        }
+        .presentationDetents([.medium, .large])
+    }
 }
 
-func clearDocumentsDirectory() {
-	let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-	do {
-		let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsDirectory,
-																includingPropertiesForKeys: nil)
-		for fileURL in fileURLs {
-			try FileManager.default.removeItem(at: fileURL)
-		}
-	} catch {
-		print("Error clearing documents directory: \(error.localizedDescription)")
-	}
-}
+extension Notification.Name { static let clearMapleLibrary = Notification.Name("clearMapleLibrary") }
 
-#Preview {
-	MusicButton()
-}
+/// Called by the existing Settings "Clear Documents" action (after its own confirmation).
+/// `ContentView` routes this to `LibraryStore.clearLibrary()`.
+func clearDocumentsDirectory() { NotificationCenter.default.post(name: .clearMapleLibrary, object: nil) }

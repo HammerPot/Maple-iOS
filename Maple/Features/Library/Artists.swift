@@ -1,77 +1,111 @@
 import SwiftUI
-import AVFoundation
-
 
 struct Artists: View {
-	@State private var artists: [Artist] = []
-	@State private var isLoading = true
-	
-	var body: some View {
-		VStack {
-			if isLoading {
-				ProgressView("Loading artists...")
-			} else if artists.isEmpty {
-				Text("No artists found")
-					.font(.headline)
-					.foregroundColor(.gray)
-					.padding()
-			} else {
-				List {
-					ForEach(artists) { artist in
-						NavigationLink(destination: ArtistDetailView(artist: artist)) {
-							Text(artist.name)
-						}
-					}
-				}
-			}
-		}
-		.navigationTitle("Artists")
-		.onAppear {
-			loadArtistsJ()
-		}
-	}
+    @Environment(LibraryStore.self) private var library
+    private var sort = LibrarySortState("artists", default: ArtistSort.name)
+    @State private var query = ""
 
-	private func loadArtistsJ() {
-		isLoading = true 
-		Task {
-			artists = await loadArtistsFromJson()
-		}
-		isLoading = false
-	}
+    private var visible: [LibraryArtist] {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return sort.apply(term.isEmpty ? library.artists : library.artists.filter { $0.name.localizedStandardContains(term) })
+    }
 
-	private func loadArtists() {
-		isLoading = true
-		
-		Task {
-			let songs = await loadSongsFromJson()
-			let groupedArtists = groupSongsByArtist(songs)
-			
-			await MainActor.run {
-				artists = groupedArtists
-				isLoading = false
-			}
-		}
-	}
+    var body: some View {
+        let artists = visible
+        List(artists) { artist in
+            NavigationLink(value: LibraryRoute.artist(artist.id)) {
+                HStack(spacing: 12) {
+                    LibraryArtwork(reference: artist.artwork, size: 48, cornerRadius: 24, placeholder: "music.mic")
+                        .frame(width: 48, height: 48)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(artist.name).lineLimit(1)
+                        Text(Self.counts(artist)).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .contextMenu { LibraryGroupMenu(artist: artist) }
+        }
+        .listStyle(.plain)
+        .overlay {
+            if library.artists.isEmpty {
+                ContentUnavailableView("No Artists Yet", systemImage: "music.mic",
+                                       description: Text("Artists appear here when you add music."))
+            } else if artists.isEmpty {
+                ContentUnavailableView.search(text: query)
+            }
+        }
+        .navigationTitle("Artists")
+        .searchable(text: $query, prompt: "Filter artists")
+        .toolbar { LibrarySortMenu(state: sort) }
+    }
+
+    static func counts(_ artist: LibraryArtist) -> String {
+        let albums = artist.albumIDs.count == 1 ? "1 album" : "\(artist.albumIDs.count) albums"
+        return "\(albums) · \(LibraryActions.tracks(artist.trackIDs.count))"
+    }
 }
 
-
-
 struct ArtistDetailView: View {
-	let artist: Artist
-    var sortedSongs: [Song] {
-        artist.songs.sorted(by: { $0.title < $1.title })
+    @Environment(\.dismiss) private var dismiss
+    @Environment(LibraryStore.self) private var library
+    @Environment(\.openLibraryRoute) private var open
+    let artistID: String
+    private var sort = LibrarySortState("artistDetail", default: TrackSort.album)
+
+    init(artistID: String) { self.artistID = artistID }
+
+    var body: some View {
+        if let artist = library.artist(artistID) {
+            content(artist)
+        } else {
+            ContentUnavailableView("Artist Removed", systemImage: "music.mic")
+                .task { dismiss() } // deleted from here or elsewhere: go back
+        }
     }
-	var body: some View {
-		VStack {
-			List {
-				ForEach(sortedSongs) { song in
-					NavigationLink(destination: AudioPlayerView(song: song, allSongs: sortedSongs)) {
-						Text(song.title)
-							.font(.body)
-					}
-				}
-			}
-		}
-		.navigationTitle(artist.name)
-	}
+
+    private func content(_ artist: LibraryArtist) -> some View {
+        let tracks = sort.apply(library.tracks(ids: artist.trackIDs))
+        let albums = artist.albumIDs.compactMap { library.album($0) }
+        return List {
+            Section {
+                LibraryDetailHeader(title: artist.name, detail: Artists.counts(artist), tracks: tracks) {
+                    LibraryArtwork(reference: artist.artwork, size: 180, cornerRadius: 90, placeholder: "music.mic")
+                        .frame(maxWidth: 180)
+                }
+            }
+            if !albums.isEmpty {
+                Section("Albums") {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(alignment: .top, spacing: 14) {
+                            ForEach(albums) { album in
+                                Button { open(.album(album.id)) } label: {
+                                    AlbumCard(album: album, subtitle: album.year > 0 ? String(album.year) : LibraryActions.tracks(album.trackIDs.count))
+                                        .frame(width: 150)
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu { LibraryGroupMenu(album: album) }
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+            }
+            Section("Tracks") {
+                ForEach(tracks) { LibraryTrackRow(track: $0, queue: tracks) }
+            }
+        }
+        .listStyle(.plain)
+        .navigationTitle(artist.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                LibrarySortMenu(state: sort, options: [.album, .title, .year, .duration, .dateAdded])
+                Menu("More", systemImage: "ellipsis") { LibraryGroupMenu(artist: artist) }
+            }
+        }
+    }
 }

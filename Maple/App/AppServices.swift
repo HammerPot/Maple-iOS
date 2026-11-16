@@ -11,6 +11,10 @@ final class AppServices {
     let friends: FriendsModel
     let toasts: ToastCenter
     private let webhook = WebhookReporter()
+    /// Audio and artwork stay in Documents (visible in the Files app, as before); the catalog
+    /// lives privately in Application Support.
+    let library = LibraryStore(root: URL.documentsDirectory,
+                               catalogDirectory: URL.applicationSupportDirectory.appendingPathComponent("Library", isDirectory: true))
     private var signedInID: String?
 
     init() {
@@ -80,6 +84,8 @@ final class AppServices {
             catch let error as MapleError where error.status == 401 { await auth.invalidate(); return .invalid }
             catch { return .unreachable }
         }
+        AudioPlayerManager.shared.libraryStore = library
+        library.willDeleteTracks = { ids in AudioPlayerManager.shared.removeLibraryTracks(ids) }
         AudioPlayerManager.shared.playbackReporter = playback
         AMPlayer.shared.playbackReporter = playback
         playback.snapshotProvider = {
@@ -87,7 +93,12 @@ final class AppServices {
             return AudioPlayerManager.shared.mapleSnapshot()
         }
     }
-    func start() async { await auth.restore() }
+    func start() async {
+        async let restored: Void = auth.restore()
+        await library.load()
+        library.scanForNewFiles(silently: true)
+        await restored
+    }
     func sceneBecameActive() async {
         await auth.sceneBecameActive()
         realtime.sceneBecameActive()

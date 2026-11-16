@@ -1,160 +1,67 @@
-//
-//  ContentView.swift
-//  Maple
-//
-//  Created by Potter on 3/23/25.
-//
-
 import SwiftUI
-import SocketIO
 import MusicKit
-import MusadoraKit
-import SwiftUISnackbar
 
 struct ContentView: View {
-    @ObservedObject private var manager = AppleMusicManager.shared
+    @Environment(LibraryStore.self) private var library
+    @Environment(ToastCenter.self) private var toasts
+    @Environment(FriendsModel.self) private var friends
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var audioManager = AudioPlayerManager.shared
-
     @ObservedObject private var amPlayer = AMPlayer.shared
-    @State private var snackbar: Snackbar?
     @State private var showPlayer = false
 
-    init() {
-        // socketManager.connect()
-        Task{
-            // let nowSong3 = SystemMusicPlayer.shared.queue.currentEntry?.item?.id
-            // print("nowSong3: \(nowSong3)")
-            // let nowSong2 = SystemMusicPlayer.shared.queue.currentEntry
-            // print("nowSong2: \(nowSong2)")
-            // print("nowSong2.item: \(nowSong2?.song.item)")
-            let nowSong = SystemMusicPlayer.shared.queue.currentEntry?.item
-            print("nowSong: \(nowSong)")
-            if let song = nowSong {
-                print("song: \(song)")
-                // dump(song)
-            } else {
-                print("No current song")
-            }
-            
-            // print("SystemMusicPlayer.shared.queue.currentEntry?.item: \(SystemMusicPlayer.shared.queue.currentEntry?.item)")
-            // print("SystemMusicPlayer.shared.queue.currentEntry: \(SystemMusicPlayer.shared.queue.currentEntry)")
-            let documentDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            let imagePath = documentDirectory.appendingPathComponent("images")
-	        do {
-		        if !FileManager.default.fileExists(atPath: imagePath.path){
-			        try FileManager.default.createDirectory(at: imagePath, withIntermediateDirectories: true, attributes: nil)
-                    try UIImage(named: "Maple")?.pngData()?.write(to: imagePath.appendingPathComponent("maple.image"))
-                }
-            }
-        }
-        if UserDefaults.standard.bool(forKey: "musicKit") == true {
-            manager.checkAuthorization()
-        }
-    }
     var body: some View {
-        // Button(action: {
-        //     snackbar = Snackbar(title: "Hello", message: "World")
-        // }) {
-        //     Text("Show Snackbar")
-        // }
-        if #available(iOS 26.0, *) {
-            TabView {
-                Tab("Home", systemImage: "house") {
-                    Home()
-                }
-                Tab("Search", systemImage: "magnifyingglass", role: .search) {
-                    Search()
-                }
-                Tab("Account", systemImage: "person.crop.circle") {
-                    NavigationStack{
-                        Login()
-                    }
-                }
-                Tab("Settings", systemImage: "gear") {
-                    Settings()
+        Group {
+            if #available(iOS 26, *) {
+                tabs.tabViewBottomAccessory { NowPlayingBar(showPlayer: $showPlayer) }
+            } else {
+                tabs.safeAreaInset(edge: .bottom, spacing: 0) {
+                    NowPlayingBar(showPlayer: $showPlayer).background(.bar)
                 }
             }
-            .snackbarView(snackbar: $snackbar)
-            .zIndex(0)
-            // .tabBarMinimizeBehavior(.onScrollDown)
-            .tabViewBottomAccessory {
-                NowPlayingBar(showPlayer: $showPlayer)
+        }
+        .sheet(isPresented: $showPlayer) {
+            if amPlayer.initialized { AMPlayerView2() }
+            else if let song = audioManager.currentSong { MediaPlayerView(song: song, allSongs: audioManager.queue) }
+            else { ContentUnavailableView("Nothing Playing", systemImage: "music.note") }
+        }
+        .task {
+            if UserDefaults.standard.bool(forKey: "musicKit") { AppleMusicManager.shared.checkAuthorization() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active: library.scanForNewFiles(silently: true) // pick up files added in the Files app
+            case .background: Task { do { try await library.flush() } catch { toasts.show(error) } }
+            default: break
             }
-            .sheet(isPresented: $showPlayer) {
-                if amPlayer.initialized == true {
-                    AMPlayerView2()
-                }
-                else {
-                    MediaPlayerView(
-                        song: audioManager.currentSong ?? Song(
-                            id: UUID(), title: "No Song", artist: "No Artist", album: "No Album",
-                            year: Int(Calendar(identifier: .gregorian).dateComponents([.year], from: .now).year ?? 2025), genre: "Unknown", duration: 0.0, artwork: nil,
-                            trackNumber: 0, discNumber: 0, ext: "", url: URL(fileURLWithPath: "")
-                        ),
-                        allSongs: audioManager.queue
-                    )
-                }
-            }
-        } else {
-            // Fallback on earlier versions
-            TabView {
-                Tab("Home", systemImage: "house") {
-                    Home()
-                }
-                Tab("Now Playing", systemImage: "play.circle.fill"){
-                    if amPlayer.initialized == true {
-                        AMPlayerView2()
-                    }
-                    else {
-                        MediaPlayerView(
-                            song: audioManager.currentSong ?? Song(
-                                id: UUID(), title: "No Song", artist: "No Artist", album: "No Album",
-                                year: Int(Calendar(identifier: .gregorian).dateComponents([.year], from: .now).year ?? 2025), genre: "Unknown", duration: 0.0, artwork: nil,
-                                trackNumber: 0, discNumber: 0, ext: "", url: URL(fileURLWithPath: "")
-                            ),
-                            allSongs: audioManager.queue
-                        )
-                    }
-                }
-                Tab("Search", systemImage: "magnifyingglass", role: .search) {
-                    Search()
-                }
-                Tab("Account", systemImage: "person.crop.circle") {
-                    NavigationStack{
-                        Login()
-                    }
-                }
-                Tab("Settings", systemImage: "gear") {
-                    Settings()
-                }
-            }
-            .zIndex(0)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .clearMapleLibrary)) { _ in
+            Task { do { try await library.clearLibrary() } catch { toasts.show(error) } }
+        }
+        .onChange(of: library.errorMessage) { _, message in
+            if let message { toasts.show(message); library.errorMessage = nil }
+        }
+        .onChange(of: library.announcement) { _, message in
+            if let message { toasts.show(message); library.announcement = nil }
+        }
+        .libraryActionPresenter()
+    }
+    private var tabs: some View {
+        TabView {
+            Tab("Home", systemImage: "house") { Home() }
+            Tab("Library", systemImage: "music.note.list") { LibraryTab() }
+            Tab("Friends", systemImage: "person.2") { FriendsTab() }
+                .badge(friends.requests.incoming.count)
+            Tab("Account", systemImage: "person.crop.circle") { AccountTab() }
+            Tab("Search", systemImage: "magnifyingglass", role: .search) { Search() }
         }
     }
-
-    // let manager = SocketManager(socketURL: URL(string: "https://api.maple.music")!, config: [.log(true)])
-    // let socket = manager.defaultSocket
-
-    // init() {
-    //     socket.connect()
-    //     socket.on(clientEvent: .connect) { data, ack in
-    //         print("Connected to server")
-    //     }
-    //     socket.on(clientEvent: .disconnect) { data, ack in
-    //         print("Disconnected from server")
-    //     }
-    // }
-    
 }
 
-
 struct NowPlayingBar: View {
-    // @Environment(\.openURL) private var openURL
     @ObservedObject private var audioManager = AudioPlayerManager.shared
     @ObservedObject private var amPlayer = AMPlayer.shared
     @Binding var showPlayer: Bool
-    // @Environment(\.tabViewBottomAccessoryPlacement)
-    // var placement
 
     var body: some View {
 
@@ -168,27 +75,10 @@ struct NowPlayingBar: View {
                     .contentShape(Rectangle())
                     HStack(spacing: 12) {
                         Group {
-                            // if let currentSong = SystemMusicPlayer.shared.queue.currentEntry?.item,
-                            //    let artworkURL = currentSong.track.artwork?.url(width: 44, height: 44) {
-                            //     AsyncImage(url: artworkURL) { image in
-                            //         image.resizable()
-                            //     } placeholder: {
-                            //         if let uiImage = UIImage(named: "Maple") {
-                            //             Image(uiImage: uiImage)
-                            //                 .resizable()
-                            //         }
-                            //     }
-                            // } else if let uiImage = UIImage(named: "Maple") {
-                            //     Image(uiImage: uiImage)
-                            //         .resizable()
-                            // }
                             if let artwork = amPlayer.albumArt {
                                 Image(uiImage: artwork)
                                         .resizable()
-                                        // .scaledToFit()
                                         .frame(width: 30, height: 30)
-                                        // .clipShape(RoundedRectangle(cornerRadius: 8))
-                                        // .padding()
 
                             } else if let uiImage = UIImage(named: "Maple") {
                                 Image(uiImage: uiImage)
@@ -247,7 +137,6 @@ struct NowPlayingBar: View {
                             }
                             .buttonStyle(.borderless)
                             Button(action: {
-                                print("AM Button pressed")
                                 UIApplication.shared.open(URL(string: "music://")!, options: [:], completionHandler: nil)
                             }){
                                 Image(uiImage: UIImage(named: "AM")!)
@@ -268,7 +157,7 @@ struct NowPlayingBar: View {
         } else {
             ZStack {
                 NavigationLink(
-                    destination: MediaPlayerView(song: audioManager.currentSong ?? Song(id: UUID(), title: "No Song", artist: "No Artist", album: "No Album", year: Int(Calendar(identifier: .gregorian).dateComponents([.year], from: .now).year ?? 2025), genre: "Unknown", duration: 0.0, artwork: nil, trackNumber: 0, discNumber: 0, ext: "", url: URL(fileURLWithPath: "")), allSongs: audioManager.queue),
+                    destination: MediaPlayerView(song: audioManager.currentSong ?? Song(fileName: "", title: "No Song"), allSongs: audioManager.queue),
                     isActive: $showPlayer
                 ) { EmptyView() }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -331,8 +220,4 @@ struct NowPlayingBar: View {
             }
         }
     }
-}
-
-#Preview {
-    ContentView()
 }
