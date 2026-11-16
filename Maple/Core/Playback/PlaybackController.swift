@@ -29,6 +29,7 @@ final class PlaybackController {
     @ObservationIgnored private var saving: Task<Void, Never>?
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
     @ObservationIgnored private var loading: Task<Void, Never>?
+    @ObservationIgnored private var deferredAppleRestore = false
     @ObservationIgnored private var wantsPlayback = false
     @ObservationIgnored private var intendedPosition = 0.0
     @ObservationIgnored private var intentRevision = 0
@@ -68,6 +69,7 @@ final class PlaybackController {
         await loadCurrent(autoplay: true)
     }
     private func loadCurrent(autoplay: Bool, at seconds: Double = 0) async {
+        deferredAppleRestore = false
         wantsPlayback = autoplay; intendedPosition = seconds; intentRevision += 1
         generation += 1
         let ticket = generation
@@ -91,6 +93,10 @@ final class PlaybackController {
                 guard self.generation == ticket else { return }
                 try await target.load(item)
                 guard self.generation == ticket else { return }
+                if !target.unavailableEntryIDs.isEmpty {
+                    self.queue.remove(target.unavailableEntryIDs)
+                    self.onError(MapleError(status: 0, message: "Unavailable Apple Music queue entries were skipped."))
+                }
                 self.currentItem = item
                 self.duration = target.duration > 0 ? target.duration : item.duration
                 while self.generation == ticket {
@@ -122,6 +128,7 @@ final class PlaybackController {
         return task
     }
     func resume() async {
+        if deferredAppleRestore { await loadCurrent(autoplay: true, at: position.seconds); return }
         wantsPlayback = true; intentRevision += 1
         if isLoading { return }
         guard currentItem != nil else { await loadCurrent(autoplay: true); return }
@@ -133,31 +140,44 @@ final class PlaybackController {
     }
     func pause() {
         wantsPlayback = false; intentRevision += 1
+        if deferredAppleRestore { return }
         if isLoading { local.pause(); apple.pause(); isPlaying = false; return }
         settleListening(); engine.pause(); isPlaying = false; listenedAt = nil
         position.seconds = engine.position; publish(); save()
     }
     func stop() {
         generation += 1; wantsPlayback = false; intentRevision += 1; endPlay(completed: false)
-        if currentItem?.source == .appleMusic { apple.stopExternalPlayback() }
+        if currentItem?.source == .appleMusic, !deferredAppleRestore { apple.stopExternalPlayback() }
+        deferredAppleRestore = false
         local.stop(); apple.stop(); artworkTask?.cancel(); externalOccurrence = nil
         currentItem = nil; artworkData = nil; isPlaying = false; isLoading = false
         position.seconds = 0; duration = 0
         publishStop(); stateChanged(); save()
     }
     func next(natural: Bool = false) async {
+        if !natural, await skipExternal(forward: true) { return }
         endPlay(completed: natural)
         if queue.advance(natural: natural) { await loadCurrent(autoplay: true) }
         else { stop() }
     }
     func previous() async {
-        if engine.position > 3 || !queue.previous() { await seek(to: 0); return }
+        if (deferredAppleRestore ? position.seconds : engine.position) > 3 { await seek(to: 0); return }
+        if await skipExternal(forward: false) { return }
+        if !queue.previous() { await seek(to: 0); return }
         endPlay(completed: false); await loadCurrent(autoplay: true)
+    }
+    private func skipExternal(forward: Bool) async -> Bool {
+        guard currentItem?.source == .appleMusic, !deferredAppleRestore else { return false }
+        do {
+            if try await apple.skipExternal(forward: forward) { refresh(); return true }
+        } catch { onError(error); return true }
+        return false
     }
     /// Called once on release, by a lyric line or by a remote command, never per slider tick.
     func seek(to seconds: Double) async {
         guard (currentItem ?? queue.current?.item) != nil, seconds.isFinite else { return }
         intendedPosition = max(0, seconds); intentRevision += 1
+        if deferredAppleRestore { position.seconds = intendedPosition; save(); return }
         if isLoading { position.seconds = intendedPosition; return }
         settleListening(); listenedAt = nil
         let ticket = generation
@@ -179,7 +199,7 @@ final class PlaybackController {
         queue.removeLibraryTracks(ids); synchronizeEngineQueue(reload: true); save()
     }
     private func synchronizeEngineQueue(reload: Bool = false) {
-        guard (currentItem ?? queue.current?.item)?.source == .appleMusic else { return }
+        guard (currentItem ?? queue.current?.item)?.source == .appleMusic, !deferredAppleRestore else { return }
         if !reload, !isLoading {
             let previous = loading, context = queue, ticket = generation
             loading = Task { [weak self] in
@@ -198,10 +218,10 @@ final class PlaybackController {
         guard let item = currentItem else { return nil }
         return TrackSnapshot(identity: "\(item.source == .local ? "local" : "apple"):\(item.id):\(playID)",
             title: item.title, artist: item.artist, album: item.album, duration: duration,
-            playing: isPlaying, position: engine.position, playbackRate: engine.rate)
+            playing: isPlaying, position: deferredAppleRestore ? position.seconds : engine.position, playbackRate: engine.rate)
     }
     func sample() {
-        guard currentItem != nil, !isLoading else { return }
+        guard currentItem != nil, !isLoading, !deferredAppleRestore else { return }
         let nextPosition = engine.position
         // Music.app can repeat one queue entry without changing its entry ID or playback status.
         // Reuse the cheap position sample to recognize that boundary; explicit Maple seeks update
@@ -228,7 +248,7 @@ final class PlaybackController {
               currentItem?.source != .appleMusic || externalOccurrence != state.occurrence else { return false }
         endPlay(completed: false)
         local.stop()
-        generation += 1; artworkTask?.cancel()
+        generation += 1; artworkTask?.cancel(); deferredAppleRestore = false
         queue.replace([state.item], startingAt: 0, shuffle: false)
         currentItem = state.item; externalOccurrence = state.occurrence
         playID = UUID(); artworkData = nil; wantsPlayback = true
@@ -237,7 +257,7 @@ final class PlaybackController {
         return true
     }
     private func reconcile() {
-        guard currentItem != nil, !isLoading else { return }
+        guard currentItem != nil, !isLoading, !deferredAppleRestore else { return }
         settleListening()
         let playing = engine.isPlaying
         if playing && !started {
@@ -275,7 +295,7 @@ final class PlaybackController {
             endPlay(completed: false); currentItem = item; playID = UUID(); artworkData = nil
             loadArtwork(item, ticket: generation); reconcile(); publish(); save()
         case .stateChanged:
-            if source == .appleMusic, currentItem?.source != .appleMusic, adoptExternalPlayback() { return }
+            if source == .appleMusic, adoptExternalPlayback() { return }
             guard currentItem?.source == source else { return }
             reconcile(); publish()
         case .ended:
@@ -329,7 +349,7 @@ final class PlaybackController {
     }
     func save() {
         guard let persistence else { return }
-        let value = PlaybackCheckpoint(queue: queue, position: currentItem == nil ? 0 : engine.position)
+        let value = PlaybackCheckpoint(queue: queue, position: currentItem == nil ? 0 : (deferredAppleRestore ? position.seconds : engine.position))
         let previous = saving
         saving = Task { [weak self] in
             await previous?.value
@@ -341,6 +361,7 @@ final class PlaybackController {
         guard let persistence else { return }
         do {
             guard let saved = try await persistence.load(), currentItem == nil, queue.entries.isEmpty else { return }
+            if adoptExternalPlayback() { return }
             queue = saved.queue
             let missing = Set(queue.entries.filter { entry in
                 entry.item.source == .local && entry.item.libraryID.flatMap(localItem) == nil
@@ -350,7 +371,13 @@ final class PlaybackController {
             var refreshed = queue
             refreshed.rebaseLocalItems(localItem)
             queue = refreshed
-            await loadCurrent(autoplay: false, at: saved.position)
+            if let item = queue.current?.item, item.source == .appleMusic {
+                // Restoring Maple metadata is passive. Do not replace even a paused Music.app queue,
+                // or interrupt unrelated audio, until the user explicitly asks Maple to play.
+                deferredAppleRestore = true; currentItem = item; isPlaying = false
+                duration = item.duration; position.seconds = max(0, saved.position)
+                loadArtwork(item, ticket: generation); stateChanged()
+            } else { await loadCurrent(autoplay: false, at: saved.position) }
         } catch { onError(error) }
     }
     func waitForReports() async { await reporting?.value }

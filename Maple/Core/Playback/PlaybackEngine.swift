@@ -19,6 +19,7 @@ struct ExternalPlaybackState {
     var duration: Double { get }
     var rate: Double { get }
     var isPlaying: Bool { get }
+    var unavailableEntryIDs: Set<UUID> { get }
     func configure(_ queue: PlaybackQueue) async throws
     func externalPlayback() -> ExternalPlaybackState?
     func load(_ item: PlaybackItem) async throws
@@ -26,13 +27,16 @@ struct ExternalPlaybackState {
     func pause()
     func stop()
     func stopExternalPlayback()
+    func skipExternal(forward: Bool) async throws -> Bool
     func seek(to seconds: Double) async
 }
 
 extension PlaybackEngine {
+    var unavailableEntryIDs: Set<UUID> { [] }
     func configure(_ queue: PlaybackQueue) async throws {}
     func externalPlayback() -> ExternalPlaybackState? { nil }
     func stopExternalPlayback() {}
+    func skipExternal(forward: Bool) async throws -> Bool { false }
 }
 
 /// Only scrubbers/lyrics observe this clock. Metadata, mini-player and the tab shell do not.

@@ -11,6 +11,7 @@ struct PlaybackItem: Codable, Hashable, Sendable {
     var audioURL: URL?
     var artworkURL: URL?
     var libraryID: UUID?
+    var appleMusicIdentity: AppleMusicIdentity?
 
     @MainActor init(track: LibraryTrack, library: LibraryStore) {
         source = .local; id = track.id.uuidString; title = track.title; artist = track.artist

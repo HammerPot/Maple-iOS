@@ -13,9 +13,14 @@ import Testing
     var loads = 0
     var plays = 0
     var contexts: [PlaybackQueue] = []
+    var unavailableItemIDs: Set<String> = []
+    var unavailableEntryIDs: Set<UUID> = []
     private var pending: [Int: CheckedContinuation<Void, Never>] = [:]
     private var observers: [Int: CheckedContinuation<Void, Never>] = [:]
-    func configure(_ queue: PlaybackQueue) async throws { contexts.append(queue) }
+    func configure(_ queue: PlaybackQueue) async throws {
+        contexts.append(queue)
+        unavailableEntryIDs = Set(queue.entries.filter { unavailableItemIDs.contains($0.item.id) }.map(\.id))
+    }
     func load(_ item: PlaybackItem) async throws {
         loads += 1
         let number = loads

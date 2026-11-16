@@ -11,6 +11,11 @@ import Testing
     var loaded: PlaybackItem?
     var external: ExternalPlaybackState?
     var externalAllowed = true
+    var externalSkips: [Bool] = []
+    func skipExternal(forward: Bool) async throws -> Bool {
+        guard externalAllowed, external != nil else { return false }
+        externalSkips.append(forward); return true
+    }
     var loadCount = 0
     var stopCount = 0
     func externalPlayback() -> ExternalPlaybackState? { externalAllowed && isPlaying ? external : nil }
