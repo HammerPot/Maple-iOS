@@ -77,9 +77,9 @@ struct AlbumDetailView: View {
                 }
             }
             if byDisc {
-                ForEach(discs.sorted(), id: \.self) { disc in
-                    Section("Disc \(disc)") {
-                        ForEach(tracks.filter { $0.discNumber == disc }) { row($0, album: album, queue: tracks) }
+                ForEach(LibraryGrouping.discSections(tracks)) { section in
+                    Section(section.disc > 0 ? "Disc \(section.disc)" : "Other Tracks") {
+                        ForEach(section.tracks) { row($0, album: album, queue: tracks) }
                     }
                 }
             } else {

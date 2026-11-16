@@ -39,7 +39,18 @@ struct LibraryTrack: Identifiable, Codable, Hashable, Sendable {
         value.trimmingCharacters(in: .whitespacesAndNewlines).folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
     }
     var duplicateKey: String { Self.key(title) + "\u{0}" + Self.key(artist) }
-    var albumKey: String { Self.key(album) + "\u{0}" + Self.key(albumArtist ?? "") }
+    /// An album is its title plus its album artist; without an album-artist tag the track's own
+    /// lead artist stands in, so two artists' "Greatest Hits" are never one album while a track
+    /// crediting a guest ("A feat. B") stays on A's album. Compilations are grouped through an
+    /// album artist ("Various Artists"), which the metadata reader sets from the compilation flag.
+    var albumKey: String { Self.key(album) + "\u{0}" + Self.key(albumArtist ?? Self.leadArtist(artist)) }
+    /// The credited lead artist: "A feat. B", "A ft. B" and "A (featuring B)" give "A". Joined
+    /// names ("A & B", "A, B") are left whole because they are often a single act.
+    static func leadArtist(_ artist: String) -> String {
+        guard let guest = artist.range(of: #"\s[(\[]?(?:feat\.?|ft\.?|featuring)\s"#, options: [.regularExpression, .caseInsensitive]) else { return artist }
+        let lead = artist[..<guest.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        return lead.isEmpty ? artist : lead
+    }
     var artistKey: String { Self.key(artist) }
 }
 
@@ -97,6 +108,27 @@ struct LibraryCatalog: Codable, Sendable {
     var statistics: [UUID: TrackStatistics] = [:]
     var recentlyPlayed: [UUID] = []
     var pendingFileRemovals: [String] = []
+    /// Rows dropped while decoding; never written back.
+    var skippedRows = 0
+}
+
+/// Decodes an array element by element: a malformed element is counted and skipped instead
+/// of failing the whole array.
+struct LossyArray<Element: Decodable>: Decodable {
+    var elements: [Element] = []
+    var skipped = 0
+    private struct Placeholder: Decodable {}
+    init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        while !container.isAtEnd {
+            do { elements.append(try container.decode(Element.self)) }
+            catch {
+                skipped += 1
+                // A failed decode does not advance the container; consume the element.
+                _ = try container.decode(Placeholder.self)
+            }
+        }
+    }
 }
 
 struct LibraryImportSummary: Sendable, Equatable {
@@ -137,8 +169,11 @@ extension LibraryCatalog {
         version = try container.decode(Int.self, forKey: .version)
         revision = try container.decodeIfPresent(UInt64.self, forKey: .revision) ?? 0
         migratedLegacy = try container.decodeIfPresent(Bool.self, forKey: .migratedLegacy) ?? true
-        tracks = try container.decode([LibraryTrack].self, forKey: .tracks)
-        playlists = try container.decodeIfPresent([LibraryPlaylist].self, forKey: .playlists) ?? []
+        let tracks = try container.decode(LossyArray<LibraryTrack>.self, forKey: .tracks)
+        let playlists = try container.decodeIfPresent(LossyArray<LibraryPlaylist>.self, forKey: .playlists)
+        self.tracks = tracks.elements
+        self.playlists = playlists?.elements ?? []
+        skippedRows = tracks.skipped + (playlists?.skipped ?? 0)
         statistics = try container.decodeIfPresent([UUID: TrackStatistics].self, forKey: .statistics) ?? [:]
         recentlyPlayed = try container.decodeIfPresent([UUID].self, forKey: .recentlyPlayed) ?? []
         pendingFileRemovals = try container.decodeIfPresent([String].self, forKey: .pendingFileRemovals) ?? []

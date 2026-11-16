@@ -47,7 +47,12 @@ struct LibraryArtwork: View {
             .accessibilityHidden(true)
             .task(id: "\(reference ?? "")@\(pixels)") {
                 guard let url else { loaded = nil; return }
-                loaded = await library.artworkCache.thumbnail(at: url, pixels: pixels)
+                if let hit = library.artworkCache.cached(url, pixels: pixels) { loaded = hit; return }
+                loaded = nil // never keep showing the previous reference's cover while this one decodes
+                let image = await library.artworkCache.thumbnail(at: url, pixels: pixels)
+                // A superseded request (the reference changed meanwhile) must not publish.
+                guard !Task.isCancelled else { return }
+                loaded = image
             }
     }
 }

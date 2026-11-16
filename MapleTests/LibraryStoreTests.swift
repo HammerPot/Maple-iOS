@@ -127,14 +127,14 @@ struct LibraryStoreTests {
         #expect(result.imported == 1); #expect(result.duplicates == 1); #expect(result.failures.count == 1)
         #expect(store.tracks.count == 1)
     }
-    @Test func albumArtistSeparatesNamesAndUntaggedCompilationsStayTogether() async throws {
+    @Test func albumArtistSeparatesNamesAndCompilationsStayTogether() async throws {
         let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
         let tracks = [
             LibraryTrack(fileName: "a.mp3", title: "B", artist: "One", album: "Shared", albumArtist: "One", trackNumber: 2, discNumber: 1),
             LibraryTrack(fileName: "b.mp3", title: "A", artist: "One", album: "Shared", albumArtist: "One", trackNumber: 1, discNumber: 1),
             LibraryTrack(fileName: "c.mp3", title: "C", artist: "Two", album: "Shared", albumArtist: "Two"),
-            LibraryTrack(fileName: "d.mp3", title: "D", artist: "Three", album: "Compilation"),
-            LibraryTrack(fileName: "e.mp3", title: "E", artist: "Four", album: "Compilation")]
+            LibraryTrack(fileName: "d.mp3", title: "D", artist: "Three", album: "Compilation", albumArtist: "Various Artists"),
+            LibraryTrack(fileName: "e.mp3", title: "E", artist: "Four", album: "Compilation", albumArtist: "Various Artists")]
         let store = try await seed(tracks, root: root)
         #expect(store.albums.count == 3); #expect(store.artists.count == 4)
         let first = try #require(store.albums.first { $0.artist == "One" })
