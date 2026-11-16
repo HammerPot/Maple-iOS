@@ -1,112 +1,37 @@
-//
-//  Search.swift
-//  Maple
-//
-//  Created by Potter on 6/8/25.
-//
-
 import SwiftUI
 
-struct Result: Identifiable {
-	let id = UUID()
-	var name: String
-	var type: String
-	var destination: AnyView
-	var song: Song? = nil
-	var album: Album? = nil
-	var artist: Artist? = nil
-}
-
 struct Search: View {
-	@State private var searchText: String = ""
-	@State private var songs: [Song] = []
-	@State private var albums: [Album] = []
-	@State private var artists: [Artist] = []
-	@State private var sResults: [Result] = []
-	@State private var alResults: [Result] = []
-	@State private var arResults: [Result] = []
-	@State private var results: [Result] = []
-
-	var body: some View {
-		NavigationStack {
-			if filteredResults.isEmpty {
-				if searchText == "" {
-					Text("Search")
-				}
-				else {
-					Text("No Results Found")
-				}
-			} else {
-				List {
-					ForEach(filteredResults) { result in
-						NavigationLink(destination: result.destination) {
-							HStack {
-								if let art = result.song?.artwork {
-									if let uiImage = UIImage(contentsOfFile: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(art).path) {
-										Image(uiImage: uiImage)
-											.resizable()
-											.scaledToFit()
-											.frame(width: 50, height: 50)
-									}
-								}
-								else if let art = result.album?.artwork {
-									if let uiImage = UIImage(contentsOfFile: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(art).path) {
-										Image(uiImage: uiImage)
-											.resizable()
-											.scaledToFit()
-											.frame(width: 50, height: 50)
-									}
-								}
-								VStack {
-									Text(result.name)
-										.font(.headline)
-									Text(result.type)
-										.font(.subheadline)
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-		.searchable(text: $searchText)
-		.onAppear {
-			Task{
-				sResults = []
-				arResults = []
-				alResults = []
-				results = []
-				songs = await loadSongsFromJson()
-				albums = await loadAlbumsFromJson()
-				artists = await loadArtistsFromJson()
-				
-				for song in songs {
-					sResults.append(Result(name: song.title, type: "song", destination: AnyView(AudioPlayerView(song: song, allSongs: [song])), song: song))
-				}
-				for album in albums {
-					alResults.append(Result(name: album.name, type: "album", destination: AnyView(AlbumDetailView(album: album)), album: album))
-				}
-				for artist in artists {
-					arResults.append(Result(name: artist.name, type: "artist", destination: AnyView(ArtistDetailView(artist: artist)), artist: artist))
-				}
-				
-				results = sResults + arResults + alResults
-			
-			}
-		}
-	}
-	
-	var filteredResults: [Result] {
-		if searchText.isEmpty {
-			return []
-		} else {
-			return results.filter { result in 
-				result.name.lowercased().contains(searchText.lowercased())
-			}
-		}
-	}
-}
-
-#Preview {
-	Search()
+    @Environment(LibraryStore.self) private var library
+    @State private var query = ""
+    private var term: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var tracks: [LibraryTrack] { term.isEmpty ? [] : library.tracks.filter { "\($0.title) \($0.artist) \($0.album)".localizedStandardContains(term) } }
+    private var albums: [LibraryAlbum] { term.isEmpty ? [] : library.albums.filter { "\($0.name) \($0.artist)".localizedStandardContains(term) } }
+    private var artists: [LibraryArtist] { term.isEmpty ? [] : library.artists.filter { $0.name.localizedStandardContains(term) } }
+    private var playlists: [LibraryPlaylist] { term.isEmpty ? [] : library.playlists.filter { "\($0.name) \($0.description)".localizedStandardContains(term) } }
+    var body: some View {
+        let matchingTracks = tracks
+        NavigationStack {
+            List {
+                if !matchingTracks.isEmpty { Section("Tracks") { ForEach(matchingTracks) { LibraryTrackRow(track: $0, queue: matchingTracks) } } }
+                if !albums.isEmpty {
+                    Section("Albums") { ForEach(albums) { album in
+                        NavigationLink { AlbumDetailView(album: album) } label: {
+                            HStack {
+                                LibraryArtwork(reference: album.artwork).frame(width: 48, height: 48)
+                                VStack(alignment: .leading) { Text(album.name); Text(album.artist).font(.caption).foregroundStyle(.secondary) }
+                            }
+                        }.modifier(LibraryGroupActions(name: album.name, kind: "Album", trackIDs: album.trackIDs))
+                    } }
+                }
+                if !artists.isEmpty { Section("Artists") { ForEach(artists) { artist in NavigationLink(artist.name) { ArtistDetailView(artist: artist) } } } }
+                if !playlists.isEmpty { Section("Playlists") { ForEach(playlists) { playlist in NavigationLink(playlist.name) { PlaylistDetailView(playlistID: playlist.id) } } } }
+            }
+            .overlay {
+                if term.isEmpty { ContentUnavailableView("Search Your Music", systemImage: "magnifyingglass", description: Text("Find tracks, albums, artists and playlists in one place.")) }
+                else if matchingTracks.isEmpty && albums.isEmpty && artists.isEmpty && playlists.isEmpty { ContentUnavailableView.search(text: term) }
+            }
+            .navigationTitle("Search")
+            .searchable(text: $query, prompt: "Tracks, albums, artists, playlists")
+        }
+    }
 }

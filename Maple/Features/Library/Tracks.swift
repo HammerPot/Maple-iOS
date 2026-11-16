@@ -1,41 +1,21 @@
 import SwiftUI
-import AVFoundation
 
 struct Tracks: View {
-	@State private var songs: [Song] = []
-    @State private var isLoading = true
-	var body: some View {
-        VStack {
-            if isLoading {
-                ProgressView("Loading tracks...")
-            } else if songs.isEmpty {
-                Text("No music files found")
-                    .font(.headline)
-                    .foregroundColor(.gray)
-                    .padding()
-            } else {
-                List {
-                    ForEach(songs.sorted(by: { $0.title < $1.title })) { song in
-                        NavigationLink(destination: AudioPlayerView(song: song, allSongs: songs.sorted(by: { $0.title < $1.title }))) {
-                            Text(song.title)
-                        }
-                    }
-                }
-            }
+    @Environment(LibraryStore.self) private var library
+    @AppStorage("library.sort.tracks") private var sort = "Title"
+    @State private var query = ""
+    private var sorted: [LibraryTrack] {
+        LibrarySortMenu.tracks(library.tracks.filter { query.isEmpty || "\($0.title) \($0.artist) \($0.album)".localizedStandardContains(query) }, by: sort)
+    }
+    var body: some View {
+        let visible = sorted
+        List {
+            if !visible.isEmpty { Section { LibraryPlayButtons(tracks: visible) } }
+            ForEach(visible) { track in LibraryTrackRow(track: track, queue: visible) }
         }
+        .overlay { if library.tracks.isEmpty { ContentUnavailableView("No Tracks Yet", systemImage: "music.note", description: Text("Import music to see your tracks here.")) } }
         .navigationTitle("Tracks")
-		.onAppear {
-            Task{
-                loadSongsJ()
-            }
-		}
-	}
-
-    private func loadSongsJ(){
-        isLoading = true
-        Task {
-            songs = await loadSongsFromJson()
-        }
-        isLoading = false
+        .searchable(text: $query, prompt: "Find a track")
+        .toolbar { LibrarySortMenu(selection: $sort); MusicButton().labelStyle(.iconOnly) }
     }
 }

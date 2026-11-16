@@ -10,6 +10,7 @@ final class AppServices {
     let playback: PlaybackReporter
     let friends: FriendsModel
     let toasts = ToastCenter()
+    let library = LibraryStore(root: URL.documentsDirectory)
     private var signedInID: String?
 
     init() {
@@ -61,6 +62,8 @@ final class AppServices {
             catch let error as MapleError where error.status == 401 || error.status == 403 { await auth.invalidate(); return false }
             catch { return false }
         }
+        AudioPlayerManager.shared.libraryStore = library
+        library.willDeleteTracks = { ids in AudioPlayerManager.shared.removeLibraryTracks(ids) }
         AudioPlayerManager.shared.playbackReporter = playback
         AMPlayer.shared.playbackReporter = playback
         playback.snapshotProvider = {
@@ -68,7 +71,7 @@ final class AppServices {
             return AudioPlayerManager.shared.mapleSnapshot()
         }
     }
-    func start() async { await auth.restore() }
+    func start() async { await library.load(); await auth.restore() }
     private func sessionChanged() {
         if signedInID != auth.user?.id {
             signedInID = auth.user?.id

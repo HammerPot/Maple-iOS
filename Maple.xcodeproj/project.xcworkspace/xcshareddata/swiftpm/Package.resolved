@@ -1,5 +1,5 @@
 {
-  "originHash" : "c18beb7c1bbf1453a76cb490bb343721a7f31b45b845f9ba0d79fb63d27ae850",
+  "originHash" : "c6f99525a799863d78a8e8726f5b83798d56efc2ae6e93664d127f8759944955",
   "pins" : [
     {
       "identity" : "betterauthswift",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "d7bbc6c286f3ace93088def720975198dade86e9",
         "version" : "2.1.0"
+      }
+    },
+    {
+      "identity" : "cxxtaglib",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sbooth/CXXTagLib",
+      "state" : {
+        "revision" : "9e499ea0a69d107791ac0a2fe9d6a59cf401c6f9",
+        "version" : "2.3.2"
       }
     },
     {

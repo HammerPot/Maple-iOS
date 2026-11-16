@@ -1,265 +1,61 @@
-//
-//  MusicButton.swift
-//  Maple
-//
-//  Created by Potter on 3/26/25.
-//
-
 import SwiftUI
 import UniformTypeIdentifiers
-import AVFoundation
 
 struct MusicButton: View {
-	@State private var importing = false
-	@State private var localFiles: [URL] = []
-	
-	var body: some View {
-			Button("Add Music") {
-				importing = true
-			}
-			.fileImporter(
-				isPresented: $importing,
-				allowedContentTypes: [.audio],
-				allowsMultipleSelection: true
-			) { result in
-				switch result {
-				case .success(let files):
-					for file in files {
-						guard file.startAccessingSecurityScopedResource() else {
-							print("Failed to access the file")
-							continue
-						}
-						
-						let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-						print("Documents directory: \(documentsDirectory)")
-						let songFolder = documentsDirectory.appendingPathComponent("tracks")
-						do {
-							if !FileManager.default.fileExists(atPath: songFolder.path) {
-								try FileManager.default.createDirectory(at: songFolder, withIntermediateDirectories: true, attributes: nil)
-							}
-						} catch {
-							print("Error creating song folder: \(error.localizedDescription)")
-						}
-						let UUID = UUID()
-						let fileExt = file.pathExtension
-						let fileName = UUID.uuidString + "." + fileExt
-						let destinationURL = songFolder.appendingPathComponent(fileName)
-						print("Destination URL: \(destinationURL)")
-						
-						do {
-							if FileManager.default.fileExists(atPath: destinationURL.path) {
-								print("EXTREME EDGE CASE: File already exists with the same UUID, this should never happen. File is being removed and replaced.")
-								try FileManager.default.removeItem(at: destinationURL)
-							}
-							
-							try FileManager.default.copyItem(at: file, to: destinationURL)
-
-							Task {
-								do {
-									let metadata = await extractMetadata(from: destinationURL, id: UUID)
-									var song = Song(id: UUID,
-										title: metadata.title, 
-										artist: metadata.artist, 
-										album: metadata.album,
-										year: metadata.year,
-										genre: metadata.genre,
-										duration: metadata.duration,
-										artwork: metadata.artwork,
-										trackNumber: metadata.trackNumber,
-										discNumber: metadata.discNumber,
-										ext: metadata.ext,
-										url: destinationURL)
-
-									let jsonURL = songFolder.appendingPathComponent("tracks.json")
-									let jsonDecoder = JSONDecoder()
-									let jsonEncoder = JSONEncoder()
-
-									var songs: [Song] = []
-									if !FileManager.default.fileExists(atPath: jsonURL.path) {
-										songs.append(song)
-										let _jsonData = try jsonEncoder.encode(songs)
-										try _jsonData.write(to: jsonURL)
-									}
-									else {
-										let jsonData = try Data(contentsOf: jsonURL)
-										var songs:[Song] = try jsonDecoder.decode([Song].self, from: jsonData)
-										songs.append(song)
-										let _jsonData = try jsonEncoder.encode(songs)
-										try _jsonData.write(to: jsonURL)
-									}
-									loadAlbums(song: song)
-									loadArtist(song: song)
-									print("Song \(destinationURL.lastPathComponent) has finished doing its last do-task in theory")
-								}
-							}
-							print("Song \(destinationURL.lastPathComponent) this print should be AFTER do-task's")
-							
-							
-						} catch {
-							print("Error copying file: \(error.localizedDescription)")
-						}
-						
-						file.stopAccessingSecurityScopedResource()
-					}
-					loadLocalFiles()
-					
-				case .failure(let error):
-					print("Error importing files: \(error.localizedDescription)")
-				}
-				importing = false
-			}
-			
-	}
-	private func formatFileSize(file: URL) -> String {
-		do {
-			let resourceValues = try file.resourceValues(forKeys: [.fileSizeKey])
-			let fileSize = resourceValues.fileSize ?? 0
-			let byteCountFormatter = ByteCountFormatter()
-			byteCountFormatter.allowedUnits = [.useMB]
-			byteCountFormatter.countStyle = .file
-			return byteCountFormatter.string(fromByteCount: Int64(fileSize))
-		} catch {
-			return "Unknown size"
-		}
-	}
+    @Environment(LibraryStore.self) private var library
+    @Environment(ToastCenter.self) private var toasts
+    @State private var importing = false
+    @State private var folder = false
+    @State private var showingProgress = false
+    var body: some View {
+        Menu("Import Music", systemImage: "plus") {
+            Button("Choose Files", systemImage: "doc.badge.plus") { folder = false; importing = true }
+            Button("Choose Folder", systemImage: "folder.badge.plus") { folder = true; importing = true }
+            Button("Scan for New Files", systemImage: "arrow.clockwise") { library.scanForNewFiles(); showingProgress = true }
+        }
+        .disabled(!library.isLoaded || library.progress != nil)
+        .fileImporter(isPresented: $importing, allowedContentTypes: folder ? [.folder] : [.audio, .mpeg4Movie, .data], allowsMultipleSelection: true, onCompletion: importSelection)
+        .sheet(isPresented: $showingProgress) { LibraryImportSheet() }
+    }
+    private func importSelection(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls): library.startImport(urls); showingProgress = true
+        case .failure(let error): toasts.show(error)
+        }
+    }
 }
 
-struct MusicButtonPlus: View {
-	@State private var importing = false
-	@State private var localFiles: [URL] = []
-	
-	var body: some View {
-			Button() {
-				importing = true
-			} label: {
-				Image(systemName: "plus")
-					.font(.title.weight(.semibold))
-					.padding()
-					.background(Color.accentColor)
-					.foregroundColor(.white)
-					.clipShape(Circle())
-					.shadow(radius: 4, x: 0, y: 4)
-			}
-			.fileImporter(
-				isPresented: $importing,
-				allowedContentTypes: [.audio],
-				allowsMultipleSelection: true
-			) { result in
-				switch result {
-				case .success(let files):
-					for file in files {
-						guard file.startAccessingSecurityScopedResource() else {
-							print("Failed to access the file")
-							continue
-						}
-						
-						let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-						print("Documents directory: \(documentsDirectory)")
-						let songFolder = documentsDirectory.appendingPathComponent("tracks")
-						do {
-							if !FileManager.default.fileExists(atPath: songFolder.path) {
-								try FileManager.default.createDirectory(at: songFolder, withIntermediateDirectories: true, attributes: nil)
-							}
-						} catch {
-							print("Error creating song folder: \(error.localizedDescription)")
-						}
-						let UUID = UUID()
-						let fileExt = file.pathExtension
-						let fileName = UUID.uuidString + "." + fileExt
-						let destinationURL = songFolder.appendingPathComponent(fileName)
-						print("Destination URL: \(destinationURL)")
-						
-						do {
-							if FileManager.default.fileExists(atPath: destinationURL.path) {
-								print("EXTREME EDGE CASE: File already exists with the same UUID, this should never happen. File is being removed and replaced.")
-								try FileManager.default.removeItem(at: destinationURL)
-							}
-							
-							try FileManager.default.copyItem(at: file, to: destinationURL)
-
-							Task {
-								do {
-									let metadata = await extractMetadata(from: destinationURL, id: UUID)
-									var song = Song(id: UUID,
-										title: metadata.title, 
-										artist: metadata.artist, 
-										album: metadata.album,
-										year: metadata.year,
-										genre: metadata.genre,
-										duration: metadata.duration,
-										artwork: metadata.artwork,
-										trackNumber: metadata.trackNumber,
-										discNumber: metadata.discNumber,
-										ext: metadata.ext,
-										url: destinationURL)
-
-									let jsonURL = songFolder.appendingPathComponent("tracks.json")
-									let jsonDecoder = JSONDecoder()
-									let jsonEncoder = JSONEncoder()
-
-									var songs: [Song] = []
-									if !FileManager.default.fileExists(atPath: jsonURL.path) {
-										songs.append(song)
-										let _jsonData = try jsonEncoder.encode(songs)
-										try _jsonData.write(to: jsonURL)
-									}
-									else {
-										let jsonData = try Data(contentsOf: jsonURL)
-										var songs:[Song] = try jsonDecoder.decode([Song].self, from: jsonData)
-										songs.append(song)
-										let _jsonData = try jsonEncoder.encode(songs)
-										try _jsonData.write(to: jsonURL)
-									}
-									loadAlbums(song: song)
-									loadArtist(song: song)
-									print("Song \(destinationURL.lastPathComponent) has finished doing its last do-task in theory")
-								}
-							}
-							print("Song \(destinationURL.lastPathComponent) this print should be AFTER do-task's")
-							
-							
-						} catch {
-							print("Error copying file: \(error.localizedDescription)")
-						}
-						
-						file.stopAccessingSecurityScopedResource()
-					}
-					loadLocalFiles()
-					
-				case .failure(let error):
-					print("Error importing files: \(error.localizedDescription)")
-				}
-				importing = false
-			}
-			
-	}
-	private func formatFileSize(file: URL) -> String {
-		do {
-			let resourceValues = try file.resourceValues(forKeys: [.fileSizeKey])
-			let fileSize = resourceValues.fileSize ?? 0
-			let byteCountFormatter = ByteCountFormatter()
-			byteCountFormatter.allowedUnits = [.useMB]
-			byteCountFormatter.countStyle = .file
-			return byteCountFormatter.string(fromByteCount: Int64(fileSize))
-		} catch {
-			return "Unknown size"
-		}
-	}
+struct LibraryImportSheet: View {
+    @Environment(LibraryStore.self) private var library
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            List {
+                if let progress = library.progress {
+                    Section {
+                        ProgressView(value: Double(progress.completed), total: Double(max(1, progress.total)))
+                        Text(progress.fileName).font(.headline)
+                        Text("\(progress.completed) of \(progress.total) files processed").foregroundStyle(.secondary)
+                        Button("Cancel Import", role: .cancel) { library.cancelImport() }
+                    } footer: { Text("Tracks already imported are kept if you cancel.") }
+                } else if let summary = library.importSummary {
+                    Section {
+                        Label("\(summary.imported) imported", systemImage: "checkmark.circle")
+                        Label("\(summary.duplicates) duplicates skipped", systemImage: "doc.on.doc")
+                        Label("\(summary.failures.count) failed", systemImage: "exclamationmark.triangle")
+                        if summary.cancelled { Text("Import cancelled") }
+                    }
+                    if !summary.failures.isEmpty { Section("Could Not Import") { ForEach(Array(summary.failures.enumerated()), id: \.offset) { Text($0.element).font(.callout) } } }
+                }
+                Section { Text("Files are checked for native playback support. Tracks with a matching title and artist are skipped before their audio is copied.").font(.callout).foregroundStyle(.secondary) }
+            }
+            .navigationTitle("Import Music").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.disabled(library.progress != nil) } }
+            .interactiveDismissDisabled(library.progress != nil)
+        }
+    }
 }
 
-func clearDocumentsDirectory() {
-	let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-	do {
-		let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsDirectory,
-																includingPropertiesForKeys: nil)
-		for fileURL in fileURLs {
-			try FileManager.default.removeItem(at: fileURL)
-		}
-	} catch {
-		print("Error clearing documents directory: \(error.localizedDescription)")
-	}
-}
-
-#Preview {
-	MusicButton()
-}
+extension Notification.Name { static let clearMapleLibrary = Notification.Name("clearMapleLibrary") }
+/// Compatibility for the existing Settings action; ContentView routes this to its injected store.
+func clearDocumentsDirectory() { NotificationCenter.default.post(name: .clearMapleLibrary, object: nil) }

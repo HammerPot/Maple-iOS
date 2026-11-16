@@ -8,6 +8,7 @@ struct MapleApp: App {
             ContentView()
                 .modifier(ToastOverlay())
                 .environment(services)
+                .environment(services.library)
                 .environment(services.auth)
                 .environment(services.friends)
                 .environment(services.toasts)
