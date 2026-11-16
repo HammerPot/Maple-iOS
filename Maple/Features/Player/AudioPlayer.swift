@@ -1,7 +1,6 @@
 import SwiftUI
 import AVFoundation
 import MediaPlayer
-import SocketIO
 import MusicKit
 
 
@@ -20,7 +19,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     private var nowPlayingInfo = [String: Any]()
     @Published var currentSong: Song?
     private var isHandlingRemoteControl = false
-    private var serverID: String = ""
+    weak var playbackReporter: PlaybackReporter?
     private var mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC")
     private var rpcTask = false
 
@@ -187,70 +186,40 @@ class AudioPlayerManager: NSObject, ObservableObject {
         print("Play called - current audio player exists: \(audioPlayer != nil)")
         audioPlayer?.play()
         isPlaying = true
-        mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC")
         startTimer()
-        if let song = currentSong {
-            updateNowPlayingInfo(song: song)
-
-            print("rpcTask: \(rpcTask)")
-            if !rpcTask {
-                if let savedServerID = UserDefaults.standard.string(forKey: "savedServerID") {
-                    if let _artwork = song.artwork {
-                        let artworkPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(_artwork)
-                        if let artwork = UIImage(contentsOfFile: artworkPath.path)?.pngData(){
-                            Task { 
-                                do {
-                                    try await setAlbumArt(serverID: savedServerID, albumArt: artwork)
-                                } catch {
-                                    print("Error setting album art: \(error)")
-                                }
-                                do {
-                                    try await sendWebhook(song: song, serverID: savedServerID)
-                                } catch {
-                                    print("Error sending webhook: \(error)")
-                                }
-                            }
-                        }
-                    }
-                    else {
-                        print("No artwork found for song: \(song.title)")
-                        Task {
-                            do {
-                                try await setAlbumArt(serverID: savedServerID, albumArt: UIImage(named: "Maple")!.pngData()!)
-                            } catch {
-                                print("Error setting album art: \(error)")
-                            }
-                            do {
-                                try await sendWebhook(song: song, serverID: savedServerID)
-                            } catch {
-                                print("Error sending webhook: \(error)")
-                            }
-                        }
-                    }
-                    AppSocketManager.shared.nowPlaying(song: song, id: savedServerID, discord: mapleRPC)
-                }
-                else {
-                    AppSocketManager.shared.nowPlaying(song: song, id: serverID, discord: mapleRPC)
-                }
-                rpcTask = true
-                print("inner rpcTask: \(rpcTask)")
-            }
-            print("end rpcTask: \(rpcTask)")
-        }
-        amPlayer.Stop()
+        reportPlayback()
     }
-    
+
+    func mapleSnapshot() -> TrackSnapshot? {
+        guard let song = currentSong else { return nil }
+        return TrackSnapshot(identity: "local:" + song.id.uuidString, title: song.title, artist: song.artist,
+            album: song.album, duration: duration, playing: isPlaying, position: audioPlayer?.currentTime ?? currentTime,
+            playbackRate: Double(audioPlayer?.rate ?? 1))
+    }
+
+    private func reportPlayback() {
+        guard let snapshot = mapleSnapshot() else { return }
+        var artwork: Data?
+        if let path = currentSong?.artwork,
+           let root = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            artwork = try? Data(contentsOf: root.appendingPathComponent(path))
+        }
+        Task { @MainActor in await playbackReporter?.update(snapshot, artwork: artwork, force: true) }
+    }
+
     func pause() {
         print("Pause called - current audio player exists: \(audioPlayer != nil)")
         audioPlayer?.pause()
         isPlaying = false
         stopTimer()
+        reportPlayback()
         if let song = currentSong {
             updateNowPlayingInfo(song: song)
         }
     }
     
     func stop() {
+        Task { @MainActor in await playbackReporter?.stop() }
         print("Stop called - current audio player exists: \(audioPlayer != nil)")
         audioPlayer?.stop()
         audioPlayer?.currentTime = 0
@@ -265,12 +234,14 @@ class AudioPlayerManager: NSObject, ObservableObject {
     func seek(to time: TimeInterval) {
         audioPlayer?.currentTime = time
         currentTime = time
+        reportPlayback()
         if let song = currentSong {
             updateNowPlayingInfo(song: song)
         }
     }
     
     private func startTimer() {
+        stopTimer()
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self = self, let player = self.audioPlayer else { return }
             self.currentTime = player.currentTime

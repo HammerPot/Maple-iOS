@@ -40,6 +40,11 @@ final class AuthSessionModel {
         guard version == revision else { return }
         state = .signedIn(user); didChange?()
     }
+    func receiveListening(_ event: ListeningEvent) {
+        guard var user = user, user.id == event.id, let listening = event.listening else { return }
+        user.listening = listening
+        state = .signedIn(user)
+    }
     func signIn(identifier: String, password: String) async throws {
         revision += 1
         needsLegacyEnrollment = false

@@ -14,7 +14,6 @@ import SwiftUISnackbar
 struct ContentView: View {
     @ObservedObject private var manager = AppleMusicManager.shared
     @ObservedObject private var audioManager = AudioPlayerManager.shared
-    @ObservedObject private var socketManager = AppSocketManager.shared
 
     @ObservedObject private var amPlayer = AMPlayer.shared
     @State private var snackbar: Snackbar?
@@ -75,7 +74,6 @@ struct ContentView: View {
                     Settings()
                 }
             }
-            .snackbarView(snackbar: $socketManager.snackbar)
             .snackbarView(snackbar: $snackbar)
             .zIndex(0)
             // .tabBarMinimizeBehavior(.onScrollDown)
@@ -130,7 +128,6 @@ struct ContentView: View {
                     Settings()
                 }
             }
-            .snackbarView(snackbar: $socketManager.snackbar)
             .zIndex(0)
         }
     }

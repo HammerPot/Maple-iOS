@@ -1,17 +1,17 @@
-//
-//  MapleApp.swift
-//  Maple
-//
-//  Created by Potter on 3/23/25.
-//
-
 import SwiftUI
 
 @main
 struct MapleApp: App {
+    @State private var services = AppServices()
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .modifier(ToastOverlay())
+                .environment(services)
+                .environment(services.auth)
+                .environment(services.friends)
+                .environment(services.toasts)
+                .task { await services.start() }
         }
     }
 }

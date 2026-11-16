@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct Settings: View {
+    @Environment(AppServices.self) private var services
     @State private var webhookURL = UserDefaults.standard.string(forKey: "webhookURL") ?? ""
     @State private var mapleRPC = UserDefaults.standard.bool(forKey: "mapleRPC")
     @State private var socketIO = UserDefaults.standard.bool(forKey: "socketIO")
@@ -47,18 +48,20 @@ struct Settings: View {
                     Toggle("Enable SocketIO?", isOn: $socketIO)
                     .onChange(of: self.socketIO) {
                             UserDefaults.standard.set(socketIO, forKey: "socketIO")
+                            services.syncSocket()
                     }
                 }
                 VStack{
                     Toggle("Enable MapleRPC for Discord?", isOn: $mapleRPC)
                     .onChange(of: self.mapleRPC) {
                             UserDefaults.standard.set(mapleRPC, forKey: "mapleRPC")
+                            Task { await services.playback.sendUpdate() }
                     }
                 }
             } header: {
                 Text("Social Features")
             } footer: {
-                Text("Toggling SocketIO will require restarting the app to take effect. You must have SocketIO enabled to use MapleRPC")
+                Text("SocketIO shares listening updates with friends. Enable MapleRPC to also share to Discord.")
             }
             Section{
                 MusicButton()

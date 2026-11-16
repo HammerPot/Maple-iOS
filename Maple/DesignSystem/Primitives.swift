@@ -36,18 +36,20 @@ struct ToastOverlay: ViewModifier {
 struct ArtworkView: View {
     var url: URL?
     var data: Data? = nil
+    @Environment(AppServices.self) private var services
     @State private var localData: Data?
     var body: some View {
         Group {
             if let data = data ?? localData, let image = UIImage(data: data) { Image(uiImage: image).resizable().scaledToFill() }
-            else if let url, !url.isFileURL {
-                AsyncImage(url: url) { image in image.resizable().scaledToFill() } placeholder: { fallback }
-            } else { fallback }
+            else { fallback }
         }
         .clipped().accessibilityHidden(true)
         .task(id: url) {
             localData = nil
-            if let url, url.isFileURL { localData = try? await Task.detached { try Data(contentsOf: url) }.value }
+            if let url {
+                if url.isFileURL { localData = try? await Task.detached { try Data(contentsOf: url) }.value }
+                else { localData = try? await services.http.image(at: url) }
+            }
         }
     }
     private var fallback: some View { Rectangle().fill(.quaternary).overlay { Image(systemName: "music.note").foregroundStyle(.secondary) } }

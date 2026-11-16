@@ -43,6 +43,7 @@ final class PlaybackReporter {
     private(set) var playbackId: String?
     private(set) var ownsPlayback = false
     private(set) var snapshot: TrackSnapshot?
+    @ObservationIgnored var didStart: ((TrackSnapshot, Data?) -> Void)?
     @ObservationIgnored var snapshotProvider: (() -> TrackSnapshot?)?
     @ObservationIgnored private let transport: PlaybackTransport
     @ObservationIgnored private let discord: () -> Bool
@@ -63,14 +64,14 @@ final class PlaybackReporter {
         self.discord = discord; self.upload = upload; self.reportError = reportError
     }
     /// New identity claims playback. State changes on the same identity never steal ownership back.
-    func update(_ value: TrackSnapshot, artwork: Data? = nil) async {
+    func update(_ value: TrackSnapshot, artwork: Data? = nil, force: Bool = false) async {
         let changed = snapshot?.identity != value.identity
         let old = snapshot
         snapshot = value
         if changed {
             self.artwork = artwork
             await claim()
-        } else if old?.playing != value.playing || old?.playbackRate != value.playbackRate || old?.duration != value.duration || abs((old?.position ?? 0) - value.position) > 2 {
+        } else if force || old?.playing != value.playing || old?.playbackRate != value.playbackRate || old?.duration != value.duration || abs((old?.position ?? 0) - value.position) > 2 {
             await sendUpdate()
         }
     }
@@ -88,6 +89,7 @@ final class PlaybackReporter {
             return
         }
         ownsPlayback = true
+        if let snapshot { didStart?(snapshot, artwork) }
         if automaticHeartbeat {
             heartbeat = Task { [weak self] in
                 while !Task.isCancelled {

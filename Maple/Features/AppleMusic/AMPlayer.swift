@@ -9,6 +9,8 @@ import MusadoraKit
 @MainActor
 class AMPlayer: ObservableObject {
     static let shared = AMPlayer()
+    weak var playbackReporter: PlaybackReporter?
+    private var reportingTask: Task<Void, Never>?
     @Published var hasInitializedQueue = false
     @Published var albumArt: UIImage?
     @Published var initialized = false
@@ -68,27 +70,37 @@ class AMPlayer: ObservableObject {
             isPlaying = false
         }
         albumArt = UIImage(data: player.nowPlayingItem?.artwork?.image(at: CGSize(width: 800, height: 800))?.pngData() ?? UIImage(named: "Maple")?.pngData() ?? Data())
-        if player.playbackState.rawValue == 1 {
-            if let mapleArt = UIImage(named: "Maple")?.pngData() {
-                Task {
-                    do {
-                        let response = try await setAlbumArt(serverID: UserDefaults.standard.string(forKey: "savedServerID") ?? "", albumArt: player.nowPlayingItem?.artwork?.image(at: CGSize(width: 800, height: 800))?.pngData() ?? mapleArt)
-                    } catch {
-                    }
-                    AppSocketManager.shared.nowPlayingAM(song: player.nowPlayingItem!, id: UserDefaults.standard.string(forKey: "savedServerID") ?? "", discord: UserDefaults.standard.bool(forKey: "mapleRPC"))
-                }
-            }
-        }
+        reportPlayback()
     }
-    
-    @objc private func nowPlayingItemDidChange() {
-        if let nowPlayingItem = player.nowPlayingItem {
-            if let currentEntry = SystemMusicPlayer.shared.queue.currentEntry,
-               case .song(let song) = currentEntry.item {
-                let title = song.title
-                let artist = song.artistName
-                let duration = song.duration
-                let albumTitle = song.albumTitle
+
+    @objc private func nowPlayingItemDidChange() { reportPlayback() }
+
+    func mapleSnapshot() -> TrackSnapshot? {
+        guard initialized, let entry = SystemMusicPlayer.shared.queue.currentEntry,
+              case .song(let song) = entry.item else { return nil }
+        return TrackSnapshot(identity: "apple:" + song.id.rawValue, title: song.title, artist: song.artistName,
+            album: song.albumTitle ?? "", duration: song.duration,
+            playing: SystemMusicPlayer.shared.state.playbackStatus == .playing,
+            position: SystemMusicPlayer.shared.playbackTime)
+    }
+
+    private func reportPlayback() {
+        guard let snapshot = mapleSnapshot() else {
+            if reportingTask != nil {
+                reportingTask?.cancel(); reportingTask = nil
+                Task { await playbackReporter?.stop() }
+            }
+            return
+        }
+        let artwork = albumArt?.pngData()
+        Task { await playbackReporter?.update(snapshot, artwork: artwork, force: true) }
+        if reportingTask == nil {
+            reportingTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                    guard let self, let snapshot = self.mapleSnapshot() else { return }
+                    await self.playbackReporter?.update(snapshot, artwork: self.albumArt?.pngData())
+                }
             }
         }
     }
@@ -323,6 +335,10 @@ class AMPlayer: ObservableObject {
     }
 
     func Stop() {
+        if reportingTask != nil {
+            reportingTask?.cancel(); reportingTask = nil
+            Task { await playbackReporter?.stop() }
+        }
         initialized = false
         if player.playbackState == .playing {
             SystemMusicPlayer.shared.stop()

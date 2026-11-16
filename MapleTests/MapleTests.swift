@@ -95,6 +95,13 @@ struct PlaybackReporterTests {
         #expect(reporter.playbackId == nil)
         #expect(!reporter.ownsPlayback)
     }
+    @Test func smallExplicitSeekIsReported() async {
+        let socket = FakePlaybackTransport(); let reporter = make(socket)
+        await reporter.update(track)
+        var seek = track; seek.position = 1
+        await reporter.update(seek, force: true)
+        #expect(socket.events.last?.1.position == 1)
+    }
     @Test func heartbeatUsesFreshPosition() async {
         let socket = FakePlaybackTransport(); let reporter = make(socket)
         await reporter.update(track)

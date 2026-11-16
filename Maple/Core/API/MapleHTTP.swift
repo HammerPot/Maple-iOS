@@ -39,6 +39,15 @@ actor MapleHTTP {
     func request<T: Decodable & Sendable>(_ path: String, method: String = "GET", body: Data? = nil) async throws -> T {
         try JSONDecoder.maple.decode(T.self, from: await raw(path, method: method, body: body))
     }
+    func image(at url: URL) async throws -> Data {
+        guard url.scheme == "https" else { throw URLError(.badURL) }
+        var request = URLRequest(url: url)
+        request.setValue(Self.origin, forHTTPHeaderField: "Origin")
+        let (data, response) = try await session.data(for: request)
+        guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        guard (200..<300).contains(response.statusCode) else { throw MapleError.response(status: response.statusCode, data: data) }
+        return data
+    }
     func clearCookies() { cookies.removeCookies(since: .distantPast) }
     nonisolated var sessionCookies: [HTTPCookie] {
         (cookies.cookies(for: Self.baseURL) ?? []).filter { $0.name == "__Secure-maple.session_token" || $0.name.hasPrefix("__Secure-maple.") || $0.name.hasPrefix("maple.") }
