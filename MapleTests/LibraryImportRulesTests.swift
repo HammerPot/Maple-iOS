@@ -69,6 +69,24 @@ struct LibraryImportRulesTests {
         #expect(albums.first { $0.name == "Mixed" }?.trackIDs.count == 2)
     }
 
+    /// Without an album-artist tag, tracks that credit a guest stay on the lead artist's album.
+    @Test func guestCreditsDoNotSplitAnAlbumThatHasNoAlbumArtistTag() {
+        let tracks = [track("1", artist: "A", album: "Debut"), track("2", artist: "A feat. B", album: "Debut"),
+                      track("3", artist: "a ft. C & D", album: "Debut"), track("4", artist: "A (featuring E)", album: "Debut"),
+                      track("5", artist: "A [Feat. F]", album: "Debut")]
+        let albums = LibraryGrouping.albums(from: tracks)
+        #expect(albums.count == 1)
+        #expect(albums.first?.trackIDs.count == 5)
+        #expect(albums.first?.artist == "A")
+    }
+
+    @Test func leadArtistKeepsJoinedActsAndUnusualNamesWhole() {
+        for name in ["Simon & Garfunkel", "Tyler, The Creator", "Daft Punk", "Featurecast", "Left Feat", "feat. Nobody"] {
+            #expect(LibraryTrack.leadArtist(name) == name)
+        }
+        #expect(LibraryTrack.leadArtist("Lead  FEAT. Guest") == "Lead")
+    }
+
     @Test func compilationFlagBecomesVariousArtists() {
         #expect(AudioMetadataReader.compilationArtist("1") == "Various Artists")
         #expect(AudioMetadataReader.compilationArtist(" true ") == "Various Artists")

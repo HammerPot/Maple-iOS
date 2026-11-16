@@ -9,8 +9,8 @@ enum LibraryGrouping {
         Dictionary(grouping: tracks, by: \.albumKey).map { key, songs in
             let ordered = songs.sorted(by: albumOrder)
             let first = ordered[0]
-            let artists = Set(songs.map { LibraryTrack.key($0.artist) })
-            let artist = first.albumArtist ?? (artists.count == 1 ? first.artist : "Various Artists")
+            // Every track in a group shares the album artist or, failing that, the lead artist.
+            let artist = ordered.lazy.compactMap(\.albumArtist).first ?? LibraryTrack.leadArtist(first.artist)
             return LibraryAlbum(id: key, name: first.album, artist: artist,
                                 artwork: ordered.lazy.compactMap(\.artwork).first,
                                 year: ordered.lazy.map(\.year).first { $0 > 0 } ?? 0,

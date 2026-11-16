@@ -40,10 +40,17 @@ struct LibraryTrack: Identifiable, Codable, Hashable, Sendable {
     }
     var duplicateKey: String { Self.key(title) + "\u{0}" + Self.key(artist) }
     /// An album is its title plus its album artist; without an album-artist tag the track's own
-    /// artist stands in, so two artists' "Greatest Hits" are never one album. Compilations are
-    /// grouped through an album artist ("Various Artists"), which the metadata reader sets from
-    /// the compilation flag.
-    var albumKey: String { Self.key(album) + "\u{0}" + Self.key(albumArtist ?? artist) }
+    /// lead artist stands in, so two artists' "Greatest Hits" are never one album while a track
+    /// crediting a guest ("A feat. B") stays on A's album. Compilations are grouped through an
+    /// album artist ("Various Artists"), which the metadata reader sets from the compilation flag.
+    var albumKey: String { Self.key(album) + "\u{0}" + Self.key(albumArtist ?? Self.leadArtist(artist)) }
+    /// The credited lead artist: "A feat. B", "A ft. B" and "A (featuring B)" give "A". Joined
+    /// names ("A & B", "A, B") are left whole because they are often a single act.
+    static func leadArtist(_ artist: String) -> String {
+        guard let guest = artist.range(of: #"\s[(\[]?(?:feat\.?|ft\.?|featuring)\s"#, options: [.regularExpression, .caseInsensitive]) else { return artist }
+        let lead = artist[..<guest.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        return lead.isEmpty ? artist : lead
+    }
     var artistKey: String { Self.key(artist) }
 }
 
