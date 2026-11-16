@@ -84,7 +84,8 @@ actor LibraryDisk {
             for object in songs {
                 // `url` was an absolute path inside a container that changes between installs;
                 // only its last path component is trustworthy.
-                guard let urlString = object["url"] as? String else { continue }
+                // JSONEncoder writes URL as a string; other encoders use {"relative": …}.
+                guard let urlString = object["url"] as? String ?? (object["url"] as? [String: Any])?["relative"] as? String else { continue }
                 let fileName = (URL(string: urlString) ?? URL(fileURLWithPath: urlString)).lastPathComponent
                 guard !fileName.isEmpty, fileName != "/", !fileNames.contains(fileName) else { continue }
                 let audio = root.appendingPathComponent("tracks").appendingPathComponent(fileName)

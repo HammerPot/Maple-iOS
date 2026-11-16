@@ -48,6 +48,14 @@ actor AudioMetadataReader: LibraryMetadataReading {
                              ("track", "TRACKNUMBER"), ("disc", "DISCNUMBER"), ("lyrics", "LYRICS")] {
             if let text = tags[tag] as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { values[field] = text }
         }
+        if values["lyrics"] == nil {
+            // USLT frames with a description surface as "LYRICS:<description>"; some taggers
+            // (including ffmpeg) write lyrics as a TXXX user-text frame named USLT or UNSYNCEDLYRICS.
+            values["lyrics"] = tags.keys.sorted()
+                .first { $0.hasPrefix("LYRICS:") || $0 == "UNSYNCEDLYRICS" || $0 == "USLT" }
+                .flatMap { tags[$0] as? String }
+                .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        }
         var artwork = tags["artwork"] as? Data
         if values["title"] == nil || values["artist"] == nil || artwork == nil {
             try await fillFromAVFoundation(url, values: &values, artwork: &artwork)
