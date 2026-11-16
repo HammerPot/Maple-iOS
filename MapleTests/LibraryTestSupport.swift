@@ -11,9 +11,30 @@ func makeTemporaryDirectory() throws -> URL {
 /// Metadata reader returning canned results keyed by file name; unknown files are unreadable.
 struct StubMetadataReader: LibraryMetadataReading {
     var fixtures: [String: ImportedAudio] = [:]
+    /// Used for files without a fixture (e.g. a copy named after a UUID); unreadable when nil.
+    var fallback: ImportedAudio?
+    func read(_ url: URL) async throws -> ImportedAudio {
+        try Task.checkCancellation()
+        if let fixture = fixtures[url.lastPathComponent] { return fixture }
+        guard var other = fallback else { throw LibraryError.unreadableAudio }
+        other.track = LibraryTrack(fileName: url.lastPathComponent, title: other.track.title, artist: other.track.artist)
+        return other
+    }
+}
+
+/// Reader that calls `afterRead` with the running read count, so a test can cancel an import
+/// at an exact point (after some files committed) without sleeping.
+final class HookedMetadataReader: LibraryMetadataReading, @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    let fixtures: [String: ImportedAudio]
+    var afterRead: (@Sendable (Int) -> Void)?
+    init(fixtures: [String: ImportedAudio]) { self.fixtures = fixtures }
     func read(_ url: URL) async throws -> ImportedAudio {
         try Task.checkCancellation()
         guard let fixture = fixtures[url.lastPathComponent] else { throw LibraryError.unreadableAudio }
+        let number = lock.withLock { count += 1; return count }
+        afterRead?(number)
         return fixture
     }
 }
@@ -45,7 +66,7 @@ final class FaultingFileSystem: LibraryFileSystem, @unchecked Sendable {
     private func check(_ operation: Operation, _ url: URL) throws {
         let (failure, watcher): (Bool, ((Operation, URL) -> Void)?) = lock.withLock {
             history.append("\(operation) \(url.path)")
-            for index in rules.indices where rules[index].operations.contains(operation) && url.path.contains(rules[index].pathFragment) {
+            for index in rules.indices where rules[index].operations.contains(operation) && (rules[index].pathFragment.isEmpty || url.path.contains(rules[index].pathFragment)) {
                 if let remaining = rules[index].remaining {
                     guard remaining > 0 else { continue }
                     rules[index].remaining = remaining - 1
