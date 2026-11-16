@@ -19,6 +19,7 @@ struct LibraryStoreTests {
         return url
     }
     private func seed(_ tracks: [LibraryTrack], root: URL, playlists: [LibraryPlaylist] = []) async throws -> LibraryStore {
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("tracks"), withIntermediateDirectories: true)
         let disk = LibraryDisk(root: root)
         _ = try await disk.load()
         for track in tracks { try Data("audio".utf8).write(to: root.appendingPathComponent("tracks/" + track.fileName)) }
@@ -52,11 +53,54 @@ struct LibraryStoreTests {
         try FileManager.default.createDirectory(at: root.appendingPathComponent("tracks"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: root.appendingPathComponent("albums"), withIntermediateDirectories: true)
         try Data("broken".utf8).write(to: root.appendingPathComponent("tracks/tracks.json"))
-        let fixture = #"[{"name":"Album","songs":[{"url":"file:///old/tracks/missing.m4a","title":"Saved","artist":"Artist","album":"Album"},{"title":"Bad row"}]}]"#
+        let fixture = #"[{"name":"Album","songs":[{"url":"file:///old/tracks/saved.m4a","title":"Saved","artist":"Artist","album":"Album","artwork":"/images/gone.image"},{"url":"file:///old/tracks/missing.m4a","title":"No audio"},{"title":"Bad row"}]}]"#
         try Data(fixture.utf8).write(to: root.appendingPathComponent("albums/albums.json"))
+        try Data("audio".utf8).write(to: root.appendingPathComponent("tracks/saved.m4a"))
         let store = LibraryStore(root: root); await store.load()
-        #expect(store.tracks.count == 1); #expect(store.tracks.first?.fileName == "missing.m4a")
+        // Corrupt tracks.json is tolerated, the album snapshot salvages the row whose audio exists,
+        // and rows without audio (or without a URL) are dropped rather than shown as unplayable.
+        #expect(store.tracks.map(\.fileName) == ["saved.m4a"])
+        #expect(store.tracks.first?.artwork == nil) // referenced artwork file is gone
         #expect(store.albums.count == 1)
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("tracks/saved.m4a").path))
+    }
+    @Test func migrationRunsOnceAndOrphanAudioIsAdoptedByScan() async throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("tracks"), withIntermediateDirectories: true)
+        let json = #"[{"id":"\#(UUID().uuidString)","title":"Listed","artist":"A","album":"X","year":2001,"genre":"","duration":10,"trackNumber":1,"discNumber":1,"ext":"mp3","url":"file:///private/var/OLD/Documents/tracks/listed.mp3"}]"#
+        try Data(json.utf8).write(to: root.appendingPathComponent("tracks/tracks.json"))
+        for name in ["listed.mp3", "orphan.mp3"] { try Data("audio".utf8).write(to: root.appendingPathComponent("tracks/" + name)) }
+        let reader = FixtureMetadataReader(fixtures: ["orphan.mp3": ImportedAudio(track: LibraryTrack(fileName: "orphan.mp3", title: "Orphan"), artwork: nil)])
+        let store = LibraryStore(root: root, metadata: reader); await store.load()
+        #expect(store.tracks.map(\.title) == ["Listed"])
+        #expect(store.tracks.first?.year == 2001)
+        let scan = await store.importFiles([root], scan: true)
+        #expect(scan.imported == 1)
+        #expect(Set(store.tracks.map(\.fileName)) == ["listed.mp3", "orphan.mp3"])
+        // Deleting the migrated track must not bring it back from tracks.json on the next launch.
+        try await store.deleteTracks(Set(store.tracks.filter { $0.title == "Listed" }.map(\.id)))
+        let reopened = LibraryStore(root: root, metadata: reader); await reopened.load()
+        #expect(reopened.tracks.map(\.fileName) == ["orphan.mp3"])
+    }
+    @Test func folderImportRecursesAndReportsPickedNonAudioFiles() async throws {
+        let root = try directory(); let source = try directory()
+        defer { try? FileManager.default.removeItem(at: root); try? FileManager.default.removeItem(at: source) }
+        let nested = source.appendingPathComponent("Artist/Album", isDirectory: true)
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        try Data("audio".utf8).write(to: nested.appendingPathComponent("deep.flac"))
+        try Data("cover".utf8).write(to: nested.appendingPathComponent("cover.jpg")) // ignored inside folders
+        try Data(".".utf8).write(to: nested.appendingPathComponent(".hidden.mp3"))   // hidden files skipped
+        let notes = source.appendingPathComponent("notes.txt"); try Data("text".utf8).write(to: notes)
+        let reader = FixtureMetadataReader(fixtures: ["deep.flac": ImportedAudio(track: LibraryTrack(fileName: "deep.flac", title: "Deep", artist: "Artist"), artwork: Data("art".utf8))])
+        let store = LibraryStore(root: root, metadata: reader); await store.load()
+        let summary = await store.importFiles([source, notes])
+        #expect(summary.imported == 1)
+        #expect(summary.failures.count == 1); #expect(summary.failures.first?.hasPrefix("notes.txt") == true)
+        let track = try #require(store.tracks.first)
+        #expect(track.fileName == "\(track.id.uuidString).flac")
+        #expect(FileManager.default.fileExists(atPath: store.audioURL(for: track).path))
+        #expect(FileManager.default.fileExists(atPath: nested.appendingPathComponent("deep.flac").path)) // copied, not moved
+        #expect(try store.artworkURL(track.artwork).map { try Data(contentsOf: $0) } == Data("art".utf8))
     }
     @Test func duplicateIsDetectedBeforeAudioCopy() async throws {
         let root = try directory(); let source = try directory()
@@ -107,6 +151,7 @@ struct LibraryStoreTests {
         store.setPlaylistTracks(id, ids: [b.id, a.id, b.id])
         #expect(store.playlist(id)?.trackIDs == [b.id, a.id])
         let copy = try #require(try store.duplicatePlaylist(id))
+        #expect(store.playlist(copy)?.name == "Mix (Copy)")
         try store.updatePlaylist(copy, name: "Renamed", description: "New")
         store.setPlaylistTracks(copy, ids: [])
         #expect(store.playlist(id)?.name == "Mix"); #expect(store.playlist(id)?.description == "Description")
@@ -151,6 +196,7 @@ struct LibraryStoreTests {
         store.recordStart(a.id); store.recordStart(b.id); store.recordStart(a.id)
         store.recordEnd(a.id, completed: true); store.recordEnd(b.id, completed: false)
         store.recordListening(a.id, seconds: 1.5); store.recordListening(a.id, seconds: -.infinity); store.recordListening(a.id, seconds: 100)
+        try await store.flush() // listening time is buffered and folded in on flush/end
         #expect(store.recentIDs == [a.id,b.id]); #expect(store.statistics[a.id]?.plays == 2)
         #expect(store.statistics[a.id]?.completions == 1); #expect(store.statistics[a.id]?.skips == 0)
         #expect(store.statistics[a.id]?.listeningSeconds == 1.5); #expect(store.statistics[b.id]?.skips == 1)

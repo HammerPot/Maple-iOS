@@ -2,151 +2,199 @@ import SwiftUI
 
 struct Playlists: View {
     @Environment(LibraryStore.self) private var library
-    @AppStorage("library.sort.playlists") private var sort = "Name"
+    @Environment(\.openLibraryRoute) private var open
+    private var sort = LibrarySortState("playlists", default: PlaylistSort.modified)
     @State private var creating = false
-    private var sorted: [LibraryPlaylist] {
-        library.playlists.sorted { sort == "Recently Modified" ? $0.dateModified > $1.dateModified : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-    }
+
     var body: some View {
+        let playlists = sort.apply(library.playlists)
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 18)], spacing: 22) {
-                ForEach(sorted) { playlist in
-                    NavigationLink { PlaylistDetailView(playlistID: playlist.id) } label: {
-                        VStack(alignment: .leading, spacing: 5) {
-                            PlaylistArtwork(playlist: playlist).aspectRatio(1, contentMode: .fit)
-                            Text(playlist.name).font(.headline).lineLimit(2)
-                            Text("\(playlist.trackIDs.count) tracks").font(.subheadline).foregroundStyle(.secondary)
-                        }.accessibilityElement(children: .combine)
-                    }.buttonStyle(.plain).modifier(PlaylistActions(playlist: playlist))
+            LazyVGrid(columns: LibraryGrid.columns, spacing: 20) {
+                Button { creating = true } label: { NewPlaylistCard() }
+                    .buttonStyle(.plain)
+                ForEach(playlists) { playlist in
+                    NavigationLink(value: LibraryRoute.playlist(playlist.id)) { PlaylistCard(playlist: playlist) }
+                        .buttonStyle(.plain)
+                        .contextMenu { PlaylistMenu(playlist: playlist) }
                 }
-            }.padding()
-        }
-        .overlay {
-            if sorted.isEmpty {
-                ContentUnavailableView { Label("Music for Every Mood", systemImage: "music.note.list") }
-                description: { Text("Gather your favourites into a playlist.") }
-                actions: { Button("Create Playlist") { creating = true }.buttonStyle(.borderedProminent) }
             }
+            .padding(.horizontal)
+            .padding(.bottom)
         }
         .navigationTitle("Playlists")
         .toolbar {
-            LibrarySortMenu(selection: $sort, options: ["Name", "Recently Modified"])
-            Button("Create Playlist", systemImage: "plus") { creating = true }
+            ToolbarItemGroup(placement: .primaryAction) {
+                LibrarySortMenu(state: sort)
+                Button("New Playlist", systemImage: "plus") { creating = true }
+            }
         }
-        .sheet(isPresented: $creating) { PlaylistEditor() }
+        .sheet(isPresented: $creating) {
+            PlaylistEditor(didSave: { open(.playlist($0)) })
+        }
     }
 }
 
+private struct NewPlaylistCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(.tint.quaternary)
+                .aspectRatio(1, contentMode: .fit)
+                .overlay { Image(systemName: "plus").font(.largeTitle.weight(.medium)).foregroundStyle(.tint) }
+            Text("New Playlist").font(.subheadline.weight(.medium)).padding(.top, 2)
+            Text(" ").font(.subheadline)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("New Playlist")
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+struct PlaylistCard: View {
+    let playlist: LibraryPlaylist
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            PlaylistArtwork(playlist: playlist, size: LibraryGrid.cardArtwork)
+            Text(playlist.name).font(.subheadline.weight(.medium)).lineLimit(1).padding(.top, 2)
+            Text(LibraryActions.tracks(playlist.trackIDs.count)).font(.subheadline).foregroundStyle(.secondary)
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(playlist.name), \(LibraryActions.tracks(playlist.trackIDs.count))")
+    }
+}
+
+/// Custom artwork if set; otherwise a 2×2 mosaic of distinct track artwork, falling back to
+/// the first track's artwork.
 struct PlaylistArtwork: View {
     @Environment(LibraryStore.self) private var library
     let playlist: LibraryPlaylist
-    private var references: [String] { Array(library.tracks(ids: playlist.trackIDs).compactMap(\.artwork).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }.prefix(4)) }
+    var size: CGFloat = 48
+    var cornerRadius: CGFloat = 10
+
+    private var mosaic: [String] {
+        var seen: [String] = []
+        for id in playlist.trackIDs {
+            guard let artwork = library.track(id)?.artwork, !seen.contains(artwork) else { continue }
+            seen.append(artwork)
+            if seen.count == 4 { break }
+        }
+        return seen
+    }
+
     var body: some View {
-        Group {
-            if let artwork = playlist.artwork { LibraryArtwork(reference: artwork, pixels: 600) }
-            else if references.count >= 4 {
-                Grid(horizontalSpacing: 1, verticalSpacing: 1) {
-                    ForEach(0..<2) { row in
-                        GridRow { ForEach(0..<2) { column in LibraryArtwork(reference: references[row * 2 + column], pixels: 300) } }
-                    }
-                }.clipShape(RoundedRectangle(cornerRadius: 8))
-            } else { LibraryArtwork(reference: references.first, pixels: 600) }
-        }.accessibilityHidden(true)
+        if let artwork = playlist.artwork {
+            LibraryArtwork(reference: artwork, size: size, cornerRadius: cornerRadius, placeholder: "music.note.list")
+        } else {
+            let references = mosaic
+            if references.count == 4 {
+                Grid(horizontalSpacing: 0, verticalSpacing: 0) {
+                    GridRow { tile(references[0]); tile(references[1]) }
+                    GridRow { tile(references[2]); tile(references[3]) }
+                }
+                .aspectRatio(1, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .accessibilityHidden(true)
+            } else {
+                LibraryArtwork(reference: references.first, size: size, cornerRadius: cornerRadius, placeholder: "music.note.list")
+            }
+        }
+    }
+
+    private func tile(_ reference: String) -> some View {
+        LibraryArtwork(reference: reference, size: size / 2, cornerRadius: 0)
+    }
+}
+
+struct PlaylistMenu: View {
+    @Environment(LibraryStore.self) private var library
+    @Environment(LibraryActions.self) private var actions
+    @Environment(ToastCenter.self) private var toasts
+    @Environment(\.openLibraryRoute) private var open
+    let playlist: LibraryPlaylist
+    var onEdit: (() -> Void)?
+    var body: some View {
+        let tracks = library.tracks(ids: playlist.trackIDs)
+        Section {
+            Button("Play", systemImage: "play") { LibraryPlayback.play(tracks) }.disabled(tracks.isEmpty)
+            Button("Shuffle", systemImage: "shuffle") { LibraryPlayback.play(tracks, shuffle: true) }.disabled(tracks.isEmpty)
+            Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") { LibraryPlayback.enqueue(tracks, next: true) }.disabled(tracks.isEmpty)
+            Button("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") { LibraryPlayback.enqueue(tracks, next: false) }.disabled(tracks.isEmpty)
+        }
+        Section {
+            if let onEdit { Button("Edit Details", systemImage: "pencil", action: onEdit) }
+            Button("Duplicate", systemImage: "plus.square.on.square") {
+                do {
+                    if let copy = try library.duplicatePlaylist(playlist.id) { open(.playlist(copy)) }
+                } catch { toasts.show(error) }
+            }
+        }
+        Section {
+            Button("Delete Playlist", systemImage: "trash", role: .destructive) { actions.delete(playlist: playlist) }
+        }
     }
 }
 
 struct PlaylistDetailView: View {
     @Environment(LibraryStore.self) private var library
+    @Environment(LibraryActions.self) private var actions
     let playlistID: UUID
-    @AppStorage("library.sort.playlistDetail") private var sort = "Playlist Order"
+    private var sort = LibrarySortState("playlistDetail", default: TrackSort.playlistOrder)
     @State private var editing = false
     @State private var picking = false
-    @State private var removing: [UUID] = []
-    @State private var confirmingRemoval = false
-    private var playlist: LibraryPlaylist? { library.playlist(playlistID) }
-    private var visible: [LibraryTrack] {
-        let ordered = library.tracks(ids: playlist?.trackIDs ?? [])
-        return sort == "Playlist Order" ? ordered : LibrarySortMenu.tracks(ordered, by: sort)
-    }
+    @State private var editMode = EditMode.inactive
+
+    init(playlistID: UUID) { self.playlistID = playlistID }
+
     var body: some View {
-        let displayed = visible
-        List {
-            if let playlist {
-                Section {
-                    PlaylistArtwork(playlist: playlist).aspectRatio(1, contentMode: .fit).frame(maxWidth: 320).frame(maxWidth: .infinity)
-                    Text(playlist.name).font(.title2.bold())
-                    if !playlist.description.isEmpty { Text(playlist.description).foregroundStyle(.secondary) }
-                    Text("\(playlist.trackIDs.count) tracks").font(.subheadline).foregroundStyle(.secondary)
-                    LibraryPlayButtons(tracks: library.tracks(ids: playlist.trackIDs))
-                    Button("Edit Details", systemImage: "pencil") { editing = true }
-                    Button("Add Tracks", systemImage: "plus") { picking = true }
-                }
-                Section("Tracks") {
-                    ForEach(displayed) { track in
-                        LibraryTrackRow(track: track, queue: displayed, removeFromPlaylist: {
-                            removing = [track.id]; confirmingRemoval = true
-                        })
-                        .moveDisabled(sort != "Playlist Order")
-                    }
-                    .onMove { indices, offset in
-                        var ids = playlist.trackIDs
-                        ids.move(fromOffsets: indices, toOffset: offset)
-                        library.setPlaylistTracks(playlistID, ids: ids)
-                    }
-                    .onDelete { indices in
-                        removing = indices.compactMap { displayed.indices.contains($0) ? displayed[$0].id : nil }
-                        confirmingRemoval = true
-                    }
-                }
-            } else { ContentUnavailableView("Playlist Removed", systemImage: "music.note.list") }
+        if let playlist = library.playlist(playlistID) {
+            content(playlist)
+        } else {
+            ContentUnavailableView("Playlist Removed", systemImage: "music.note.list")
         }
-        .navigationTitle(playlist?.name ?? "Playlist").navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            LibrarySortMenu(selection: $sort, options: ["Playlist Order", "Title", "Artist", "Album", "Year", "Duration"])
-            if let playlist { EditButton(); PlaylistActionMenu(playlist: playlist) }
-        }
-        .sheet(isPresented: $editing) { PlaylistEditor(playlist: playlist) }
-        .sheet(isPresented: $picking) { PlaylistTrackPicker(playlistID: playlistID) }
-        .confirmationDialog("Remove \(removing.count) tracks from this playlist?", isPresented: $confirmingRemoval, titleVisibility: .visible) {
-            Button("Remove from Playlist", role: .destructive) {
-                library.setPlaylistTracks(playlistID, ids: (playlist?.trackIDs ?? []).filter { !removing.contains($0) })
+    }
+
+    private func content(_ playlist: LibraryPlaylist) -> some View {
+        let ordered = library.tracks(ids: playlist.trackIDs)
+        let tracks = sort.apply(ordered)
+        let canReorder = sort.key == .playlistOrder && !sort.descending
+        return List {
+            Section {
+                LibraryDetailHeader(title: playlist.name,
+                                    detail: LibraryText.summary(tracks: ordered.count, duration: ordered.reduce(0) { $0 + $1.duration }),
+                                    description: playlist.description, tracks: tracks) {
+                    PlaylistArtwork(playlist: playlist, size: 280, cornerRadius: 12)
+                }
+                Button("Add Tracks", systemImage: "plus") { picking = true }
             }
-        } message: { Text("The audio files and tracks in your library are kept.") }
-    }
-}
-
-struct PlaylistActions: ViewModifier {
-    let playlist: LibraryPlaylist
-    @Environment(LibraryStore.self) private var library
-    @Environment(ToastCenter.self) private var toasts
-    @State private var deleting = false
-    @State private var editing = false
-    func body(content: Content) -> some View {
-        content.contextMenu {
-            Button("Play", systemImage: "play") { LibraryPlayback.play(library.tracks(ids: playlist.trackIDs)) }
-            Button("Edit Details", systemImage: "pencil") { editing = true }
-            Button("Duplicate Playlist", systemImage: "doc.on.doc") { do { try library.duplicatePlaylist(playlist.id) } catch { toasts.show(error) } }
-            Button("Delete Playlist", systemImage: "trash", role: .destructive) { deleting = true }
+            Section {
+                ForEach(tracks) { track in
+                    LibraryTrackRow(track: track, queue: tracks, playlist: playlist)
+                }
+                .onMove(perform: canReorder ? { library.moveTracks(in: playlist.id, fromOffsets: $0, toOffset: $1) } : nil)
+                .onDelete { offsets in actions.remove(offsets.map { tracks[$0] }, from: playlist) }
+            } footer: {
+                if tracks.isEmpty {
+                    Text("Add tracks from your library, or long-press any track and choose Add to Playlist.")
+                }
+            }
+        }
+        .listStyle(.plain)
+        .environment(\.editMode, $editMode)
+        .navigationTitle(playlist.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                if canReorder && !tracks.isEmpty {
+                    Button(editMode.isEditing ? "Done" : "Reorder", systemImage: editMode.isEditing ? "checkmark" : "arrow.up.arrow.down.square") {
+                        withAnimation { editMode = editMode.isEditing ? .inactive : .active }
+                    }
+                }
+                LibrarySortMenu(state: sort, options: [.playlistOrder, .title, .artist, .album, .year, .duration])
+                Menu("More", systemImage: "ellipsis") { PlaylistMenu(playlist: playlist, onEdit: { editing = true }) }
+            }
         }
         .sheet(isPresented: $editing) { PlaylistEditor(playlist: playlist) }
-        .confirmationDialog("Delete “\(playlist.name)”?", isPresented: $deleting, titleVisibility: .visible) {
-            Button("Delete Playlist", role: .destructive) { Task { do { try await library.deletePlaylist(playlist.id) } catch { toasts.show(error) } } }
-        } message: { Text("This removes the playlist and its unused custom artwork. Your tracks and audio files are kept.") }
-    }
-}
-
-struct PlaylistActionMenu: View {
-    let playlist: LibraryPlaylist
-    @Environment(LibraryStore.self) private var library
-    @Environment(ToastCenter.self) private var toasts
-    @State private var deleting = false
-    var body: some View {
-        Menu("Playlist Actions", systemImage: "ellipsis.circle") {
-            Button("Duplicate Playlist", systemImage: "doc.on.doc") { do { try library.duplicatePlaylist(playlist.id) } catch { toasts.show(error) } }
-            Button("Delete Playlist", systemImage: "trash", role: .destructive) { deleting = true }
-        }
-        .confirmationDialog("Delete “\(playlist.name)”?", isPresented: $deleting, titleVisibility: .visible) {
-            Button("Delete Playlist", role: .destructive) { Task { do { try await library.deletePlaylist(playlist.id) } catch { toasts.show(error) } } }
-        } message: { Text("This removes the playlist and its unused custom artwork. Your tracks and audio files are kept.") }
+        .sheet(isPresented: $picking) { PlaylistTrackPicker(playlistID: playlist.id) }
     }
 }

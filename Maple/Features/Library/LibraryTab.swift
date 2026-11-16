@@ -1,26 +1,74 @@
 import SwiftUI
 
 struct LibraryTab: View {
-    @Environment(LibraryStore.self) private var library
     var body: some View {
-        NavigationStack {
-            List {
+        LibraryNavigationStack {
+            LibraryOverview()
+        }
+    }
+}
+
+private struct LibraryOverview: View {
+    @Environment(LibraryStore.self) private var library
+
+    var body: some View {
+        List {
+            Section {
+                category("Playlists", systemImage: "music.note.list", count: library.playlists.count, route: .playlists)
+                category("Artists", systemImage: "music.mic", count: library.artists.count, route: .artists)
+                category("Albums", systemImage: "square.stack", count: library.albums.count, route: .albums)
+                category("Tracks", systemImage: "music.note", count: library.tracks.count, route: .tracks)
+                category("Listening Stats", systemImage: "chart.bar", count: nil, route: .stats)
+            }
+            if library.isLoaded && library.tracks.isEmpty {
                 Section {
-                    NavigationLink { Tracks() } label: { Label("Tracks · \(library.tracks.count)", systemImage: "music.note.list") }
-                    NavigationLink { Albums() } label: { Label("Albums · \(library.albums.count)", systemImage: "square.stack") }
-                    NavigationLink { Artists() } label: { Label("Artists · \(library.artists.count)", systemImage: "music.mic") }
-                    NavigationLink { Playlists() } label: { Label("Playlists · \(library.playlists.count)", systemImage: "text.badge.plus") }
+                    ContentUnavailableView {
+                        Label("Make It Yours", systemImage: "music.note")
+                    } description: {
+                        Text("Add files or a folder of music to build your library.")
+                    } actions: { MusicButton(style: .prominent) }
                 }
-                Section { NavigationLink { LibraryStatsView() } label: { Label("Listening Stats", systemImage: "chart.bar") } }
-                if library.tracks.isEmpty {
-                    Section {
-                        ContentUnavailableView("Make It Yours", systemImage: "music.note", description: Text("Add files or a folder of music to build your library."))
-                        MusicButton()
+                .listRowBackground(Color.clear)
+            } else if !recentAlbums.isEmpty {
+                Section {
+                    LazyVGrid(columns: LibraryGrid.columns, spacing: 20) {
+                        ForEach(recentAlbums) { album in
+                            NavigationLink(value: LibraryRoute.album(album.id)) { AlbumCard(album: album) }
+                                .buttonStyle(.plain)
+                                .contextMenu { LibraryGroupMenu(album: album) }
+                        }
                     }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                } header: {
+                    Text("Recently Added").font(.title2.bold()).foregroundStyle(.primary).textCase(nil)
                 }
             }
-            .navigationTitle("Library")
-            .toolbar { MusicButton().labelStyle(.iconOnly) }
+            Section {
+                NavigationLink(value: LibraryRoute.acknowledgements) {
+                    Label("Acknowledgements", systemImage: "doc.text")
+                }
+                .font(.subheadline)
+            }
         }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Library")
+        .toolbar { ToolbarItem(placement: .primaryAction) { MusicButton() } }
+    }
+
+    private var recentAlbums: [LibraryAlbum] {
+        Array(AlbumSort.dateAdded.sorted(library.albums, descending: true).prefix(12))
+    }
+
+    private func category(_ title: String, systemImage: String, count: Int?, route: LibraryRoute) -> some View {
+        NavigationLink(value: route) {
+            LabeledContent {
+                if let count { Text(count.formatted()) }
+            } label: {
+                Label(title, systemImage: systemImage)
+            }
+        }
+        .font(.title3)
     }
 }

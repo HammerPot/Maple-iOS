@@ -28,14 +28,22 @@ struct ContentView: View {
             if UserDefaults.standard.bool(forKey: "musicKit") { AppleMusicManager.shared.checkAuthorization() }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { Task { do { try await library.flush() } catch { toasts.show(error) } } }
+            switch phase {
+            case .active: library.scanForNewFiles(silently: true) // pick up files added in the Files app
+            case .background: Task { do { try await library.flush() } catch { toasts.show(error) } }
+            default: break
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .clearMapleLibrary)) { _ in
             Task { do { try await library.clearLibrary() } catch { toasts.show(error) } }
         }
         .onChange(of: library.errorMessage) { _, message in
-            if let message { toasts.show(message) }
+            if let message { toasts.show(message); library.errorMessage = nil }
         }
+        .onChange(of: library.announcement) { _, message in
+            if let message { toasts.show(message); library.announcement = nil }
+        }
+        .libraryActionPresenter()
     }
     private var tabs: some View {
         TabView {

@@ -10,7 +10,10 @@ final class AppServices {
     let playback: PlaybackReporter
     let friends: FriendsModel
     let toasts = ToastCenter()
-    let library = LibraryStore(root: URL.documentsDirectory)
+    /// Audio and artwork stay in Documents (visible in the Files app, as before); the catalog
+    /// lives privately in Application Support.
+    let library = LibraryStore(root: URL.documentsDirectory,
+                               catalogDirectory: URL.applicationSupportDirectory.appendingPathComponent("Library", isDirectory: true))
     private var signedInID: String?
 
     init() {
@@ -71,7 +74,12 @@ final class AppServices {
             return AudioPlayerManager.shared.mapleSnapshot()
         }
     }
-    func start() async { await library.load(); await auth.restore() }
+    func start() async {
+        async let restored: Void = auth.restore()
+        await library.load()
+        library.scanForNewFiles(silently: true)
+        await restored
+    }
     private func sessionChanged() {
         if signedInID != auth.user?.id {
             signedInID = auth.user?.id

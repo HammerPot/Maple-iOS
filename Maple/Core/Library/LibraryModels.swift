@@ -40,26 +40,33 @@ struct LibraryTrack: Identifiable, Codable, Hashable, Sendable {
     }
     var duplicateKey: String { Self.key(title) + "\u{0}" + Self.key(artist) }
     var albumKey: String { Self.key(album) + "\u{0}" + Self.key(albumArtist ?? "") }
-    // Compatibility for the legacy player. Resolve storage through LibraryStore for new code.
-    var ext: String { URL(fileURLWithPath: fileName).pathExtension }
-    var url: URL { URL(fileURLWithPath: fileName) }
+    var artistKey: String { Self.key(artist) }
 }
 
+/// The legacy player and Apple Music code still say `Song`; it is the library track.
 typealias Song = LibraryTrack
 
+/// Derived from tracks on every change; never stored.
 struct LibraryAlbum: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
     let artist: String
     let artwork: String?
     let year: Int
+    /// Disc, then track number order.
     let trackIDs: [UUID]
+    let duration: Double
+    /// Most recent `dateAdded` of its tracks.
+    let dateAdded: Date
 }
 
+/// Derived from tracks on every change; never stored.
 struct LibraryArtist: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
+    let artwork: String?
     let trackIDs: [UUID]
+    /// Newest first.
     let albumIDs: [String]
 }
 
@@ -92,14 +99,12 @@ struct LibraryCatalog: Codable, Sendable {
     var pendingFileRemovals: [String] = []
 }
 
-struct LibraryImportSummary: Sendable {
+struct LibraryImportSummary: Sendable, Equatable {
     var imported = 0
     var duplicates = 0
     var failures: [String] = []
     var cancelled = false
-    var message: String {
-        "\(imported) imported · \(duplicates) duplicates skipped · \(failures.count) failed" + (cancelled ? " · Cancelled" : "")
-    }
+    var isEmpty: Bool { imported == 0 && duplicates == 0 && failures.isEmpty && !cancelled }
 }
 
 struct LibraryImportProgress: Sendable {
@@ -109,7 +114,7 @@ struct LibraryImportProgress: Sendable {
 }
 
 enum LibraryError: LocalizedError {
-    case unsupportedVersion(Int), busy, notLoaded, invalidName, unreadableAudio, unsafePath
+    case unsupportedVersion(Int), busy, notLoaded, invalidName, unreadableAudio, unsafePath, notAudio
     var errorDescription: String? {
         switch self {
         case .unsupportedVersion(let version): "This library was saved by a newer Maple version (\(version)). Update Maple to open it."
@@ -118,6 +123,7 @@ enum LibraryError: LocalizedError {
         case .invalidName: "Enter a playlist name."
         case .unreadableAudio: "This file is not playable audio on this device."
         case .unsafePath: "The library contains an invalid file reference."
+        case .notAudio: "This is not an audio file."
         }
     }
 }

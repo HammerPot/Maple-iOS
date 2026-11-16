@@ -1,45 +1,117 @@
 import SwiftUI
 import Charts
 
+/// Totals and top tracks/artists/albums from the per-track statistics the player records.
 struct LibraryStatsView: View {
     @Environment(LibraryStore.self) private var library
-    private var topTracks: [LibraryTrack] {
-        library.tracks.filter { library.statistics[$0.id, default: TrackStatistics()].plays > 0 }
-            .sorted { library.statistics[$0.id, default: TrackStatistics()].plays > library.statistics[$1.id, default: TrackStatistics()].plays }
+    @Environment(LibraryActions.self) private var actions
+
+    private struct Ranked<Item: Identifiable>: Identifiable {
+        let item: Item
+        let plays: Int
+        let seconds: Double
+        var id: Item.ID { item.id }
     }
-    private var totalPlays: Int { library.statistics.values.reduce(0) { $0 + $1.plays } }
-    private var listening: Double { library.statistics.values.reduce(0) { $0 + $1.listeningSeconds } }
-    private func plays(_ ids: [UUID]) -> Int { ids.reduce(0) { $0 + library.statistics[$1, default: TrackStatistics()].plays } }
+
     var body: some View {
+        let stats = library.statistics
+        let totals = stats.values.reduce(into: TrackStatistics()) {
+            $0.plays += $1.plays; $0.completions += $1.completions; $0.skips += $1.skips; $0.listeningSeconds += $1.listeningSeconds
+        }
+        let topTracks = rank(library.tracks) { [$0.id] }
         List {
-            Section("Your Listening") {
-                LabeledContent("Plays", value: totalPlays.formatted())
-                LabeledContent("Listening Time", value: Duration.seconds(listening).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .abbreviated)))
-                LabeledContent("Completions", value: library.statistics.values.reduce(0) { $0 + $1.completions }.formatted())
-                LabeledContent("Skips", value: library.statistics.values.reduce(0) { $0 + $1.skips }.formatted())
+            Section {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
+                    StatTile(title: "Plays", value: totals.plays.formatted(), systemImage: "play.circle")
+                    StatTile(title: "Listening Time", value: Self.listening(totals.listeningSeconds), systemImage: "clock")
+                    StatTile(title: "Played to the End", value: totals.completions.formatted(), systemImage: "checkmark.circle")
+                    StatTile(title: "Skipped", value: totals.skips.formatted(), systemImage: "forward.end")
+                }
+                .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                .listRowBackground(Color.clear)
             }
-            if !topTracks.isEmpty {
+            if topTracks.isEmpty {
+                Section {
+                    ContentUnavailableView("Your Listening Starts Here", systemImage: "chart.bar",
+                                           description: Text("Play music from your library to see your favourites and listening time."))
+                }
+                .listRowBackground(Color.clear)
+            } else {
                 Section("Top Tracks") {
-                    Chart(Array(topTracks.prefix(5))) { track in
-                        BarMark(x: .value("Plays", library.statistics[track.id, default: TrackStatistics()].plays), y: .value("Track", track.title))
-                    }.frame(height: 180)
-                    ForEach(topTracks.prefix(10)) { track in
-                        HStack { LibraryTrackRow(track: track); Text("\(library.statistics[track.id, default: TrackStatistics()].plays)").font(.caption).foregroundStyle(.secondary) }
+                    Chart(topTracks.prefix(5)) { entry in
+                        BarMark(x: .value("Plays", entry.plays), y: .value("Track", entry.item.title))
+                            .annotation(position: .trailing) { Text(entry.plays.formatted()).font(.caption).foregroundStyle(.secondary) }
+                    }
+                    .chartXAxis(.hidden)
+                    .frame(height: CGFloat(min(topTracks.count, 5)) * 36)
+                    .accessibilityLabel("Top tracks by plays")
+                    ForEach(topTracks.prefix(10)) { entry in
+                        LibraryTrackRow(track: entry.item, queue: topTracks.prefix(10).map(\.item), trailing: Self.plays(entry.plays))
                     }
                 }
                 Section("Top Artists") {
-                    ForEach(library.artists.filter { plays($0.trackIDs) > 0 }.sorted { plays($0.trackIDs) > plays($1.trackIDs) }.prefix(10)) { artist in
-                        NavigationLink { ArtistDetailView(artist: artist) } label: { LabeledContent(artist.name, value: "\(plays(artist.trackIDs)) plays") }
+                    ForEach(rank(library.artists) { $0.trackIDs }.prefix(5)) { entry in
+                        NavigationLink(value: LibraryRoute.artist(entry.item.id)) {
+                            LabeledContent(entry.item.name, value: Self.plays(entry.plays))
+                        }
                     }
                 }
                 Section("Top Albums") {
-                    ForEach(library.albums.filter { plays($0.trackIDs) > 0 }.sorted { plays($0.trackIDs) > plays($1.trackIDs) }.prefix(10)) { album in
-                        NavigationLink { AlbumDetailView(album: album) } label: { LabeledContent(album.name, value: "\(plays(album.trackIDs)) plays") }
+                    ForEach(rank(library.albums) { $0.trackIDs }.prefix(5)) { entry in
+                        NavigationLink(value: LibraryRoute.album(entry.item.id)) {
+                            HStack(spacing: 12) {
+                                LibraryArtwork(reference: entry.item.artwork, size: 44).frame(width: 44, height: 44)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(entry.item.name).lineLimit(1)
+                                    Text(entry.item.artist).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                                Spacer()
+                                Text(Self.plays(entry.plays)).font(.subheadline).foregroundStyle(.secondary)
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
                     }
                 }
-            } else {
-                Section { ContentUnavailableView("Your Listening Starts Here", systemImage: "chart.bar", description: Text("Play music from your library to see your favourites and listening time.")) }
             }
-        }.navigationTitle("Listening Stats")
+            if !library.recentIDs.isEmpty {
+                Section {
+                    Button("Clear Recently Played", role: .destructive) { actions.clearRecentlyPlayed() }
+                } footer: {
+                    Text("Statistics are kept. Deleting a track removes its statistics; clearing the library removes all of them.")
+                }
+            }
+        }
+        .navigationTitle("Listening Stats")
+    }
+
+    private func rank<Item: Identifiable>(_ items: [Item], ids: (Item) -> [UUID]) -> [Ranked<Item>] {
+        items.compactMap { item -> Ranked<Item>? in
+            let stats = ids(item).map { library.statistics(for: $0) }
+            let plays = stats.reduce(0) { $0 + $1.plays }
+            return plays > 0 ? Ranked(item: item, plays: plays, seconds: stats.reduce(0) { $0 + $1.listeningSeconds }) : nil
+        }
+        .sorted { $0.plays == $1.plays ? $0.seconds > $1.seconds : $0.plays > $1.plays }
+    }
+
+    static func plays(_ count: Int) -> String { count == 1 ? "1 play" : "\(count.formatted()) plays" }
+
+    static func listening(_ seconds: Double) -> String {
+        Duration.seconds(max(0, seconds)).formatted(.units(allowed: [.hours, .minutes], width: .abbreviated, maximumUnitCount: 2))
+    }
+}
+
+private struct StatTile: View {
+    let title: String
+    let value: String
+    let systemImage: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(title, systemImage: systemImage).font(.subheadline).foregroundStyle(.secondary)
+            Text(value).font(.title2.bold().monospacedDigit()).lineLimit(1).minimumScaleFactor(0.6)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }

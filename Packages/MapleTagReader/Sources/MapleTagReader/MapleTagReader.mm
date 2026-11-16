@@ -17,7 +17,7 @@ static NSString *text(const TagLib::String &value) {
 + (NSDictionary<NSString *, id> *)metadataAtURL:(NSURL *)url {
     @autoreleasepool {
         try {
-            TagLib::FileRef ref(url.fileSystemRepresentation, true, TagLib::AudioProperties::Accurate);
+            TagLib::FileRef ref(url.fileSystemRepresentation, true, TagLib::AudioProperties::Average);
             if(ref.isNull() || !ref.file() || !ref.file()->isValid()) return @{};
             NSMutableDictionary *result = [NSMutableDictionary dictionary];
             const auto properties = ref.file()->properties();

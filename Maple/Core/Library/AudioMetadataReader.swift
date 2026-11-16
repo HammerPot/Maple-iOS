@@ -1,6 +1,5 @@
 import Foundation
 import AVFoundation
-import AudioToolbox
 import UniformTypeIdentifiers
 import MapleTagReader
 
@@ -13,77 +12,78 @@ protocol LibraryMetadataReading: Sendable {
     func read(_ url: URL) async throws -> ImportedAudio
 }
 
-/// Native decoding is the admission check: an extension alone never proves playability.
+/// Reads tags with TagLib and admits a file only if the system decoder can play it.
+///
+/// TagLib (the Swift-side counterpart of upstream's `music-metadata`) is the primary source:
+/// it reads ID3v2.3/2.4, MP4 atoms, Vorbis comments/FLAC pictures and ID3-in-AIFF/WAV
+/// uniformly, including album artist, disc numbers and SYLT synchronised lyrics, none of
+/// which AVFoundation exposes consistently. AVFoundation is used for the playability check,
+/// the duration the player will see, and as a fallback for files TagLib cannot parse.
 actor AudioMetadataReader: LibraryMetadataReading {
-    static let candidateExtensions: Set<String> = ["mp3", "mp2", "m4a", "m4b", "mp4", "aac", "adts", "wav", "wave", "aif", "aiff", "aifc", "caf", "flac", "alac", "ac3", "eac3", "au", "snd", "sd2", "3gp", "3gpp", "3g2", "amr", "ogg", "oga", "opus", "webm", "wma"]
-    nonisolated static func isCandidate(_ url: URL) -> Bool { candidateExtensions.contains(url.pathExtension.lowercased()) || UTType(filenameExtension: url.pathExtension)?.conforms(to: .audio) == true }
+    /// Extensions worth trying. Being listed does not admit a file: decoding does.
+    static let candidateExtensions: Set<String> = [
+        "mp3", "mp2", "m4a", "m4b", "m4p", "mp4", "aac", "adts", "wav", "wave", "aif", "aiff", "aifc", "caf",
+        "flac", "alac", "ac3", "eac3", "ec3", "au", "snd", "sd2", "3gp", "3gpp", "3g2", "amr", "ogg", "oga", "opus",
+    ]
+    nonisolated static func isCandidate(_ url: URL) -> Bool {
+        let ext = url.pathExtension.lowercased()
+        return candidateExtensions.contains(ext) || UTType(filenameExtension: ext)?.conforms(to: .audio) == true
+    }
 
     func read(_ url: URL) async throws -> ImportedAudio {
         try Task.checkCancellation()
-        // This is also the decoder used by the current local player. Reject unsupported codecs,
-        // video-only MP4s and invalid files before copying anything into the library.
-        let player = try AVAudioPlayer(contentsOf: url)
-        guard player.duration.isFinite, player.duration > 0 else { throw LibraryError.unreadableAudio }
-        let asset = AVURLAsset(url: url)
-        var values: [String: String] = [:]
-        var art: Data?
-        let metadata = (try? await asset.load(.metadata)) ?? []
-        for item in metadata {
-            try Task.checkCancellation()
-            let identifier = item.identifier?.rawValue.lowercased() ?? ""
-            if item.commonKey == .commonKeyArtwork || identifier.hasSuffix("/apic") || identifier.hasSuffix("/covr") {
-                if art == nil { art = try? await item.load(.dataValue) }
-                continue
-            }
-            guard let text = try? await item.load(.stringValue), !text.isEmpty else { continue }
-            if item.commonKey == .commonKeyTitle { values["title"] = text }
-            if item.commonKey == .commonKeyArtist { values["artist"] = text }
-            if item.commonKey == .commonKeyAlbumName { values["album"] = text }
-            let suffix = identifier.split(separator: "/").last.map(String.init) ?? identifier
-            switch suffix {
-            case "tit2", "©nam", "title": values["title"] = text
-            case "tpe1", "©art", "artist": values["artist"] = text
-            case "talb", "©alb", "album": values["album"] = text
-            case "tpe2", "aart", "albumartist", "album_artist": values["albumArtist"] = text
-            case "tyer", "tdrc", "©day", "date", "year": values["year"] = text
-            case "tcon", "©gen", "gnre", "genre": values["genre"] = text
-            case "trck", "trkn", "tracknumber", "track": values["track"] = text
-            case "tpos", "disk", "discnumber", "disc": values["disc"] = text
-            case "uslt", "sylt", "©lyr", "lyrics", "unsyncedlyrics": values["lyrics"] = text
-            default: break
-            }
-        }
-        // Core Audio exposes container-specific tags such as MP4's numeric track number
-        // as dictionary values, avoiding hand-decoding ID3 frames or MP4 atoms.
-        var audioFile: AudioFileID?
-        if AudioFileOpenURL(url as CFURL, .readPermission, 0, &audioFile) == noErr, let audioFile {
-            defer { AudioFileClose(audioFile) }
-            var info: CFDictionary?
-            var size = UInt32(MemoryLayout<CFDictionary?>.size)
-            if AudioFileGetProperty(audioFile, kAudioFilePropertyInfoDictionary, &size, &info) == noErr,
-               let dictionary = info as? [String: Any] {
-                for (field, key) in [("title", kAFInfoDictionary_Title), ("artist", kAFInfoDictionary_Artist),
-                                      ("album", kAFInfoDictionary_Album), ("year", kAFInfoDictionary_Year),
-                                      ("genre", kAFInfoDictionary_Genre), ("track", kAFInfoDictionary_TrackNumber)] {
-                    if values[field] == nil, let value = dictionary[key] { values[field] = String(describing: value) }
-                }
-            }
-        }
-        if values["lyrics"] == nil { values["lyrics"] = try? await asset.load(.lyrics) }
+        // The local player uses AVAudioPlayer, so the same decoder is the admission check.
+        // This rejects unsupported codecs, video-only MP4s and damaged files before any copy.
+        let duration: TimeInterval
+        do {
+            let player = try AVAudioPlayer(contentsOf: url)
+            duration = player.duration
+        } catch { throw LibraryError.unreadableAudio }
+        guard duration.isFinite, duration > 0 else { throw LibraryError.unreadableAudio }
+
         let tags = MapleTagReader.metadata(at: url)
+        var values: [String: String] = [:]
         for (field, tag) in [("title", "TITLE"), ("artist", "ARTIST"), ("album", "ALBUM"),
                              ("albumArtist", "ALBUMARTIST"), ("year", "DATE"), ("genre", "GENRE"),
                              ("track", "TRACKNUMBER"), ("disc", "DISCNUMBER"), ("lyrics", "LYRICS")] {
-            if let text = tags[tag] as? String, !text.isEmpty { values[field] = text }
+            if let text = tags[tag] as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { values[field] = text }
         }
-        // Some encoders store USLT or LYRICS as a user-text frame.
-        if values["lyrics"] == nil { values["lyrics"] = tags["USLT"] as? String }
-        if let picture = tags["artwork"] as? Data { art = picture }
-        func number(_ key: String) -> Int { Int((values[key] ?? "").split(separator: "/").first ?? "") ?? 0 }
-        let year = Int((values["year"] ?? "").prefix(4)) ?? 0
-        return ImportedAudio(track: LibraryTrack(fileName: url.lastPathComponent, title: values["title"] ?? url.deletingPathExtension().lastPathComponent,
-            artist: values["artist"] ?? "", album: values["album"] ?? "", albumArtist: values["albumArtist"], year: year,
-            genre: values["genre"] ?? "", duration: player.duration, trackNumber: number("track"), discNumber: number("disc"),
-            lyrics: values["lyrics"]), artwork: art)
+        var artwork = tags["artwork"] as? Data
+        if values["title"] == nil || values["artist"] == nil || artwork == nil {
+            try await fillFromAVFoundation(url, values: &values, artwork: &artwork)
+        }
+        func number(_ key: String) -> Int {
+            Int((values[key] ?? "").split(separator: "/").first?.trimmingCharacters(in: .whitespaces) ?? "") ?? 0
+        }
+        let track = LibraryTrack(
+            fileName: url.lastPathComponent, title: values["title"] ?? "", artist: values["artist"] ?? "",
+            album: values["album"] ?? "", albumArtist: values["albumArtist"], year: Int((values["year"] ?? "").prefix(4)) ?? 0,
+            genre: values["genre"] ?? "", duration: duration, trackNumber: number("track"), discNumber: number("disc"),
+            lyrics: values["lyrics"])
+        return ImportedAudio(track: track, artwork: artwork.flatMap { $0.isEmpty ? nil : $0 })
+    }
+
+    /// Fallback for formats or tags TagLib does not cover; never overrides TagLib values.
+    private func fillFromAVFoundation(_ url: URL, values: inout [String: String], artwork: inout Data?) async throws {
+        let asset = AVURLAsset(url: url)
+        let items = (try? await asset.load(.metadata)) ?? []
+        for item in items {
+            try Task.checkCancellation()
+            if item.commonKey == .commonKeyArtwork {
+                if artwork == nil { artwork = try? await item.load(.dataValue) }
+                continue
+            }
+            let field: String? = switch item.commonKey {
+            case .commonKeyTitle: "title"
+            case .commonKeyArtist: "artist"
+            case .commonKeyAlbumName: "album"
+            case .commonKeyCreationDate: "year"
+            default: nil
+            }
+            guard let field, values[field] == nil, let text = try? await item.load(.stringValue),
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            values[field] = text
+        }
+        if values["lyrics"] == nil, let lyrics = try? await asset.load(.lyrics), !lyrics.isEmpty { values["lyrics"] = lyrics }
     }
 }

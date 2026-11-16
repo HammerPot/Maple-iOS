@@ -421,7 +421,7 @@ struct AudioPlayerView: View {
         .padding()
         .onAppear {
             if !hasInitializedQueue {
-                if let index = allSongs.firstIndex(where: { $0.url == song.url }) {
+                if let index = allSongs.firstIndex(where: { $0.id == song.id }) {
                     audioManager.setQueue(allSongs, startingAt: index)
                     hasInitializedQueue = true
                 }

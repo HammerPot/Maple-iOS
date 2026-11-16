@@ -2,97 +2,112 @@ import SwiftUI
 
 struct Albums: View {
     @Environment(LibraryStore.self) private var library
-    @AppStorage("library.sort.albums") private var sort = "Title"
-    private var sorted: [LibraryAlbum] {
-        library.albums.sorted {
-            switch sort {
-            case "Artist": $0.artist.localizedStandardCompare($1.artist) == .orderedAscending
-            case "Year": $0.year > $1.year
-            default: $0.name.localizedStandardCompare($1.name) == .orderedAscending
+    private var sort = LibrarySortState("albums", default: AlbumSort.name)
+    @State private var query = ""
+
+    private var visible: [LibraryAlbum] {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matches = term.isEmpty ? library.albums : library.albums.filter {
+            $0.name.localizedStandardContains(term) || $0.artist.localizedStandardContains(term)
+        }
+        return sort.apply(matches)
+    }
+
+    var body: some View {
+        let albums = visible
+        ScrollView {
+            LazyVGrid(columns: LibraryGrid.columns, spacing: 20) {
+                ForEach(albums) { album in
+                    NavigationLink(value: LibraryRoute.album(album.id)) { AlbumCard(album: album) }
+                        .buttonStyle(.plain)
+                        .contextMenu { LibraryGroupMenu(album: album) }
+                }
+            }
+            .padding(.horizontal)
+            .padding(.bottom)
+        }
+        .overlay {
+            if library.albums.isEmpty {
+                ContentUnavailableView("No Albums Yet", systemImage: "square.stack",
+                                       description: Text("Albums are organised automatically from your music’s tags."))
+            } else if albums.isEmpty {
+                ContentUnavailableView.search(text: query)
             }
         }
-    }
-    var body: some View {
-        ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 18)], spacing: 22) {
-                ForEach(sorted) { album in
-                    NavigationLink { AlbumDetailView(album: album) } label: { AlbumCard(album: album) }
-                        .buttonStyle(.plain)
-                        .modifier(LibraryGroupActions(name: album.name, kind: "Album", trackIDs: album.trackIDs))
-                }
-            }.padding()
-        }
-        .overlay { if sorted.isEmpty { ContentUnavailableView("No Albums Yet", systemImage: "square.stack", description: Text("Albums are organised automatically when you import music.")) } }
         .navigationTitle("Albums")
-        .toolbar { LibrarySortMenu(selection: $sort, options: ["Title", "Artist", "Year"]) }
-    }
-}
-
-struct AlbumCard: View {
-    let album: LibraryAlbum
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            LibraryArtwork(reference: album.artwork, pixels: 480).aspectRatio(1, contentMode: .fit)
-            Text(album.name).font(.headline).lineLimit(2)
-            Text(album.artist).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-            Text("\(album.trackIDs.count) tracks").font(.caption).foregroundStyle(.secondary)
-        }.accessibilityElement(children: .combine)
+        .searchable(text: $query, prompt: "Filter albums")
+        .toolbar { LibrarySortMenu(state: sort) }
     }
 }
 
 struct AlbumDetailView: View {
     @Environment(LibraryStore.self) private var library
-    let album: LibraryAlbum
-    @AppStorage("library.sort.albumDetail") private var sort = "Track Number"
-    private var current: LibraryAlbum? { library.albums.first { $0.id == album.id } }
-    private var tracks: [LibraryTrack] {
-        let ordered = library.tracks(ids: current?.trackIDs ?? [])
-        return sort == "Track Number" ? ordered : LibrarySortMenu.tracks(ordered, by: sort)
-    }
+    @Environment(LibraryActions.self) private var actions
+    @Environment(\.openLibraryRoute) private var open
+    let albumID: String
+    private var sort = LibrarySortState("albumDetail", default: TrackSort.trackNumber)
+
+    init(albumID: String) { self.albumID = albumID }
+
     var body: some View {
-        List {
-            if let current {
-                Section {
-                    LibraryArtwork(reference: current.artwork, pixels: 900).aspectRatio(1, contentMode: .fit).frame(maxWidth: 320).frame(maxWidth: .infinity)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(current.name).font(.title2.bold())
-                        Text(current.artist).foregroundStyle(.secondary)
-                        if current.year > 0 { Text(String(current.year)).font(.subheadline).foregroundStyle(.secondary) }
-                        LibraryPlayButtons(tracks: tracks).padding(.top, 8)
-                    }
-                }
-                ForEach(Array(Set(tracks.map(\.discNumber))).sorted(), id: \.self) { disc in
-                    Section(disc > 0 ? "Disc \(disc)" : "Tracks") {
-                        ForEach(tracks.filter { $0.discNumber == disc }) { track in LibraryTrackRow(track: track, queue: tracks) }
-                    }
-                }
-            } else { ContentUnavailableView("Album Removed", systemImage: "square.stack") }
+        if let album = library.album(albumID) {
+            content(album)
+        } else {
+            ContentUnavailableView("Album Removed", systemImage: "square.stack")
         }
-        .navigationTitle(album.name).navigationBarTitleDisplayMode(.inline)
-        .toolbar { LibrarySortMenu(selection: $sort, options: ["Track Number", "Title", "Duration"]); if let current { GroupActionMenu(name: current.name, kind: "Album", trackIDs: current.trackIDs) } }
+    }
+
+    private func content(_ album: LibraryAlbum) -> some View {
+        let tracks = sort.apply(library.tracks(ids: album.trackIDs))
+        let discs = Set(tracks.map(\.discNumber).filter { $0 > 0 })
+        let byDisc = sort.key == .trackNumber && discs.count > 1
+        let artistID = album.artist == "Various Artists" ? nil : library.artist(LibraryTrack.key(album.artist))?.id
+        return List {
+            Section {
+                LibraryDetailHeader(title: album.name, subtitle: album.artist,
+                                    detail: [album.genreLabel(tracks), album.year > 0 ? String(album.year) : nil].compactMap { $0 }.joined(separator: " · "),
+                                    tracks: tracks) {
+                    LibraryArtwork(reference: album.artwork, size: 280, cornerRadius: 12)
+                }
+                if let artistID {
+                    Button("More by \(album.artist)", systemImage: "music.mic") { open(.artist(artistID)) }
+                        .font(.subheadline)
+                }
+            }
+            if byDisc {
+                ForEach(discs.sorted(), id: \.self) { disc in
+                    Section("Disc \(disc)") {
+                        ForEach(tracks.filter { $0.discNumber == disc }) { row($0, album: album, queue: tracks) }
+                    }
+                }
+            } else {
+                Section {
+                    ForEach(tracks) { row($0, album: album, queue: tracks) }
+                } footer: {
+                    Text(LibraryText.summary(tracks: tracks.count, duration: album.duration))
+                }
+            }
+        }
+        .listStyle(.plain)
+        .navigationTitle(album.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                LibrarySortMenu(state: sort, options: [.trackNumber, .title, .duration])
+                Menu("More", systemImage: "ellipsis") { LibraryGroupMenu(album: album) }
+            }
+        }
+    }
+
+    private func row(_ track: LibraryTrack, album: LibraryAlbum, queue: [LibraryTrack]) -> some View {
+        LibraryTrackRow(track: track, queue: queue, number: track.trackNumber,
+                        showsArtist: album.artist == "Various Artists" || LibraryTrack.key(track.artist) != LibraryTrack.key(album.artist))
     }
 }
 
-struct GroupActionMenu: View {
-    let name: String
-    let kind: String
-    let trackIDs: [UUID]
-    @Environment(LibraryStore.self) private var library
-    @Environment(ToastCenter.self) private var toasts
-    @State private var adding = false
-    @State private var deleting = false
-    var body: some View {
-        Menu("\(kind) Actions", systemImage: "ellipsis.circle") {
-            Button("Add to Playlist", systemImage: "text.badge.plus") { adding = true }
-            Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") { LibraryPlayback.enqueue(library.tracks(ids: trackIDs), next: true) }
-            Button("Add to Queue", systemImage: "text.badge.plus") { LibraryPlayback.enqueue(library.tracks(ids: trackIDs), next: false) }
-            Button("Delete \(kind)", systemImage: "trash", role: .destructive) { deleting = true }
-        }
-        .sheet(isPresented: $adding) { AddToPlaylistSheet(trackIDs: trackIDs) }
-        .confirmationDialog("Delete “\(name)”?", isPresented: $deleting, titleVisibility: .visible) {
-            Button("Delete \(trackIDs.count) Tracks", role: .destructive) {
-                Task { do { try await library.deleteTracks(Set(trackIDs)) } catch { toasts.show(error) } }
-            }
-        } message: { Text("This deletes all \(trackIDs.count) audio files in this \(kind.lowercased()), their listening history and unused artwork, and removes the tracks from every playlist.") }
+private extension LibraryAlbum {
+    func genreLabel(_ tracks: [LibraryTrack]) -> String? {
+        let genre = tracks.lazy.map(\.genre).first { $0 != "Unknown Genre" }
+        return genre
     }
 }
