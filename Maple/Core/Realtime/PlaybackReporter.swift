@@ -45,6 +45,7 @@ final class PlaybackReporter {
     private(set) var ownsPlayback = false
     private(set) var snapshot: TrackSnapshot?
     @ObservationIgnored var didStart: ((TrackSnapshot, Data?) -> Void)?
+    @ObservationIgnored var artworkProvider: (() async -> Data?)?
     @ObservationIgnored var snapshotProvider: (() -> TrackSnapshot?)?
     @ObservationIgnored private let transport: PlaybackTransport
     @ObservationIgnored private let discord: () -> Bool
@@ -119,6 +120,11 @@ final class PlaybackReporter {
             return
         }
         ownsPlayback = true; startRejected = false; lastAcknowledgedAt = now()
+        if artwork == nil, let artworkProvider {
+            let data = await artworkProvider()
+            guard epoch == version, playbackId == id else { return }
+            artwork = data
+        }
         if let snapshot, snapshot.identity != announcedIdentity {
             announcedIdentity = snapshot.identity
             didStart?(snapshot, artwork)
@@ -193,7 +199,7 @@ final class PlaybackReporter {
     /// An explicit local start/resume may override a previous foreign-device takeover, even on the same track.
     func playbackStarted() async {
         foreignOwner = false; startRejected = false
-        await reclaim()
+        if ownsPlayback { await sendUpdate() } else { await reclaim() }
     }
     private func refreshSnapshot() {
         if let fresh = snapshotProvider?(), fresh.identity == snapshot?.identity { snapshot = fresh }
