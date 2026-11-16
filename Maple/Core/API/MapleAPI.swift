@@ -55,23 +55,22 @@ struct UploadImage {
     let ext: String
     static let maxBytes = 3 * 1024 * 1024
     static func prepare(_ data: Data) throws -> UploadImage {
-        let bytes = [UInt8](data.prefix(8))
-        let format: (String, String)?
-        if bytes.starts(with: [0xFF, 0xD8, 0xFF]) { format = ("image/jpeg", "jpg") }
-        else if bytes.starts(with: [137, 80, 78, 71, 13, 10, 26, 10]) { format = ("image/png", "png") }
-        else if data.starts(with: Data("GIF87a".utf8)) || data.starts(with: Data("GIF89a".utf8)) { format = ("image/gif", "gif") }
-        else { format = nil }
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
             throw MapleError(status: 400, message: "Choose a valid image.")
         }
-        if let format, data.count <= maxBytes { return UploadImage(data: data, mime: format.0, ext: format.1) }
-        // ImageIO downsamples without decoding an arbitrarily large image into memory first.
+        // Decode only a bounded thumbnail, applying orientation. Never copy source properties: EXIF, GPS,
+        // comments and animation metadata must not reach public avatars or album art. GIFs become stills.
         for size in [1600, 1000, 640, 320] {
             let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: size]
-            if let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary),
-               let jpeg = UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.8), jpeg.count <= maxBytes {
-                return UploadImage(data: jpeg, mime: "image/jpeg", ext: "jpg")
+            guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { continue }
+            let alpha = [.first, .last, .premultipliedFirst, .premultipliedLast, .alphaOnly].contains(image.alphaInfo)
+            let output = NSMutableData()
+            let type = alpha ? "public.png" : "public.jpeg"
+            guard let destination = CGImageDestinationCreateWithData(output, type as CFString, 1, nil) else { continue }
+            CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
+            if CGImageDestinationFinalize(destination), output.length <= maxBytes {
+                return UploadImage(data: output as Data, mime: alpha ? "image/png" : "image/jpeg", ext: alpha ? "png" : "jpg")
             }
         }
         throw MapleError(status: 413)
