@@ -4,7 +4,7 @@ import BetterAuth
 /// One cookie jar for Better Auth, REST, image requests and Socket.IO. The library persists it to Keychain.
 actor MapleHTTP {
     static let origin = "https://api.maple.music"
-    static let baseURL = URL(string: origin) ?? URL(fileURLWithPath: "/")
+    static let baseURL = URL(string: origin + "/") ?? URL(fileURLWithPath: "/")
     nonisolated let cookies: CookieStorage
     private let session: URLSession
 

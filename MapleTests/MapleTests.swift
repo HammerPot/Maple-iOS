@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import BetterAuth
 @testable import Maple
 
 struct MapleModelTests {
@@ -38,6 +39,18 @@ struct MapleModelTests {
         #expect(rest.localizedDescription == "Playback is no longer current.")
         #expect(MapleError.response(status: 401, data: Data("Unauthorized".utf8)).localizedDescription.contains("sign in"))
         #expect(MapleError(status: 429).localizedDescription.contains("wait"))
+    }
+    private struct TestCookieStorage: StorageProtocol {
+        func get(key: String) -> String? { nil }
+        func save(key: String, value: String) throws -> Bool { true }
+    }
+    @Test func secureRootCookieIsAvailableForSocketHandshake() throws {
+        let jar = CookieStorage(storage: TestCookieStorage())
+        let cookie = try #require(HTTPCookie(properties: [.name: "__Secure-maple.session_token", .value: "unit-test-only", .domain: "api.maple.music", .path: "/", .secure: "TRUE"]))
+        jar.setCookie(cookie)
+        let http = MapleHTTP(cookies: jar)
+        #expect(http.sessionCookies.count == 1)
+        #expect(http.sessionCookies.first?.name == "__Secure-maple.session_token")
     }
     @Test func routeSegmentsAreNotEscapedTwice() throws {
         let url = try MapleHTTP.requestURL(path: "public/get/user/a%2Eb%5Fc%2Dd")

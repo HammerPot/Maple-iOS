@@ -41,7 +41,9 @@ final class MapleRealtime: PlaybackTransport {
     private let logger = Logger(subsystem: "dev.hammerpot.Maple-iOS", category: "Realtime")
 
     func connect(cookies: [HTTPCookie]) {
-        guard manager == nil, !cookies.isEmpty else { return }
+        guard manager == nil else { return }
+        guard !cookies.isEmpty else { logger.error("Realtime connection has no session cookie"); return }
+        logger.info("Starting authenticated realtime connection")
         generation += 1
         let manager = SocketManager(socketURL: MapleHTTP.baseURL, config: [
             .cookies(cookies), .extraHeaders(["Origin": MapleHTTP.origin]), .log(false),
@@ -53,19 +55,27 @@ final class MapleRealtime: PlaybackTransport {
         socket.on(clientEvent: .connect) { [weak self, weak socket] _, _ in
             Task { @MainActor in
                 guard let self, self.socket === socket else { return }
+                self.logger.info("Realtime connected")
                 self.connected = true; self.checkedSession = false; self.onConnect?()
             }
         }
         socket.on(clientEvent: .disconnect) { [weak self, weak socket] data, _ in
             Task { @MainActor in
                 guard let self, self.socket === socket else { return }
+                self.logger.info("Realtime disconnected")
                 self.connected = false; self.onDisconnect?()
-                if let reason = data.first as? String, reason.contains("server disconnect") { await self.revalidate(socket: socket) }
+                if let reason = data.first as? String,
+                   reason == "Got Disconnect" || reason.contains("server disconnect") {
+                    await self.revalidate(socket: socket)
+                }
             }
         }
-        socket.on(clientEvent: .error) { [weak self, weak socket] _, _ in
+        socket.on(clientEvent: .error) { [weak self, weak socket] data, _ in
             Task { @MainActor in
                 guard let self, self.socket === socket else { return }
+                let message = String(describing: data.first)
+                if message.contains("Invalid session") { self.logger.error("Realtime authentication rejected") }
+                else { self.logger.error("Realtime connection failed") }
                 // A rejected authentication handshake stops reconnecting. Check the session once per connection attempt.
                 if socket?.status != .connected { await self.revalidate(socket: socket) }
             }

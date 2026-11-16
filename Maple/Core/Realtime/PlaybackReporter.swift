@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 
 struct TrackSnapshot: Equatable, Sendable {
     /// Include the player name so local and Apple Music identifiers cannot collide.
@@ -55,6 +56,7 @@ final class PlaybackReporter {
     private var artwork: Data?
     private var pendingConnection = false
     private var epoch = 0
+    private let logger = Logger(subsystem: "dev.hammerpot.Maple-iOS", category: "PlaybackReporting")
     private let automaticHeartbeat: Bool
 
     init(transport: PlaybackTransport, automaticHeartbeat: Bool = true,
@@ -81,9 +83,13 @@ final class PlaybackReporter {
         let version = epoch
         let id = UUID().uuidString
         playbackId = id
-        guard transport.connected else { pendingConnection = true; return }
+        guard transport.connected else {
+            logger.info("Playback queued until realtime connects")
+            pendingConnection = true; return
+        }
         pendingConnection = false
         let reply = await transport.send("playbackStart", payload: payload(id: id, start: true))
+        logger.info("Playback start acknowledged: \(reply?.ok == true); ownership confirmed: \(self.ownerPlaybackId == id)")
         guard epoch == version, playbackId == id, ownerPlaybackId == id, transport.connected, reply?.ok == true else {
             if let reply, !reply.ok { reportError(MapleError(status: 409, message: reply.error)) }
             return
