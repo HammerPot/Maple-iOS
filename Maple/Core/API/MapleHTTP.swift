@@ -20,9 +20,7 @@ actor MapleHTTP {
 
     func raw(_ path: String, method: String = "GET", body: Data? = nil,
              contentType: String = "application/json", query: [URLQueryItem] = []) async throws -> Data {
-        var components = URLComponents(url: Self.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
-        if !query.isEmpty { components?.queryItems = query }
-        guard let url = components?.url else { throw URLError(.badURL) }
+        let url = try Self.requestURL(path: path, query: query)
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.httpBody = body
@@ -38,6 +36,14 @@ actor MapleHTTP {
     }
     func request<T: Decodable & Sendable>(_ path: String, method: String = "GET", body: Data? = nil) async throws -> T {
         try JSONDecoder.maple.decode(T.self, from: await raw(path, method: method, body: body))
+    }
+    /// Paths already contain escaped individual segments. Do not escape percent signs a second time.
+    nonisolated static func requestURL(path: String, query: [URLQueryItem] = []) throws -> URL {
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+        components?.percentEncodedPath = "/" + path
+        if !query.isEmpty { components?.queryItems = query }
+        guard let url = components?.url else { throw URLError(.badURL) }
+        return url
     }
     func image(at url: URL) async throws -> Data {
         guard url.scheme == "https" else { throw URLError(.badURL) }

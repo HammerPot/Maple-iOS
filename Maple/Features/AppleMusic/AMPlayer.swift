@@ -444,6 +444,8 @@ struct AMPlayerView: View {
                 }
             }
             
+            Button("Stop", systemImage: "stop.fill") { player.Stop() }
+
             // Progress slider
             VStack {
                 Slider(value: Binding(
@@ -576,6 +578,8 @@ struct AMPlayerView2: View {
                 }
             }
             
+            Button("Stop", systemImage: "stop.fill") { player.Stop() }
+
             // Progress slider
             VStack {
                 Slider(value: Binding(

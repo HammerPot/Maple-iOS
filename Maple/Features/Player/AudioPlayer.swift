@@ -363,6 +363,8 @@ struct AudioPlayerView: View {
                 }
             }
             
+            Button("Stop", systemImage: "stop.fill") { audioManager.stop() }
+
             VStack {
                 Slider(value: Binding(
                     get: { audioManager.currentTime },
@@ -466,6 +468,8 @@ struct MediaPlayerView: View {
                 }
             }
             
+            Button("Stop", systemImage: "stop.fill") { audioManager.stop() }
+
             VStack {
                 Slider(value: Binding(
                     get: { audioManager.currentTime },

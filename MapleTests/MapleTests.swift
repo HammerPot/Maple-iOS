@@ -39,6 +39,11 @@ struct MapleModelTests {
         #expect(MapleError.response(status: 401, data: Data("Unauthorized".utf8)).localizedDescription.contains("sign in"))
         #expect(MapleError(status: 429).localizedDescription.contains("wait"))
     }
+    @Test func routeSegmentsAreNotEscapedTwice() throws {
+        let url = try MapleHTTP.requestURL(path: "public/get/user/a%2Eb%5Fc%2Dd")
+        #expect(url.path == "/public/get/user/a.b_c-d")
+        #expect(!url.absoluteString.contains("%25"))
+    }
     @Test func friendshipAndOwnershipEventsDecode() throws {
         let event = try JSONDecoder.maple.decode(PlaybackOwnershipEvent.self, from: Data(#"{"playbackId":null}"#.utf8))
         #expect(event.playbackId == nil)
