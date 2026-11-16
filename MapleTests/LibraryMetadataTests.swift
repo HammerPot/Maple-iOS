@@ -41,4 +41,15 @@ struct LibraryMetadataTests {
         #expect(synced.track.lyrics?.contains("[00:00.100]First synced line") == true)
         #expect(synced.track.lyrics?.contains("[00:00.400]Second synced line") == true)
     }
+    /// Verified on the iOS 26.0 simulator: AVAudioPlayer plays Ogg Opus (and TagLib reads its
+    /// Vorbis comments) but cannot open Ogg Vorbis, which is therefore reported as unplayable
+    /// instead of being copied into the library.
+    @Test(.timeLimit(.minutes(1))) func oggVorbisIsRejectedBeforeCopying() async throws {
+        await #expect(throws: LibraryError.self) { try await AudioMetadataReader().read(fixture("vorbis.ogg")) }
+    }
+    @Test(.timeLimit(.minutes(1))) func oggOpusIsAdmittedWithTags() async throws {
+        let audio = try await AudioMetadataReader().read(fixture("opus.opus"))
+        #expect(audio.track.title == "Fixture Song"); #expect(audio.track.artist == "Fixture Artist")
+        #expect(audio.track.duration > 0.5)
+    }
 }
