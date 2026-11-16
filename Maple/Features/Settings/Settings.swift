@@ -64,7 +64,7 @@ struct Settings: View {
             Button("Delete Library", role: .destructive, action: clearLibrary)
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("All imported music, artwork, playlists, lyrics, recently played and listening statistics will be permanently deleted from this device. Your account and settings are kept.")
+            Text("All imported music, loose audio files in Maple’s Documents folder, staged imports, artwork, playlists, lyrics, recently played and listening statistics will be permanently deleted from this device. Your account and settings are kept.")
         }
     }
     private static var version: String {
