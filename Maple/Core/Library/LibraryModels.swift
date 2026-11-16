@@ -97,6 +97,27 @@ struct LibraryCatalog: Codable, Sendable {
     var statistics: [UUID: TrackStatistics] = [:]
     var recentlyPlayed: [UUID] = []
     var pendingFileRemovals: [String] = []
+    /// Rows dropped while decoding; never written back.
+    var skippedRows = 0
+}
+
+/// Decodes an array element by element: a malformed element is counted and skipped instead
+/// of failing the whole array.
+struct LossyArray<Element: Decodable>: Decodable {
+    var elements: [Element] = []
+    var skipped = 0
+    private struct Placeholder: Decodable {}
+    init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        while !container.isAtEnd {
+            do { elements.append(try container.decode(Element.self)) }
+            catch {
+                skipped += 1
+                // A failed decode does not advance the container; consume the element.
+                _ = try container.decode(Placeholder.self)
+            }
+        }
+    }
 }
 
 struct LibraryImportSummary: Sendable, Equatable {
@@ -137,8 +158,11 @@ extension LibraryCatalog {
         version = try container.decode(Int.self, forKey: .version)
         revision = try container.decodeIfPresent(UInt64.self, forKey: .revision) ?? 0
         migratedLegacy = try container.decodeIfPresent(Bool.self, forKey: .migratedLegacy) ?? true
-        tracks = try container.decode([LibraryTrack].self, forKey: .tracks)
-        playlists = try container.decodeIfPresent([LibraryPlaylist].self, forKey: .playlists) ?? []
+        let tracks = try container.decode(LossyArray<LibraryTrack>.self, forKey: .tracks)
+        let playlists = try container.decodeIfPresent(LossyArray<LibraryPlaylist>.self, forKey: .playlists)
+        self.tracks = tracks.elements
+        self.playlists = playlists?.elements ?? []
+        skippedRows = tracks.skipped + (playlists?.skipped ?? 0)
         statistics = try container.decodeIfPresent([UUID: TrackStatistics].self, forKey: .statistics) ?? [:]
         recentlyPlayed = try container.decodeIfPresent([UUID].self, forKey: .recentlyPlayed) ?? []
         pendingFileRemovals = try container.decodeIfPresent([String].self, forKey: .pendingFileRemovals) ?? []

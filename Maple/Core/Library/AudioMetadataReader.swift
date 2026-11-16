@@ -6,6 +6,14 @@ import MapleTagReader
 struct ImportedAudio: Sendable {
     var track: LibraryTrack
     var artwork: Data?
+    /// False when the title or artist is a stand-in (file name, "Unknown Artist") rather than
+    /// something the file's tags said, so title-and-artist cannot identify a duplicate.
+    var hasTitleAndArtist = true
+}
+
+enum LibraryLimits {
+    /// Larger embedded pictures are ignored instead of copied, hashed and stored.
+    static let maximumArtworkBytes = 20 * 1024 * 1024
 }
 
 protocol LibraryMetadataReading: Sendable {
@@ -28,6 +36,13 @@ actor AudioMetadataReader: LibraryMetadataReading {
     nonisolated static func isCandidate(_ url: URL) -> Bool {
         let ext = url.pathExtension.lowercased()
         return candidateExtensions.contains(ext) || UTType(filenameExtension: ext)?.conforms(to: .audio) == true
+    }
+
+    /// Missing values and common "nobody filled this in" strings.
+    nonisolated static func isPlaceholder(_ value: String?) -> Bool {
+        guard let value else { return true }
+        return ["", "unknown", "unknown artist", "unknown title", "<unknown>", "[unknown]", "untitled"]
+            .contains(value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
     }
 
     func read(_ url: URL) async throws -> ImportedAudio {
@@ -68,7 +83,10 @@ actor AudioMetadataReader: LibraryMetadataReading {
             album: values["album"] ?? "", albumArtist: values["albumArtist"], year: Int((values["year"] ?? "").prefix(4)) ?? 0,
             genre: values["genre"] ?? "", duration: duration, trackNumber: number("track"), discNumber: number("disc"),
             lyrics: values["lyrics"])
-        return ImportedAudio(track: track, artwork: artwork.flatMap { $0.isEmpty ? nil : $0 })
+        // Oversized pictures are dropped rather than hashed and stored (see `LibraryLimits`).
+        let bounded = artwork.flatMap { $0.isEmpty || $0.count > LibraryLimits.maximumArtworkBytes ? nil : $0 }
+        return ImportedAudio(track: track, artwork: bounded,
+                             hasTitleAndArtist: !Self.isPlaceholder(values["title"]) && !Self.isPlaceholder(values["artist"]))
     }
 
     /// Fallback for formats or tags TagLib does not cover; never overrides TagLib values.
