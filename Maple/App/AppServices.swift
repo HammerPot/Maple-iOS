@@ -9,12 +9,17 @@ final class AppServices {
     let realtime: MapleRealtime
     let playback: PlaybackReporter
     let friends: FriendsModel
-    let toasts = ToastCenter()
+    let toasts: ToastCenter
+    private let webhook = WebhookReporter()
     private var signedInID: String?
 
     init() {
         UserDefaults.standard.register(defaults: ["socketIO": true])
-        let http = MapleHTTP()
+        let toasts = ToastCenter()
+        self.toasts = toasts
+        let http = MapleHTTP(cookies: MapleHTTP.persistentCookies(onSaveFailure: { error in
+            Task { @MainActor in toasts.show(error) }
+        }))
         self.http = http
         let api = MapleAPI(http: http)
         self.api = api
@@ -22,13 +27,13 @@ final class AppServices {
         friends = FriendsModel(api: api)
         let realtime = MapleRealtime()
         self.realtime = realtime
-        let toasts = self.toasts
         playback = PlaybackReporter(transport: realtime, upload: { try await api.setAlbumArt($0, playbackId: $1) }, reportError: { toasts.show($0) })
         playback.didStart = { [weak self] snapshot, artwork in
             guard snapshot.identity.hasPrefix("local:"), let userID = self?.auth.user?.id else { return }
             Task { @MainActor [weak self] in
-                do { try await WebhookReporter().send(track: snapshot, artwork: artwork, userID: userID) }
-                catch { self?.toasts.show(error) }
+                guard let self else { return }
+                do { try await self.webhook.send(track: snapshot, artwork: artwork, userID: userID) }
+                catch { self.toasts.show(error) }
             }
         }
         auth.didChange = { [weak self] in self?.sessionChanged() }
@@ -56,10 +61,10 @@ final class AppServices {
             }
         }
         realtime.validateSession = { [weak auth] in
-            guard let auth else { return false }
-            do { try await auth.refresh(); return auth.user != nil }
-            catch let error as MapleError where error.status == 401 || error.status == 403 { await auth.invalidate(); return false }
-            catch { return false }
+            guard let auth else { return .invalid }
+            do { try await auth.refresh(); return auth.user != nil ? .valid : .invalid }
+            catch let error as MapleError where error.status == 401 { await auth.invalidate(); return .invalid }
+            catch { return .unreachable }
         }
         AudioPlayerManager.shared.playbackReporter = playback
         AMPlayer.shared.playbackReporter = playback
@@ -69,11 +74,16 @@ final class AppServices {
         }
     }
     func start() async { await auth.restore() }
+    func sceneBecameActive() async {
+        await auth.sceneBecameActive()
+        realtime.sceneBecameActive()
+        await playback.sceneBecameActive()
+    }
     private func sessionChanged() {
         if signedInID != auth.user?.id {
             signedInID = auth.user?.id
             realtime.disconnect(); friends.clear()
-            Task { await playback.stop() }
+            playback.resetSession()
         }
         syncSocket()
         if auth.user != nil {

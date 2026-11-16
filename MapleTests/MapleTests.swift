@@ -47,7 +47,9 @@ struct MapleModelTests {
     @Test func secureRootCookieIsAvailableForSocketHandshake() throws {
         let jar = CookieStorage(storage: TestCookieStorage())
         let cookie = try #require(HTTPCookie(properties: [.name: "__Secure-maple.session_token", .value: "unit-test-only", .domain: "api.maple.music", .path: "/", .secure: "TRUE"]))
-        jar.setCookie(cookie)
+        let task = URLSession(configuration: .ephemeral).dataTask(with: MapleHTTP.baseURL)
+        jar.storeCookies(HTTPCookie.cookies(withResponseHeaderFields: ["Set-Cookie": "__Secure-maple.session_token=unit-test-only; Path=/; Secure; SameSite=None"], for: MapleHTTP.baseURL), for: task)
+        #expect(cookie.isSecure)
         let http = MapleHTTP(cookies: jar)
         #expect(http.sessionCookies.count == 1)
         #expect(http.sessionCookies.first?.name == "__Secure-maple.session_token")
@@ -68,18 +70,34 @@ struct MapleModelTests {
 }
 
 @MainActor
-private final class FakePlaybackTransport: PlaybackTransport {
+final class FakePlaybackTransport: PlaybackTransport {
     var connected = true
     var events: [(String, PlaybackPayload)] = []
     var response = PlaybackReply(ok: true, error: nil)
     var ownership: ((String?) -> Void)?
     var pendingStart: CheckedContinuation<PlaybackReply?, Never>?
     var suspendStart = false
+    var rejectedUpdatesRemaining = 0
+    var ownershipGate: TestGate?
+    var ownershipDelivery: Task<Void, Never>?
+    var didSend: ((String) -> Void)?
     func send(_ event: String, payload: PlaybackPayload) async -> PlaybackReply? {
         guard connected else { return nil }
         events.append((event, payload))
+        didSend?(event)
+        if event == "playbackUpdate", rejectedUpdatesRemaining > 0 {
+            rejectedUpdatesRemaining -= 1; return PlaybackReply(ok: false, error: "Playback is no longer current.")
+        }
         if event == "playbackStart" {
-            ownership?(payload.playbackId)
+            if let ownershipGate {
+                ownershipDelivery = Task { [weak self] in
+                    await ownershipGate.wait()
+                    self?.ownership?(payload.playbackId)
+                }
+            } else {
+                await Task.yield()
+                ownership?(payload.playbackId)
+            }
             if suspendStart { return await withCheckedContinuation { pendingStart = $0 } }
         }
         return response
@@ -129,7 +147,7 @@ struct PlaybackReporterTests {
         #expect(socket.events.last?.1.position == 25)
         #expect(socket.events.last?.0 == "playbackUpdate")
     }
-    @Test func ownershipLossAndReconnectDoNotReclaim() async {
+    @Test func foreignOwnershipAndReconnectDoNotReclaim() async {
         let socket = FakePlaybackTransport(); let reporter = make(socket)
         await reporter.update(track)
         reporter.ownershipChanged("another-device")
@@ -140,7 +158,7 @@ struct PlaybackReporterTests {
         reporter.disconnected(); await reporter.connected()
         #expect(socket.events.count == count)
     }
-    @Test func rejectedUpdateReleasesLease() async {
+    @Test func rejectedStartDuringReacquisitionDoesNotOwn() async {
         let socket = FakePlaybackTransport(); let reporter = make(socket)
         await reporter.update(track)
         socket.response = PlaybackReply(ok: false, error: "Playback is no longer current.")
