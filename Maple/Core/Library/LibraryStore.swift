@@ -46,6 +46,9 @@ final class LibraryStore {
     @ObservationIgnored private var scanIgnored: Set<String> = []
     @ObservationIgnored private var importing = false
     @ObservationIgnored private var deleting = false
+    /// Serializes "write a content-addressed file, then reference it" against "decide a file is
+    /// unused, then delete it".
+    @ObservationIgnored private let fileLock = LibraryFileLock()
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var saveDeadline: ContinuousClock.Instant?
     @ObservationIgnored private var importTask: Task<Void, Never>?
@@ -60,9 +63,10 @@ final class LibraryStore {
     /// - Parameters:
     ///   - root: media folder containing `tracks/` and `images/` (the app's Documents).
     ///   - catalogDirectory: private catalog folder; defaults to `root/library` for tests.
-    init(root: URL, catalogDirectory: URL? = nil, metadata: any LibraryMetadataReading = AudioMetadataReader()) {
+    init(root: URL, catalogDirectory: URL? = nil, metadata: any LibraryMetadataReading = AudioMetadataReader(),
+         fileSystem: any LibraryFileSystem = DiskFileSystem()) {
         self.root = root
-        disk = LibraryDisk(root: root, catalogDirectory: catalogDirectory)
+        disk = LibraryDisk(root: root, catalogDirectory: catalogDirectory, fileSystem: fileSystem)
         self.metadata = metadata
     }
 
@@ -99,7 +103,10 @@ final class LibraryStore {
             tracks = catalog.tracks; playlists = catalog.playlists
             statistics = catalog.statistics; recentIDs = catalog.recentlyPlayed; revision = catalog.revision
             pendingFileRemovals = catalog.pendingFileRemovals
+            dropDanglingReferences()
             rebuild(); isLoaded = true; errorMessage = warning
+            // A journal written before a crash, or by an older build, may list files that are
+            // live again; those are dropped before anything is deleted.
             if !pendingFileRemovals.isEmpty {
                 do { try await finishFileRemovals() } catch { report(error) }
             }
@@ -107,6 +114,17 @@ final class LibraryStore {
             logger.error("Library could not be opened: \(error.localizedDescription, privacy: .public)")
             loadError = error.localizedDescription
         }
+    }
+
+    /// Playlists and recents may only mention tracks that exist, once each.
+    private func dropDanglingReferences() {
+        let known = Set(tracks.map(\.id))
+        for index in playlists.indices {
+            var seen = Set<UUID>()
+            playlists[index].trackIDs = playlists[index].trackIDs.filter { known.contains($0) && seen.insert($0).inserted }
+        }
+        var seen = Set<UUID>()
+        recentIDs = recentIDs.filter { known.contains($0) && seen.insert($0).inserted }
     }
 
     private var catalog: LibraryCatalog {
@@ -118,6 +136,7 @@ final class LibraryStore {
     /// longer delay: they arrive constantly during playback and are cheap to lose.
     private func changed(rebuildGroups: Bool = false, saveAfter delay: Duration = .milliseconds(600)) {
         revision += 1
+        reconcileFileRemovals()
         if rebuildGroups { rebuild() }
         let deadline = ContinuousClock.now + delay
         if let saveDeadline, saveDeadline <= deadline, saveTask != nil { return }
@@ -135,6 +154,9 @@ final class LibraryStore {
     func flush() async throws {
         guard isLoaded else { throw LibraryError.notLoaded }
         foldListening()
+        // Saves triggered while the app leaves the foreground need time to finish.
+        let assertion = LibraryBackgroundAssertion.begin("Maple library save")
+        defer { assertion.end() }
         try await disk.save(catalog)
     }
 
@@ -200,7 +222,7 @@ final class LibraryStore {
         do {
             let found = try await disk.candidates(in: urls)
             summary.failures += found.rejected.map { "\($0): \(LibraryError.notAudio.localizedDescription)" }
-            var keys = Set(tracks.map(\.duplicateKey))
+            var known = Dictionary(grouping: tracks, by: \.duplicateKey)
             let knownFiles = Set(tracks.map(\.fileName))
             let files = scan ? found.files.filter { url in
                 let inTracks = url.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath() == tracksFolder
@@ -214,25 +236,33 @@ final class LibraryStore {
                 do {
                     var imported = try await metadata.read(url)
                     try Task.checkCancellation()
-                    guard !keys.contains(imported.track.duplicateKey) else {
+                    guard !isDuplicate(imported, source: url, known: known) else {
                         summary.duplicates += 1
                         if scan { scanIgnored.insert(url.standardizedFileURL.path) }
                         continue
                     }
                     let name = adoptInPlace ? url.lastPathComponent : "\(imported.track.id.uuidString).\(url.pathExtension.lowercased())"
                     imported.track.fileName = name
-                    if let artwork = imported.artwork { imported.track.artwork = try await disk.saveArtwork(artwork) }
+                    if !adoptInPlace { try await disk.stageAudio(from: url, fileName: name, moving: scan) }
                     do {
-                        if !adoptInPlace { try await disk.stageAudio(from: url, fileName: name, moving: scan) }
+                        // Writing the cover and referencing it happen under the same lock that
+                        // guards file removal, so a pending removal cannot delete it in between.
+                        try await fileLock.withLock {
+                            if let artwork = imported.artwork, artwork.count <= LibraryLimits.maximumArtworkBytes {
+                                imported.track.artwork = try await disk.saveArtwork(artwork)
+                            }
+                            tracks.append(imported.track)
+                            trackIndex[imported.track.id] = imported.track
+                            changed()
+                        }
                     } catch {
-                        if let reference = imported.track.artwork, !usedArtwork.contains(reference) { try? await disk.removeFiles([reference]) }
+                        // A copy made for this import is disposable; a file moved in by a scan is
+                        // left in `tracks/` where the next scan adopts it.
+                        if !adoptInPlace && !scan { _ = await disk.removeFiles(["tracks/" + name]) }
                         throw error
                     }
-                    tracks.append(imported.track)
-                    trackIndex[imported.track.id] = imported.track
-                    keys.insert(imported.track.duplicateKey)
+                    known[imported.track.duplicateKey, default: []].append(imported.track)
                     summary.imported += 1; addedSinceCheckpoint += 1
-                    changed()
                     // Publish groups and checkpoint the catalog periodically during big imports.
                     if addedSinceCheckpoint >= 25 { addedSinceCheckpoint = 0; rebuild(); try await flush() }
                 } catch is CancellationError { throw CancellationError() }
@@ -250,6 +280,17 @@ final class LibraryStore {
         }
         return summary
     }
+
+    /// Title-and-artist matches are duplicates only when both came from the file's tags. A
+    /// placeholder ("01", "Unknown Artist") says nothing about the audio, so such files must
+    /// also have the same duration and size as an existing track.
+    private func isDuplicate(_ imported: ImportedAudio, source: URL, known: [String: [LibraryTrack]]) -> Bool {
+        guard let matches = known[imported.track.duplicateKey], !matches.isEmpty else { return false }
+        if imported.hasTitleAndArtist { return true }
+        guard let size = Self.fileSize(source) else { return false }
+        return matches.contains { abs($0.duration - imported.track.duration) < 0.5 && Self.fileSize(audioURL(for: $0)) == size }
+    }
+    private static func fileSize(_ url: URL) -> Int? { try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize }
 
     // MARK: Playlists
 
@@ -273,16 +314,21 @@ final class LibraryStore {
     }
 
     /// Sets custom artwork from image data, or clears it (`nil`) to use the automatic mosaic.
+    /// Overlapping calls run one after another in the order they were made.
     func setPlaylistArtwork(_ id: UUID, data: Data?) async throws {
-        let reference: String? = if let data { try await disk.saveArtwork(data) } else { nil }
-        guard let index = playlists.firstIndex(where: { $0.id == id }) else {
-            if let reference, !usedArtwork.contains(reference) { try? await disk.removeFiles([reference]) }
-            return
+        guard isLoaded else { throw LibraryError.notLoaded }
+        var replaced: String?
+        try await fileLock.withLock {
+            let reference: String? = if let data { try await disk.saveArtwork(data) } else { nil }
+            guard let index = playlists.firstIndex(where: { $0.id == id }) else {
+                if let reference, !usedArtwork.contains(reference) { _ = await disk.removeFiles([reference]) }
+                return
+            }
+            replaced = playlists[index].artwork
+            playlists[index].artwork = reference; playlists[index].dateModified = .now; changed()
         }
-        let old = playlists[index].artwork
-        playlists[index].artwork = reference; playlists[index].dateModified = .now; changed()
         try await flush()
-        if let old, !usedArtwork.contains(old) { try await scheduleFileRemovals([old]) }
+        if let replaced, !usedArtwork.contains(replaced) { try await scheduleFileRemovals([replaced]) }
     }
 
     /// Appends tracks, ignoring ones already in the playlist. Returns how many were added.
@@ -293,6 +339,14 @@ final class LibraryStore {
         playlists[index].trackIDs = uniqueExisting(playlists[index].trackIDs + ids)
         playlists[index].dateModified = .now; changed()
         return playlists[index].trackIDs.count - before
+    }
+
+    /// `addTracks` that returns only once the change is on disk, for actions the user was told succeeded.
+    @discardableResult
+    func addTracksDurably(_ ids: [UUID], to playlistID: UUID) async throws -> Int {
+        let added = addTracks(ids, to: playlistID)
+        try await flush()
+        return added
     }
 
     func removeTracks(_ ids: Set<UUID>, from playlistID: UUID) {
@@ -368,15 +422,32 @@ final class LibraryStore {
         try await scheduleFileRemovals(audio + artwork)
     }
 
-    /// Deletes every track, audio file, artwork, playlist, statistic and recent entry.
+    /// Deletes every track, audio file, artwork, playlist, statistic and recent entry, and every
+    /// other file the library keeps in `tracks/` and `images/` (orphans, partial imports, legacy
+    /// JSON), so nothing is adopted again by the next scan.
+    ///
+    /// The empty catalog and the complete list of files to delete are saved in one checkpoint
+    /// before anything is removed; a crash afterwards is finished by the journal on next launch.
     func clearLibrary() async throws {
+        guard isLoaded else { throw LibraryError.notLoaded }
         guard progress == nil, !deleting, !importing else { throw LibraryError.busy }
         deleting = true; defer { deleting = false }
-        let playlistArtwork = Set(playlists.compactMap(\.artwork))
-        try await removeTracksAndFiles(Set(tracks.map(\.id)))
-        playlists = []; recentIDs = []; statistics = [:]; pendingListening = [:]; scanIgnored = []
-        changed(); try await flush()
-        try await scheduleFileRemovals(Array(playlistArtwork))
+        // Files the scan rejected (a duplicate of a track about to be cleared, an unplayable file)
+        // would otherwise be adopted again at the next launch.
+        await disk.removeRejectedFiles(Array(scanIgnored))
+        let inventory = try await disk.mediaInventory()
+        let ids = Set(tracks.map(\.id))
+        if !ids.isEmpty { willDeleteTracks?(ids) }
+        var references = Set(pendingFileRemovals).union(inventory)
+        references.formUnion(tracks.map { "tracks/" + $0.fileName })
+        references.formUnion(usedArtwork)
+        tracks = []; playlists = []; recentIDs = []; statistics = [:]; pendingListening = [:]; scanIgnored = []
+        pendingFileRemovals = Array(references)
+        changed(rebuildGroups: true)
+        artworkCache.removeAll()
+        try await flush()
+        try await finishFileRemovals()
+        await disk.removeStaging()
         try await disk.removeLegacyCatalogs()
     }
 
@@ -388,11 +459,34 @@ final class LibraryStore {
         try await finishFileRemovals()
     }
 
+    /// Files that a live track or playlist still needs; never deleted, whatever the journal says.
+    private var liveFileReferences: Set<String> { usedArtwork.union(tracks.map { "tracks/" + $0.fileName }) }
+
+    /// Drops journal entries that are referenced again. Returns whether anything changed.
+    @discardableResult
+    private func reconcileFileRemovals() -> Bool {
+        guard !pendingFileRemovals.isEmpty else { return false }
+        let live = liveFileReferences
+        let kept = pendingFileRemovals.filter { !live.contains($0) }
+        guard kept.count != pendingFileRemovals.count else { return false }
+        pendingFileRemovals = kept
+        return true
+    }
+
     private func finishFileRemovals() async throws {
-        let references = pendingFileRemovals
-        try await disk.removeFiles(references)
-        pendingFileRemovals.removeAll { references.contains($0) }
-        changed(); try await flush()
+        try await fileLock.withLock {
+            let reconciled = reconcileFileRemovals()
+            let references = pendingFileRemovals
+            guard !references.isEmpty else {
+                if reconciled { changed(); try await flush() }
+                return
+            }
+            let result = await disk.removeFiles(references)
+            pendingFileRemovals.removeAll { result.done.contains($0) }
+            changed(); try await flush()
+            // Entries that could not be removed stay journaled and are retried on next launch.
+            if let error = result.firstError { throw error }
+        }
     }
 
     // MARK: Recently played and statistics (called by the player)

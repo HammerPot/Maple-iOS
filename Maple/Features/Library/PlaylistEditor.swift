@@ -16,6 +16,8 @@ struct PlaylistEditor: View {
     @State private var newArtworkData: Data?
     @State private var useAutomaticArtwork = false
     @State private var saving = false
+    /// Set once Create has made the playlist, so a retry after a failed save updates it instead of creating a second one.
+    @State private var createdID: UUID?
     @State private var loadingPhoto = false
     @FocusState private var nameFocused: Bool
 
@@ -91,18 +93,28 @@ struct PlaylistEditor: View {
         }
     }
 
+    /// Only the newest selection may publish a result: a superseded or cancelled load (the user
+    /// picked another photo, or "Use Automatic") must not overwrite the newer choice. Every
+    /// restart of this task re-establishes `loadingPhoto` itself.
     private func loadPhoto() async {
-        guard let photo else { return }
+        guard let requested = photo else { loadingPhoto = false; return }
         loadingPhoto = true
-        defer { loadingPhoto = false }
         do {
-            guard let data = try await photo.loadTransferable(type: Data.self) else { return }
+            let data = try await requested.loadTransferable(type: Data.self)
+            try Task.checkCancellation()
             // Store a bounded JPEG rather than an arbitrarily large original.
-            let prepared = await Task.detached { Self.prepare(data) }.value
-            guard let prepared else { toasts.show("That photo couldn’t be used."); return }
-            newArtworkData = prepared.data; newArtwork = prepared.image; useAutomaticArtwork = false
-        } catch is CancellationError {
-        } catch { toasts.show(error) }
+            var result: (data: Data, image: UIImage)?
+            if let data { result = await Task.detached { Self.prepare(data) }.value }
+            try Task.checkCancellation()
+            guard photo == requested else { return }
+            loadingPhoto = false
+            guard let result else { toasts.show("That photo couldn’t be used."); return }
+            newArtworkData = result.data; newArtwork = result.image; useAutomaticArtwork = false
+        } catch {
+            guard !(error is CancellationError), photo == requested else { return }
+            loadingPhoto = false
+            toasts.show(error)
+        }
     }
 
     private nonisolated static func prepare(_ data: Data) -> (data: Data, image: UIImage)? {
@@ -122,14 +134,17 @@ struct PlaylistEditor: View {
         defer { saving = false }
         do {
             let id: UUID
-            if let playlist {
-                id = playlist.id
+            if let existing = playlist?.id ?? createdID {
+                id = existing
                 try library.updatePlaylist(id, name: name, description: description)
             } else {
                 id = try library.createPlaylist(name: name, description: description, trackIDs: initialTrackIDs)
+                createdID = id
             }
             if let newArtworkData { try await library.setPlaylistArtwork(id, data: newArtworkData) }
             else if useAutomaticArtwork { try await library.setPlaylistArtwork(id, data: nil) }
+            // Report success only once the playlist is on disk.
+            try await library.flush()
             dismiss()
             didSave?(id)
         } catch { toasts.show(error) }
@@ -185,12 +200,16 @@ struct AddToPlaylistSheet: View {
     }
 
     private func add(to playlist: LibraryPlaylist) {
-        let added = library.addTracks(trackIDs, to: playlist.id)
-        let skipped = trackIDs.count - added
-        toasts.show(skipped > 0 && added > 0
-                    ? "Added \(LibraryActions.tracks(added)) to “\(playlist.name)”. \(skipped) already there."
-                    : "Added to “\(playlist.name)”")
-        dismiss()
+        Task {
+            do {
+                let added = try await library.addTracksDurably(trackIDs, to: playlist.id)
+                let skipped = trackIDs.count - added
+                toasts.show(skipped > 0 && added > 0
+                            ? "Added \(LibraryActions.tracks(added)) to “\(playlist.name)”. \(skipped) already there."
+                            : "Added to “\(playlist.name)”")
+                dismiss()
+            } catch { toasts.show(error) }
+        }
     }
 }
 
@@ -243,8 +262,11 @@ struct PlaylistTrackPicker: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
                         // Keep library order for a predictable result.
-                        library.addTracks(library.tracks.lazy.map(\.id).filter(selected.contains), to: playlistID)
-                        dismiss()
+                        let ids = library.tracks.lazy.map(\.id).filter(selected.contains)
+                        Task {
+                            do { try await library.addTracksDurably(Array(ids), to: playlistID); dismiss() }
+                            catch { toasts.show(error) }
+                        }
                     }
                     .disabled(selected.isEmpty)
                 }
