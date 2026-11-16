@@ -120,15 +120,7 @@ final class PlaybackReporter {
             return
         }
         ownsPlayback = true; startRejected = false; lastAcknowledgedAt = now()
-        if artwork == nil, let artworkProvider {
-            let data = await artworkProvider(snapshot?.identity ?? "")
-            guard epoch == version, playbackId == id else { return }
-            artwork = data
-        }
-        if let snapshot, snapshot.identity != announcedIdentity {
-            announcedIdentity = snapshot.identity
-            didStart?(snapshot, artwork)
-        }
+        if artwork != nil || artworkProvider == nil { announceStart(artwork: artwork) }
         if automaticHeartbeat {
             let sleep = sleep; let interval = heartbeatInterval
             heartbeat = Task { [weak self] in
@@ -140,16 +132,30 @@ final class PlaybackReporter {
             }
         }
         await sendUpdate(reacquireOnRejection: false)
-        // Serialize cover writes; each write is guarded against stale playback before and after await.
-        let previous = uploads
-        let data = artwork
+        // Artwork never delays ACK handling, heartbeat, Stop, or the next track's wire operations.
+        // A CDN/HTTP operation may ignore cancellation, so every result is fenced by claim epoch.
+        let data = artwork, identity = snapshot?.identity, provider = artworkProvider
+        uploads?.cancel()
         uploads = Task { [weak self] in
-            await previous?.value
-            guard let self, self.ownsPlayback, self.playbackId == id, let data else { return }
-            do { try await self.upload(data, id) }
-            catch { if self.playbackId == id { self.reportError(error) } }
+            let fetched: Data?
+            if let data { fetched = data }
+            else if let identity, let provider { fetched = await provider(identity) }
+            else { fetched = nil }
+            guard let self, !Task.isCancelled, self.epoch == version, self.ownsPlayback,
+                  self.playbackId == id, self.snapshot?.identity == identity else { return }
+            self.artwork = fetched
+            self.announceStart(artwork: fetched)
+            guard let fetched else { return }
+            do { try await self.upload(fetched, id) }
+            catch { if self.epoch == version, self.playbackId == id { self.reportError(error) } }
         }
     }
+    private func announceStart(artwork: Data?) {
+        guard let snapshot, snapshot.identity != announcedIdentity else { return }
+        announcedIdentity = snapshot.identity
+        didStart?(snapshot, artwork)
+    }
+    func waitForArtwork() async { await uploads?.value }
     func sendUpdate() async { await sendUpdate(reacquireOnRejection: true) }
     private func sendUpdate(reacquireOnRejection: Bool) async {
         refreshSnapshot()
@@ -221,6 +227,7 @@ final class PlaybackReporter {
     /// Includes time the device spent asleep (unlike `systemUptime`), which is what the server's 90 s lease sees.
     nonisolated static func monotonicNow() -> TimeInterval { TimeInterval(clock_gettime_nsec_np(CLOCK_MONOTONIC)) / 1_000_000_000 }
     private func release() {
+        uploads?.cancel(); uploads = nil
         ownsPlayback = false; lastAcknowledgedAt = nil; heartbeat?.cancel(); heartbeat = nil
     }
     deinit { heartbeat?.cancel(); uploads?.cancel(); reacquisition?.cancel() }

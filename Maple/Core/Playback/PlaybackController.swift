@@ -25,6 +25,7 @@ final class PlaybackController {
     @ObservationIgnored private let artworkLoader = PlaybackArtwork()
     @ObservationIgnored private var sampling: Task<Void, Never>?
     @ObservationIgnored private var reporting: Task<Void, Never>?
+    @ObservationIgnored private var reportRevision = 0
     @ObservationIgnored private var saving: Task<Void, Never>?
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
     @ObservationIgnored private var loading: Task<Void, Never>?
@@ -292,16 +293,25 @@ final class PlaybackController {
     private func publish(userInitiated: Bool = false) {
         stateChanged()
         guard let value = snapshot else { return }
+        reportRevision += 1
+        let revision = reportRevision
         let previous = reporting; let reporter = reporter; let data = artworkData
-        reporting = Task {
+        reporting = Task { [weak self] in
             await previous?.value
+            guard let self, self.reportRevision == revision else { return }
             await reporter.update(value, artwork: data, force: true)
-            if userInitiated { await reporter.playbackStarted() }
+            if userInitiated, self.reportRevision == revision { await reporter.playbackStarted() }
         }
     }
     private func publishStop() {
+        reportRevision += 1
+        let revision = reportRevision
         let previous = reporting; let reporter = reporter
-        reporting = Task { await previous?.value; await reporter.stop() }
+        reporting = Task { [weak self] in
+            await previous?.value
+            guard let self, self.reportRevision == revision else { return }
+            await reporter.stop()
+        }
     }
     private func loadArtwork(_ item: PlaybackItem, ticket: Int) {
         guard let url = item.artworkURL else { return }
