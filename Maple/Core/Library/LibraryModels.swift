@@ -39,7 +39,11 @@ struct LibraryTrack: Identifiable, Codable, Hashable, Sendable {
         value.trimmingCharacters(in: .whitespacesAndNewlines).folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
     }
     var duplicateKey: String { Self.key(title) + "\u{0}" + Self.key(artist) }
-    var albumKey: String { Self.key(album) + "\u{0}" + Self.key(albumArtist ?? "") }
+    /// An album is its title plus its album artist; without an album-artist tag the track's own
+    /// artist stands in, so two artists' "Greatest Hits" are never one album. Compilations are
+    /// grouped through an album artist ("Various Artists"), which the metadata reader sets from
+    /// the compilation flag.
+    var albumKey: String { Self.key(album) + "\u{0}" + Self.key(albumArtist ?? artist) }
     var artistKey: String { Self.key(artist) }
 }
 

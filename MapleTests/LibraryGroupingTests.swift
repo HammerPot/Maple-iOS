@@ -17,10 +17,11 @@ struct LibraryGroupingTests {
         #expect(album.duration == 240)
     }
 
-    @Test func sameTitleWithDifferentAlbumArtistsSplitsButUntaggedCompilationMerges() {
+    @Test func sameTitleWithDifferentArtistsSplitsButACompilationAlbumArtistMerges() {
         let tracks = [track("1", artist: "A", album: "Greatest Hits", albumArtist: "A"),
                       track("2", artist: "B", album: "Greatest Hits", albumArtist: "B"),
-                      track("3", artist: "C", album: "Now 99"), track("4", artist: "D", album: "now 99 ")]
+                      track("3", artist: "C", album: "Now 99", albumArtist: "Various Artists"),
+                      track("4", artist: "D", album: "now 99 ", albumArtist: "Various Artists")]
         let albums = LibraryGrouping.albums(from: tracks)
         #expect(albums.count == 3)
         #expect(albums.filter { $0.name == "Greatest Hits" }.map(\.artist).sorted() == ["A", "B"])

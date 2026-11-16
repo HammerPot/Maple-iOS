@@ -38,11 +38,19 @@ actor AudioMetadataReader: LibraryMetadataReading {
         return candidateExtensions.contains(ext) || UTType(filenameExtension: ext)?.conforms(to: .audio) == true
     }
 
+    /// The bounded tag dictionary from the native reader (see `MapleTagReader`'s resource budget).
+    nonisolated static func rawTags(at url: URL) -> [String: Any] { MapleTagReader.metadata(at: url) }
+
     /// Missing values and common "nobody filled this in" strings.
     nonisolated static func isPlaceholder(_ value: String?) -> Bool {
         guard let value else { return true }
         return ["", "unknown", "unknown artist", "unknown title", "<unknown>", "[unknown]", "untitled"]
             .contains(value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
+    /// Tracks flagged as part of a compilation share one album even though their artists differ.
+    nonisolated static func compilationArtist(_ flag: String?) -> String? {
+        ["1", "true", "yes"].contains(flag?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "") ? "Various Artists" : nil
     }
 
     func read(_ url: URL) async throws -> ImportedAudio {
@@ -56,11 +64,12 @@ actor AudioMetadataReader: LibraryMetadataReading {
         } catch { throw LibraryError.unreadableAudio }
         guard duration.isFinite, duration > 0 else { throw LibraryError.unreadableAudio }
 
-        let tags = MapleTagReader.metadata(at: url)
+        let tags = Self.rawTags(at: url)
         var values: [String: String] = [:]
         for (field, tag) in [("title", "TITLE"), ("artist", "ARTIST"), ("album", "ALBUM"),
                              ("albumArtist", "ALBUMARTIST"), ("year", "DATE"), ("genre", "GENRE"),
-                             ("track", "TRACKNUMBER"), ("disc", "DISCNUMBER"), ("lyrics", "LYRICS")] {
+                             ("track", "TRACKNUMBER"), ("disc", "DISCNUMBER"), ("lyrics", "LYRICS"),
+                             ("compilation", "COMPILATION")] {
             if let text = tags[tag] as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { values[field] = text }
         }
         if values["lyrics"] == nil {
@@ -80,7 +89,7 @@ actor AudioMetadataReader: LibraryMetadataReading {
         }
         let track = LibraryTrack(
             fileName: url.lastPathComponent, title: values["title"] ?? "", artist: values["artist"] ?? "",
-            album: values["album"] ?? "", albumArtist: values["albumArtist"], year: Int((values["year"] ?? "").prefix(4)) ?? 0,
+            album: values["album"] ?? "", albumArtist: values["albumArtist"] ?? Self.compilationArtist(values["compilation"]), year: Int((values["year"] ?? "").prefix(4)) ?? 0,
             genre: values["genre"] ?? "", duration: duration, trackNumber: number("track"), discNumber: number("disc"),
             lyrics: values["lyrics"])
         // Oversized pictures are dropped rather than hashed and stored (see `LibraryLimits`).

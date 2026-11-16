@@ -2,9 +2,9 @@ import Foundation
 
 /// Pure derivation of albums and artists from tracks. Nothing here is persisted.
 enum LibraryGrouping {
-    /// Albums are keyed by title plus album artist when that tag exists. Tracks without an
-    /// album-artist tag group by title alone, so untagged compilations stay together while
-    /// unrelated albums that merely share a title (and are tagged) are kept apart.
+    /// Albums are keyed by title plus album artist, falling back to the track artist (see
+    /// `LibraryTrack.albumKey`). Unrelated albums that merely share a title stay apart;
+    /// compilations stay together when they carry an album artist or the compilation flag.
     static func albums(from tracks: [LibraryTrack]) -> [LibraryAlbum] {
         Dictionary(grouping: tracks, by: \.albumKey).map { key, songs in
             let ordered = songs.sorted(by: albumOrder)
@@ -18,7 +18,14 @@ enum LibraryGrouping {
                                 duration: songs.reduce(0) { $0 + $1.duration },
                                 dateAdded: songs.lazy.map(\.dateAdded).max() ?? .distantPast)
         }
-        .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        .sorted { stableOrder($0.name, $1.name, $0.id, $1.id) }
+    }
+
+    /// Name order with the id as a tie-breaker, so equally named items keep one order across
+    /// rebuilds (dictionary enumeration order is not stable).
+    private static func stableOrder(_ lhs: String, _ rhs: String, _ lhsID: String, _ rhsID: String) -> Bool {
+        let result = lhs.localizedStandardCompare(rhs)
+        return result == .orderedSame ? lhsID < rhsID : result == .orderedAscending
     }
 
     static func artists(from tracks: [LibraryTrack]) -> [LibraryArtist] {
@@ -31,7 +38,27 @@ enum LibraryGrouping {
             return LibraryArtist(id: key, name: songs[0].artist, artwork: ordered.lazy.compactMap(\.artwork).first,
                                  trackIDs: ordered.map(\.id), albumIDs: albumIDs)
         }
-        .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        .sorted { stableOrder($0.name, $1.name, $0.id, $1.id) }
+    }
+
+    /// A run of an album's tracks that share a disc number; `disc` 0 means "no disc tag".
+    struct DiscSection: Identifiable, Equatable {
+        let disc: Int
+        let tracks: [LibraryTrack]
+        var id: Int { disc }
+    }
+
+    /// Splits already-ordered album tracks into disc sections in order of first appearance, so
+    /// every track (including untagged ones) lands in exactly one section, whichever direction
+    /// the list is sorted in.
+    static func discSections(_ tracks: [LibraryTrack]) -> [DiscSection] {
+        var order: [Int] = []
+        var groups: [Int: [LibraryTrack]] = [:]
+        for track in tracks {
+            if groups[track.discNumber] == nil { order.append(track.discNumber) }
+            groups[track.discNumber, default: []].append(track)
+        }
+        return order.map { DiscSection(disc: $0, tracks: groups[$0] ?? []) }
     }
 
     /// Disc, then track number, then title. Untagged numbers (0) sort after tagged ones.
