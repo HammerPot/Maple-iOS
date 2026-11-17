@@ -18,12 +18,14 @@ import Testing
     }
     var loadCount = 0
     var stopCount = 0
-    func externalPlayback() -> ExternalPlaybackState? { externalAllowed && isPlaying ? external : nil }
+    func externalPlayback() -> ExternalPlaybackState? { externalAllowed ? external : nil }
+    func stopExternalPlayback() { isPlaying = false; external = nil }
+    var failedItemIDs: Set<String> = []
     var failLoad = false
     var seeks: [Double] = []
     func load(_ item: PlaybackItem) async throws {
         loadCount += 1
-        if failLoad { throw LibraryError.unreadableAudio }
+        if failLoad || failedItemIDs.contains(item.id) { throw LibraryError.unreadableAudio }
         loaded = item; position = 0
     }
     func play() async throws { isPlaying = true }
@@ -160,7 +162,7 @@ import Testing
         let newEngine = PlaybackFakeEngine()
         let restored = PlaybackController(local: newEngine, apple: PlaybackFakeEngine(), reporter: PlaybackFakeReporter(), persistence: disk, automaticSampling: false)
         await restored.restore { id in [a, b].first { $0.libraryID == id } }
-        #expect(restored.queue.index == 2); #expect(newEngine.position == 23)
+        #expect(restored.queue.index == 2); #expect(newEngine.position == 0); #expect(restored.position.seconds == 23)
         #expect(!restored.isPlaying); #expect(restored.currentItem?.id == "A")
     }
     @Test func systemMusicSameEntryRepeatStartsANewReportedPlayWithoutReloadingAudio() async {

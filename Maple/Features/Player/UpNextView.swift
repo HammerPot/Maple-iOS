@@ -12,6 +12,7 @@ struct UpNextView: View {
                     }
                 }
             }
+            if player.playingFromMusic { Text("Playing from Music. Your Maple queue is saved below.").foregroundStyle(.secondary) }
             Section("Up Next") {
                 ForEach(player.queue.upcoming) { entry in
                     Button { Task { await player.playEntry(entry.id) } } label: {
@@ -26,9 +27,9 @@ struct UpNextView: View {
                 .onDelete { offsets in player.removeEntries(Set(offsets.compactMap { player.queue.upcoming.indices.contains($0) ? player.queue.upcoming[$0].id : nil })) }
                 .onMove { player.moveUpcoming(from: $0, to: $1) }
                 if player.queue.upcoming.isEmpty { Text("Nothing queued").foregroundStyle(.secondary) }
-            }
+            }.disabled(player.playingFromMusic)
         }
         .navigationTitle("Up Next")
-        .toolbar { ToolbarItem(placement: .primaryAction) { EditButton() } }
+        .toolbar { ToolbarItem(placement: .primaryAction) { EditButton().disabled(player.playingFromMusic) } }
     }
 }

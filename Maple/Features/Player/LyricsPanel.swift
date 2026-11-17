@@ -12,7 +12,7 @@ struct LyricsPanel: View {
     private var track: LibraryTrack? { player.currentItem?.libraryID.flatMap { library.track($0) } }
     var body: some View {
         Group {
-            if let track {
+            if track != nil {
                 if document.lines.contains(where: { !$0.text.isEmpty }) {
                     LyricsLines(document: document)
                 } else {

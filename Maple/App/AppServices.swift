@@ -110,7 +110,7 @@ final class AppServices {
         LibraryPlayback.start = { [weak player, weak library] tracks, id, shuffle in
             guard let player, let library else { return }
             let items = tracks.map { PlaybackItem(track: $0, library: library) }
-            let index = tracks.firstIndex { $0.id == id } ?? 0
+            let index = tracks.firstIndex { $0.id == id }
             Task { await player.start(items, startingAt: index, shuffle: shuffle) }
         }
         LibraryPlayback.add = { [weak player, weak library] tracks, next in

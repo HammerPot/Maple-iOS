@@ -83,14 +83,18 @@ final class PlaybackReporter {
     }
     /// Track changes and explicit paused-to-playing transitions may take ownership back from another device.
     func update(_ value: TrackSnapshot, artwork: Data? = nil, force: Bool = false) async {
+        defer { synchronizeHeartbeat() }
         let changed = snapshot?.identity != value.identity
         let old = snapshot
         snapshot = value
         if changed {
             self.artwork = artwork; foreignOwner = false; startRejected = false
-            await claim()
-        } else if old?.playing == false, value.playing {
-            await playbackStarted()
+            if value.playing { await claim() }
+            else {
+                let previousID = playbackId
+                epoch += 1; claiming = false; release(); playbackId = nil
+                if let previousID { _ = await transport.send("playbackStop", payload: PlaybackPayload(playbackId: previousID)) }
+            }
         } else if !ownsPlayback, !claiming, !foreignOwner, !startRejected, value.playing {
             await claim()
         } else if force || old?.playing != value.playing || old?.playbackRate != value.playbackRate || old?.duration != value.duration || abs((old?.position ?? 0) - value.position) > 2 {
@@ -98,6 +102,7 @@ final class PlaybackReporter {
         }
     }
     private func claim() async {
+        guard snapshot?.playing == true else { return }
         reacquisition?.cancel(); reacquisition = nil
         release()
         epoch += 1
@@ -121,16 +126,7 @@ final class PlaybackReporter {
         }
         ownsPlayback = true; startRejected = false; lastAcknowledgedAt = now()
         if artwork != nil || artworkProvider == nil { announceStart(artwork: artwork) }
-        if automaticHeartbeat {
-            let sleep = sleep; let interval = heartbeatInterval
-            heartbeat = Task { [weak self] in
-                while !Task.isCancelled {
-                    do { try await sleep(interval) } catch { return }
-                    guard !Task.isCancelled else { return }
-                    await self?.sendUpdate()
-                }
-            }
-        }
+        synchronizeHeartbeat()
         await sendUpdate(reacquireOnRejection: false)
         // Artwork never delays ACK handling, heartbeat, Stop, or the next track's wire operations.
         // A CDN/HTTP operation may ignore cancellation, so every result is fenced by claim epoch.
@@ -150,8 +146,22 @@ final class PlaybackReporter {
             catch { if self.epoch == version, self.playbackId == id { self.reportError(error) } }
         }
     }
+    private func synchronizeHeartbeat() {
+        guard automaticHeartbeat, ownsPlayback, snapshot?.playing == true else {
+            heartbeat?.cancel(); heartbeat = nil; return
+        }
+        guard heartbeat == nil else { return }
+        let sleep = sleep, interval = heartbeatInterval
+        heartbeat = Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await sleep(interval) } catch { return }
+                guard !Task.isCancelled else { return }
+                await self?.sendUpdate()
+            }
+        }
+    }
     private func announceStart(artwork: Data?) {
-        guard let snapshot, snapshot.identity != announcedIdentity else { return }
+        guard let snapshot, snapshot.playing, snapshot.identity != announcedIdentity else { return }
         announcedIdentity = snapshot.identity
         didStart?(snapshot, artwork)
     }

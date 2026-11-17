@@ -20,6 +20,7 @@ struct FullPlayer: View {
                 }
                 PlaybackScrubber()
                 PlayerTransport()
+                if player.playingFromMusic { Text("Playing from Music").font(.footnote).foregroundStyle(.secondary) }
                 HStack {
                     Button("Up Next", systemImage: "list.bullet") { panel = .queue }
                     Spacer()
@@ -70,6 +71,7 @@ private struct PlayerTransport: View {
             Button("Shuffle", systemImage: "shuffle") { player.setShuffle(!player.queue.shuffled) }
                 .symbolVariant(player.queue.shuffled ? .circle.fill : .none)
                 .accessibilityValue(player.queue.shuffled ? "On" : "Off")
+                .disabled(player.playingFromMusic)
             Spacer(minLength: 0)
             Button("Previous Track", systemImage: "backward.circle.fill") { Task { await player.previous() } }.font(.largeTitle)
             Button(player.isPlaying ? "Pause" : "Play", systemImage: player.isPlaying ? "pause.circle.fill" : "play.circle.fill") {
@@ -80,6 +82,7 @@ private struct PlayerTransport: View {
             Button("Repeat", systemImage: player.queue.repeatMode == .one ? "repeat.1" : "repeat") { player.setRepeat(player.queue.repeatMode.next) }
                 .symbolVariant(player.queue.repeatMode == .off ? .none : .circle.fill)
                 .accessibilityValue(player.queue.repeatMode.rawValue.capitalized)
+                .disabled(player.playingFromMusic)
         }.labelStyle(.iconOnly).buttonStyle(PlayerControlButtonStyle())
             .frame(minHeight: 44)
     }

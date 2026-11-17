@@ -30,7 +30,7 @@ import Testing
         let restored = try JSONDecoder().decode([PlaybackEntry].self, from: JSONEncoder().encode([previous, selected, missing, next]))
         let result = try await resolver.context(restored, selected: selected.id)
         #expect(lookups.first == "selected")
-        #expect(result.values.map { $0.0.id } == [previous.id, selected.id, next.id])
+        #expect(result.values.map { $0.0.id } == [selected.id, next.id])
         #expect(result.unavailable == [missing.id])
     }
     @Test func libraryIdentityCanUsePersistedCatalogEquivalentAndSelectedFailureIsVisible() async throws {
@@ -52,5 +52,35 @@ extension PlaybackMusicResolutionTests {
         #expect(player.currentItem?.id == "selected"); #expect(player.isPlaying)
         #expect(player.queue.entries.map(\.item.id) == ["selected", "next"])
         #expect(notices == 1)
+    }
+}
+
+extension PlaybackMusicResolutionTests {
+    @Test func boundedInitialWindowReturnsBeforeSuspendedTailAndTransientEntriesCanRetry() async throws {
+        let entered = TestGate(), release = TestGate()
+        var offline = true
+        let resolver = AppleMusicTrackResolver<String>(library: { id in
+            if id == "11" { await entered.open(); await release.wait() }
+            if id == "1" && offline { throw URLError(.notConnectedToInternet) }
+            return id
+        }, catalog: { _ in nil })
+        let entries = (0..<1000).map { PlaybackEntry(item: item(String($0))) }
+        let initial = try await resolver.context(entries, selected: entries[0].id)
+        #expect(initial.values.first?.0.id == entries[0].id)
+        #expect(initial.unavailable.isEmpty); #expect(initial.deferred == [entries[1].id])
+        #expect(initial.remaining.count == 989)
+        let tail = Task { try await resolver.resolveBatch(Array(initial.remaining.prefix(10))) }
+        await entered.wait()
+        // Initial entries are already available to install/play even though the tail is still suspended.
+        #expect(initial.values.count == 10)
+        offline = false
+        #expect(try await resolver.resolve(entries[1].item) == "1")
+        await release.open(); let appended = try await tail.value
+        #expect(appended.values.count == 10)
+    }
+    @Test func partialSystemContextCannotRepeatAll() {
+        var queue = PlaybackQueue(); queue.replace([item("A"), item("B")], startingAt: 0, shuffle: false); queue.repeatMode = .all
+        #expect(AppleMusicQueuePolicy.repeatMode(for: queue, installedEntries: [queue.entries[0].id]) == .none)
+        #expect(AppleMusicQueuePolicy.repeatMode(for: queue, installedEntries: Set(queue.entries.map(\.id))) == .all)
     }
 }

@@ -6,6 +6,8 @@ struct AppleMusicIdentity: Codable, Hashable, Sendable {
     var catalogID: String?
 }
 
+enum AppleMusicResolutionError: Error { case notFound }
+
 @MainActor final class AppleMusicTrackResolver<Value> {
     private var cache: [String: Value] = [:]
     private let library: (String) async throws -> Value?
@@ -29,19 +31,26 @@ struct AppleMusicIdentity: Codable, Hashable, Sendable {
             } catch is CancellationError { throw CancellationError() }
             catch { lastError = error }
         }
-        throw lastError ?? MapleError(status: 0, message: "This Apple Music track is no longer available.")
+        throw lastError ?? AppleMusicResolutionError.notFound
     }
-    /// Resolve the selected occurrence first. Missing neighbors are pruned, never made fatal to it.
-    func context(_ entries: [PlaybackEntry], selected: UUID) async throws -> (values: [(PlaybackEntry, Value)], unavailable: Set<UUID>) {
-        guard let current = entries.first(where: { $0.id == selected }) else { throw CancellationError() }
-        let selectedValue = try await resolve(current.item)
-        var values: [(PlaybackEntry, Value)] = [], unavailable: Set<UUID> = []
-        for entry in entries {
-            if entry.id == selected { values.append((entry, selectedValue)); continue }
+    /// Selected plus a bounded forward window. Audio startup never scans a whole saved library.
+    func context(_ entries: [PlaybackEntry], selected: UUID, limit: Int = 11) async throws -> (values: [(PlaybackEntry, Value)], unavailable: Set<UUID>, deferred: Set<UUID>, remaining: [PlaybackEntry]) {
+        guard let index = entries.firstIndex(where: { $0.id == selected }) else { throw CancellationError() }
+        let window = Array(entries.dropFirst(index).prefix(max(1, limit)))
+        let result = try await resolveBatch(window, requireFirst: true)
+        return (result.values, result.unavailable, result.deferred, Array(entries.dropFirst(index + window.count)))
+    }
+    func resolveBatch(_ entries: [PlaybackEntry], requireFirst: Bool = false) async throws -> (values: [(PlaybackEntry, Value)], unavailable: Set<UUID>, deferred: Set<UUID>) {
+        var values: [(PlaybackEntry, Value)] = [], unavailable: Set<UUID> = [], deferred: Set<UUID> = []
+        for (index, entry) in entries.enumerated() {
             do { values.append((entry, try await resolve(entry.item))) }
             catch is CancellationError { throw CancellationError() }
-            catch { unavailable.insert(entry.id) }
+            catch {
+                if requireFirst && index == 0 { throw error }
+                if case AppleMusicResolutionError.notFound = error { unavailable.insert(entry.id) }
+                else { deferred.insert(entry.id) }
+            }
         }
-        return (values, unavailable)
+        return (values, unavailable, deferred)
     }
 }

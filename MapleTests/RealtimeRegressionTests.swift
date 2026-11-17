@@ -59,7 +59,7 @@ struct PlaybackRecoveryTests {
         case "reconnect": reporter.disconnected(); await reporter.connected()
         default: socket.rejectedUpdatesRemaining = 1; await reporter.sendUpdate()
         }
-        #expect(socket.events.filter { $0.0 == "playbackStart" }.count == 1)
+        #expect(socket.events.filter { $0.0 == "playbackStart" }.isEmpty)
         #expect(socket.events.count <= count + 1)
         await reporter.stop()
     }
@@ -77,7 +77,7 @@ struct PlaybackRecoveryTests {
         switch intent {
         case "resume":
             var paused = track; paused.playing = false
-            await reporter.update(paused); await reporter.update(track)
+            await reporter.update(paused); await reporter.update(track); await reporter.playbackStarted()
         case "explicitStart": await reporter.playbackStarted()
         default:
             await reporter.update(TrackSnapshot(identity: "local:2", title: "Next", artist: "Artist", album: "Album", duration: 100, playing: true, position: 0))

@@ -2,6 +2,7 @@ import Foundation
 import Observation
 
 enum PlaybackEngineEvent {
+    case unavailableEntries(Set<UUID>)
     case stateChanged
     case ended
     case itemChanged(PlaybackItem, occurrence: String, queueEntryID: UUID? = nil)

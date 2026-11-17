@@ -19,7 +19,7 @@ import Testing
         apple.onEvent?(.stateChanged); await player.waitForReports()
         #expect(player.currentItem == song); #expect(player.isPlaying)
         #expect(reporter.snapshots.last?.playing == true); #expect(apple.loadCount == 0)
-        #expect(apple.stopCount == 1)
+        #expect(apple.stopCount == 0)
     }
     @Test func disabledOrUnauthorizedObservationCannotAdopt() {
         let apple = PlaybackFakeEngine()
@@ -42,6 +42,9 @@ import Testing
         await player.restore { _ in nil }
         #expect(player.currentItem == song); #expect(apple.loadCount == 0); #expect(apple.stopCount == 0)
         await player.waitForSave()
+        #expect(player.queue == queue)
+        let saved = try await disk.load()
+        #expect(saved?.queue == queue); #expect(saved?.position == 44)
     }
 }
 

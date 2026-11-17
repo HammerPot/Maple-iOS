@@ -70,7 +70,7 @@ import UIKit
         } else if type == AVAudioSession.InterruptionType.ended.rawValue {
             let shouldResume = resumeAfterInterruption && AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume)
             resumeAfterInterruption = false
-            if shouldResume { Task { await controller.resume() } }
+            if shouldResume { Task { await controller.resume(userInitiated: false) } }
         }
     }
     private func update() {
