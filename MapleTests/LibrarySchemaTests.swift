@@ -81,6 +81,44 @@ struct LibrarySchemaTests {
         #expect(store.playlists.isEmpty); #expect(store.statistics.isEmpty); #expect(store.errorMessage == nil)
     }
 
+    /// L1: a row that is not even an object used to make the whole catalog "corrupt" (and the backup, which holds the
+    /// same bytes, too). Damaged rows of every JSON shape are skipped like any other damaged row.
+    @Test func rowsOfAnyShapeAreSalvagedInsteadOfDiscardingTheCatalog() async throws {
+        let root = try makeTemporaryDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+        let id = UUID()
+        let good = #"{"id":"\#(id.uuidString)","fileName":"a.mp3","title":"A","artist":"B","album":"C","year":0,"genre":"G","duration":1,"trackNumber":1,"discNumber":1,"dateAdded":700000000}"#
+        let json = #"{"version":1,"tracks":[null,7,"text",true,[1,2],{"fileName":5},\#(good)],"playlists":[null,"x"],"recentlyPlayed":[]}"#
+        try library(root, primary: Data(json.utf8), backup: Data(json.utf8))
+        try Data("x".utf8).write(to: root.appendingPathComponent("tracks/a.mp3"))
+        let store = LibraryStore(root: root); await store.load()
+        #expect(store.isLoaded); #expect(store.loadError == nil)
+        #expect(store.tracks.map(\.id) == [id]); #expect(store.playlists.isEmpty)
+        #expect(store.errorMessage != nil, "The skipped rows are reported")
+        #expect(archives(root).isEmpty, "Nothing is archived as corrupt")
+        let kept = (try? FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("library").path))?.filter { $0.hasPrefix("partial-") } ?? []
+        #expect(kept.count == 1, "The original is kept before the cleaned catalog replaces it")
+    }
+
+    /// L3: the background save of a library that never loaded has nothing to write and must not raise an error.
+    @Test func backgroundFlushOfAnUnloadedLibraryIsSilent() async throws {
+        let root = try makeTemporaryDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+        try library(root, primary: newer, backup: nil)
+        let store = LibraryStore(root: root); await store.load()
+        #expect(!store.isLoaded)
+        try await store.flushIfLoaded()
+        await #expect(throws: LibraryError.self) { try await store.flush() }
+        #expect(bytes(root, "catalog.json") == newer, "Nothing was written")
+    }
+
+    @Test func backgroundFlushOfALoadedLibrarySavesIt() async throws {
+        let root = try makeTemporaryDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+        try library(root, primary: Data(#"{"version":1,"tracks":[]}"#.utf8), backup: nil)
+        let store = LibraryStore(root: root); await store.load()
+        #expect(store.isLoaded)
+        try await store.flushIfLoaded()
+        #expect(bytes(root, "catalog.json") != nil)
+    }
+
     /// Unknown keys in a version-1 catalog (written by a later 1.x build) are tolerated.
     @Test func unknownKeysInAVersionOneCatalogAreIgnored() async throws {
         let root = try makeTemporaryDirectory(); defer { try? FileManager.default.removeItem(at: root) }

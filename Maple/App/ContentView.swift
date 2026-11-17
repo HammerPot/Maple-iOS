@@ -31,7 +31,7 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active: library.scanForNewFiles(silently: true) // pick up files added in the Files app
-            case .background: Task { do { try await library.flush() } catch { toasts.show(error) } }
+            case .background: Task { do { try await library.flushIfLoaded() } catch { toasts.show(error) } }
             default: break
             }
         }

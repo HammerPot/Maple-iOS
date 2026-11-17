@@ -117,7 +117,10 @@ struct LibraryCatalog: Codable, Sendable {
 struct LossyArray<Element: Decodable>: Decodable {
     var elements: [Element] = []
     var skipped = 0
-    private struct Placeholder: Decodable {}
+    /// Accepts any JSON value (object, array, string, number, bool, null), so a damaged row of any shape can be skipped.
+    private struct Placeholder: Decodable {
+        init(from decoder: Decoder) throws { _ = decoder }
+    }
     init(from decoder: Decoder) throws {
         var container = try decoder.unkeyedContainer()
         while !container.isAtEnd {
