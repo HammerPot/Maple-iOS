@@ -3,6 +3,11 @@ import Observation
 
 @MainActor @Observable final class SettingsModel {
     var webhookURL = ""
+    var webhookValidationMessage: String? {
+        let value = webhookURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, !DiscordWebhookURL.isValid(value) else { return nil }
+        return "This saved webhook is not a supported Discord URL. Delivery is disabled. Replace it with a Discord webhook URL or clear it."
+    }
     private(set) var isSaving = false
     private(set) var isLoaded = false
     @ObservationIgnored private let credentials: any WebhookCredentialStoring

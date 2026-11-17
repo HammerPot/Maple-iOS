@@ -23,6 +23,7 @@ struct Settings: View {
                 SecureField("Discord Webhook URL", text: $settings.webhookURL)
                     .textContentType(.URL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .onSubmit(saveWebhook)
+                if let message = settings.webhookValidationMessage { Text(message).font(.footnote).foregroundStyle(.orange) }
                 Button("Save Webhook", action: saveWebhook).disabled(settings.isSaving || !settings.isLoaded)
             } header: { Text("Sharing") } footer: {
                 Text("Friends and Discord Rich Presence require a Maple account and listening activity sharing. The optional Discord webhook is stored securely on this device; leave it blank to disable it.")

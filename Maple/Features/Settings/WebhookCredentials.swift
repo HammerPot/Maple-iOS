@@ -51,7 +51,10 @@ enum DiscordWebhookURL {
         guard let url = URLComponents(string: value), url.scheme == "https", url.user == nil, url.password == nil,
               url.port == nil || url.port == 443, url.fragment == nil,
               let host = url.host?.lowercased(), ["discord.com", "discordapp.com", "canary.discord.com", "ptb.discord.com"].contains(host) else { return false }
-        let parts = url.path.split(separator: "/", omittingEmptySubsequences: false)
+        var parts = url.path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        if parts.last == "" { parts.removeLast() }
+        if parts.count == 6, parts[2].first == "v", !parts[2].dropFirst().isEmpty,
+           parts[2].dropFirst().allSatisfy(\.isNumber) { parts.remove(at: 2) }
         guard parts.count == 5, parts[0].isEmpty, parts[1] == "api", parts[2] == "webhooks",
               !parts[3].isEmpty, parts[3].allSatisfy(\.isNumber), !parts[4].isEmpty else { return false }
         return parts[4].allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }

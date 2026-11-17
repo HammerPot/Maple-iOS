@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Maple
 
-private actor SettingsFakeCredentials: WebhookCredentialStoring {
+actor SettingsFakeCredentials: WebhookCredentialStoring {
     var value: String
     var fails: Bool
     init(_ value: String = "", fails: Bool = false) { self.value = value; self.fails = fails }
@@ -51,5 +51,28 @@ private actor SettingsFakeCredentials: WebhookCredentialStoring {
         let model = SettingsModel(credentials: credentials, defaults: defaults)
         try await model.load(); model.webhookURL = ""; try await model.saveWebhook()
         #expect(await credentials.read().isEmpty)
+    }
+}
+
+extension SettingsTests {
+    @Test func acceptsVersionedAndTrailingSlashDiscordWebhooks() {
+        #expect(DiscordWebhookURL.isValid("https://discord.com/api/v10/webhooks/123/test-token/"))
+        #expect(DiscordWebhookURL.isValid("https://discord.com/api/webhooks/123/test-token/"))
+    }
+}
+
+extension SettingsTests {
+    @Test func unsupportedLegacyWebhookStaysRecoverableAndIsFlaggedInSettings() async throws {
+        let suite = "SettingsTests." + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let old = "https://relay.example.test/existing-hook"
+        defaults.set(old, forKey: "webhookURL")
+        let credentials = SettingsFakeCredentials(), model = SettingsModel(credentials: credentials, defaults: defaults)
+        try await model.load()
+        #expect(model.webhookURL == old); #expect(await credentials.read() == old)
+        #expect(model.webhookValidationMessage != nil)
+        model.webhookURL = ""; try await model.saveWebhook()
+        #expect(model.webhookValidationMessage == nil); #expect(await credentials.read().isEmpty)
     }
 }
