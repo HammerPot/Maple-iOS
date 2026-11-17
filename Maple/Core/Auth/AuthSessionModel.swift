@@ -226,6 +226,7 @@ final class AuthSessionModel {
     /// Side-effect-free check used by the verification-pending screen. Unlike `refresh()`, a missing session
     /// does not sign out or notify; it only transitions when a verified session actually exists.
     func refreshIfVerified() async throws -> Bool {
+        guard credentialChanges == 0 else { return false }
         let version = revision
         let session: SessionReply? = try await api.http.request("api/auth/get-session")
         guard version == revision, let session, session.user.emailVerified else { return false }
@@ -233,7 +234,16 @@ final class AuthSessionModel {
         return user != nil
     }
     /// The current Better Auth session and its user (email, session ID for the "this device" marker).
-    func currentSession() async throws -> SessionReply? { try await api.http.request("api/auth/get-session") }
+    /// Refuses while a password change is replacing the session, before and after the request: a lookup that
+    /// overlaps the change can see the old session already deleted, and its caller would sign the user out.
+    func currentSession() async throws -> SessionReply? {
+        let changing = MapleError(status: 0, code: "SESSION_CHANGING", message: "Your session is being updated. Try again in a moment.")
+        guard credentialChanges == 0 else { throw changing }
+        let version = revision
+        let session: SessionReply? = try await api.http.request("api/auth/get-session")
+        guard version == revision, credentialChanges == 0 else { throw changing }
+        return session
+    }
     /// Clear locally first, then revoke every session with the captured cookie and a bounded request.
     func signOutEverywhere() async throws {
         let cookies = api.http.sessionCookies

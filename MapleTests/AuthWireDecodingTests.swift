@@ -599,6 +599,31 @@ struct AuthWireDecodingTests {
         await h.auth.invalidate()
     }
 
+    /// The Security screens look the session up when they appear. During a password change that lookup must not
+    /// reach the server, where it could find the old session already deleted and sign the user out.
+    @Test func aSessionLookupDuringAPasswordChangeIsRefusedAndTheReplacementSurvives() async throws {
+        let changeSent = TestGate(); let changeRelease = TestGate(); let lookups = Locked(0)
+        let h = try WireHarness(token: "old-session", routes: [
+            "GET /api/auth/get-session": { _ in _ = lookups.update({ $0 += 1; return $0 }); return StubReply(Wire.getSession) },
+            "GET /get/me": { _ in StubReply(Wire.me) },
+            "POST /api/auth/change-password": { _ in
+                await changeSent.open(); await changeRelease.wait()
+                return StubReply(Wire.changePasswordReplaced, headers: ["Set-Cookie": "__Secure-maple.session_token=new-session; Path=/; Secure; Max-Age=604800"])
+            },
+        ])
+        await h.auth.restore()
+        let before = lookups.read()
+        let change = Task { try await h.auth.changePassword(current: "OldPass123", new: "NewPass123") }
+        await changeSent.wait()
+        await #expect(throws: MapleError.self) { _ = try await h.auth.currentSession() }
+        #expect(try await h.auth.refreshIfVerified() == false)
+        #expect(lookups.read() == before)
+        await changeRelease.open(); try await change.value
+        #expect(h.auth.user != nil); #expect(h.http.sessionToken == "new-session")
+        #expect(try await h.auth.currentSession() != nil)
+        await h.auth.invalidate()
+    }
+
     @Test func failedPasswordChangeDoesNotBlockLaterSessionValidation() async throws {
         let h = try WireHarness(token: "test-session", [
             "POST /api/auth/change-password": StubReply(#"{"code":"INVALID_PASSWORD","message":"Invalid password"}"#, status: 400),
