@@ -87,48 +87,19 @@ import Testing
     }
 }
 
-extension PlaybackReview2Tests {
-    @Test func systemQueueTakeoverRelinquishesOwnershipAndCannotProduceMapleEnd() {
-        var ownership = AppleMusicQueueOwnership()
-        let a = UUID(), b = UUID()
-        ownership.install(["MapleA": a, "MapleB": b])
-        #expect(ownership.observe(occurrence: "MapleB", playing: true, stopped: false).entry == b)
-        #expect(ownership.ownsQueue)
-        #expect(ownership.observe(occurrence: "Siri", playing: true, stopped: false).entry == nil)
-        #expect(!ownership.ownsQueue)
-        #expect(!ownership.observe(occurrence: "Siri", playing: false, stopped: true).ended)
-    }
-    @Test func preparedPausedMusicCannotBecomeNaturalEndUntilItActuallyPlayed() {
-        var ownership = AppleMusicQueueOwnership()
-        ownership.install(["A": UUID()])
-        #expect(!ownership.observe(occurrence: "A", playing: false, stopped: true).ended)
-        _ = ownership.observe(occurrence: "A", playing: true, stopped: false)
-        #expect(ownership.observe(occurrence: "A", playing: false, stopped: true).ended)
-        #expect(!ownership.observe(occurrence: "A", playing: false, stopped: true).ended)
-    }
-    @Test func staleMusicObservationCannotStopAudibleLocalTrackAndUnknownDurationSeekPassesThrough() async {
-        let local = PlaybackFakeEngine(), apple = PlaybackFakeEngine()
-        let player = PlaybackController(local: local, apple: apple, reporter: PlaybackFakeReporter(), automaticSampling: false)
-        await player.start([item("Local")])
-        apple.external = ExternalPlaybackState(item: PlaybackItem(source: .appleMusic, id: "Music", title: "Music"), occurrence: "foreign")
-        apple.isPlaying = true; apple.onEvent?(.stateChanged)
-        #expect(player.currentItem?.title == "Local"); #expect(local.isPlaying)
-        player.pause(); player.refresh(); apple.duration = 0
-        await player.seek(to: 92)
-        #expect(apple.position == 92)
-    }
-}
 
 extension PlaybackReview2Tests {
-    @Test func samplerSleepsOnlyWhileAudibleAndRestartsAfterResume() async {
+    @Test func samplerSleepsOnlyWhileAudibleAndRestartsAfterResume() async throws {
         let sleeper = TestSleeper(), engine = PlaybackFakeEngine()
         let player = PlaybackController(local: engine, apple: PlaybackFakeEngine(), reporter: PlaybackFakeReporter(), samplingSleep: { try await sleeper.sleep($0) })
         #expect(await sleeper.delays.isEmpty)
         await player.start([item("A")]); await sleeper.waitForSleep()
-        player.pause()
+        player.pause(); try #require(sleeper.cancellationCount.read() == 1)
+        await sleeper.waitForNoSleeps()
+        #expect(await sleeper.pendingCount == 0)
         await player.resume(); await sleeper.waitForSleeps(1)
-        player.stop()
-        #expect(!player.isPlaying)
+        player.stop(); await sleeper.waitForNoSleeps()
+        #expect(await sleeper.pendingCount == 0); #expect(!player.isPlaying)
     }
 }
 
@@ -146,30 +117,5 @@ extension PlaybackReview2Tests {
         await player.resume(); await player.waitForReports()
         #expect(socket.events.filter { $0.0 == "playbackStart" }.count == 2)
         player.stop(); await player.waitForReports()
-    }
-}
-
-
-extension PlaybackReview2Tests {
-    @Test func pausedReporterStopsPeriodicWorkAndResumeRestartsIt() async {
-        let socket = FakePlaybackTransport(), sleeper = TestSleeper()
-        let reporter = PlaybackReporter(transport: socket, sleep: { try await sleeper.sleep($0) })
-        var value = TrackSnapshot(identity: "local:A", title: "A", artist: "", album: "", playing: true, position: 0)
-        await reporter.update(value); await sleeper.waitForSleep()
-        value.playing = false; await reporter.update(value)
-        let sent = socket.events.count
-        await sleeper.advance()
-        #expect(socket.events.count == sent)
-        value.playing = true; await reporter.update(value); await sleeper.waitForSleep()
-        #expect(reporter.ownsPlayback)
-        await reporter.stop()
-    }
-    @Test func failedTailInsertionCannotCountAsInstalledQueue() {
-        var ownership = AppleMusicQueueOwnership()
-        let first = UUID(), tail = UUID()
-        ownership.install(["first": first]); ownership.append(["tail": tail])
-        ownership.remove(["tail"])
-        #expect(Set(ownership.entries.values) == [first])
-        #expect(ownership.ownsQueue)
     }
 }

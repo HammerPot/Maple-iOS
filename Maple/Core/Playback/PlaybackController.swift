@@ -6,7 +6,7 @@ import OSLog
 final class PlaybackController {
     private(set) var queue = PlaybackQueue()
     private(set) var currentItem: PlaybackItem?
-    private(set) var playingFromMusic = false
+    var playingFromMusic: Bool { parked != nil }
     private struct ParkedPlayback {
         var item: PlaybackItem?
         var position: Double
@@ -14,9 +14,10 @@ final class PlaybackController {
         var artwork: Data?
         var playID: UUID
     }
-    @ObservationIgnored private var parked: ParkedPlayback?
+    private var parked: ParkedPlayback?
     private(set) var isPlaying = false
     private(set) var isLoading = false
+    private(set) var loadingProgress = 0.0
     private(set) var duration: Double = 0
     private(set) var artworkData: Data?
     let position = PlaybackPosition()
@@ -36,6 +37,8 @@ final class PlaybackController {
     @ObservationIgnored private var reporting: Task<Void, Never>?
     @ObservationIgnored private var reportRevision = 0
     @ObservationIgnored private var saving: Task<Void, Never>?
+    @ObservationIgnored private var checkpointKey: UUID?
+    @ObservationIgnored private var positionSavedAt = 0.0
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
     @ObservationIgnored private var loading: Task<Void, Never>?
     @ObservationIgnored private var deferredRestore = false
@@ -90,20 +93,23 @@ final class PlaybackController {
         endPlay(completed: false); queue.select(id)
         await loadCurrent(autoplay: true)
     }
-    private func loadCurrent(autoplay: Bool, at seconds: Double = 0, skipUnreadable: Bool = false) async {
+    private func loadCurrent(autoplay: Bool, at seconds: Double = 0, skipUnreadable: Bool = false, userInitiated: Bool = true) async {
         var nextPosition = seconds
+        var restoredPlayID: UUID? = deferredRestore ? playID : nil
+        wantsPlayback = autoplay
         repeat {
             deferredRestore = false
-            wantsPlayback = autoplay; intendedPosition = nextPosition; intentRevision += 1
+            intendedPosition = nextPosition; intentRevision += 1
             generation += 1
             let ticket = generation
             local.stop(); apple.stop()
-            currentItem = nil; isPlaying = false; isLoading = true; listenedAt = nil
+            currentItem = nil; isPlaying = false; isLoading = true; loadingProgress = 0; listenedAt = nil
             synchronizeSampling()
             artworkData = nil; artworkTask?.cancel()
-            position.seconds = 0; duration = 0; started = false; playID = UUID()
+            position.seconds = 0; duration = 0; started = false
+            playID = restoredPlayID ?? UUID(); restoredPlayID = nil
             failedLocalEntry = nil; skippingUnreadable = skipUnreadable
-            await scheduleLoad(ticket: ticket, userInitiated: autoplay).value
+            await scheduleLoad(ticket: ticket, userInitiated: userInitiated && autoplay).value
             guard generation == ticket, skipUnreadable, let failed = failedLocalEntry else { return }
             // Remove each unreadable occurrence once; even repeat-one/all can make at most one pass.
             let following = queue.upcoming.first?.id ?? (queue.repeatMode == .all ? queue.entries.first(where: { $0.id != failed })?.id : nil)
@@ -122,10 +128,15 @@ final class PlaybackController {
             guard let self, self.generation == ticket else { return }
             guard let item = context.current?.item else { self.isLoading = false; return }
             let target = item.source == .local ? self.local : self.apple
+            var unreadableFile = false
             do {
                 try await target.configure(context)
                 guard self.generation == ticket else { return }
-                try await target.load(item)
+                do { try await target.load(item) }
+                catch {
+                    if item.source == .local, case LibraryError.unreadableAudio = error { unreadableFile = true }
+                    throw error
+                }
                 guard self.generation == ticket else { return }
                 if !target.unavailableEntryIDs.isEmpty {
                     self.queue.remove(target.unavailableEntryIDs)
@@ -135,7 +146,7 @@ final class PlaybackController {
                 self.duration = target.duration > 0 ? target.duration : item.duration
                 while self.generation == ticket {
                     let revision = self.intentRevision
-                    let seconds = min(self.intendedPosition, max(0, self.duration))
+                    let seconds = (self.duration > 0 ? min(self.intendedPosition, self.duration) : self.intendedPosition)
                     if seconds > 0 || target.position != seconds { await target.seek(to: seconds) }
                     guard self.generation == ticket else { return }
                     if revision != self.intentRevision { continue }
@@ -154,7 +165,8 @@ final class PlaybackController {
                 guard self.generation == ticket else { return }
                 target.stop(); self.currentItem = nil; self.isPlaying = false; self.isLoading = false
                 self.duration = 0; self.position.seconds = 0; self.started = false
-                if self.skippingUnreadable, item.source == .local, !(error is CancellationError) {
+                self.synchronizeSampling()
+                if self.skippingUnreadable, unreadableFile {
                     self.failedLocalEntry = context.currentID
                     self.onError(MapleError(status: 0, message: "An unreadable audio file was skipped: \(item.title)"))
                 } else {
@@ -167,10 +179,10 @@ final class PlaybackController {
         return task
     }
     func resume(userInitiated: Bool = true) async {
-        if deferredRestore { await loadCurrent(autoplay: true, at: position.seconds); return }
+        if deferredRestore { await loadCurrent(autoplay: true, at: position.seconds, userInitiated: userInitiated); return }
         wantsPlayback = true; intentRevision += 1
         if isLoading { return }
-        guard currentItem != nil else { await loadCurrent(autoplay: true); return }
+        guard currentItem != nil else { await loadCurrent(autoplay: true, userInitiated: userInitiated); return }
         do {
             try activateAudio(currentItem?.source ?? .local)
             try await engine.play()
@@ -236,7 +248,12 @@ final class PlaybackController {
     }
     func setShuffle(_ enabled: Bool) { guard !playingFromMusic else { return }; queue.setShuffle(enabled); synchronizeEngineQueue(reload: true); save() }
     func setRepeat(_ mode: PlaybackRepeat) { guard !playingFromMusic else { return }; queue.repeatMode = mode; synchronizeEngineQueue(); save() }
-    func enqueue(_ items: [PlaybackItem], next: Bool) { guard !playingFromMusic else { return }; queue.enqueue(items, next: next); synchronizeEngineQueue(reload: true); save() }
+    func enqueue(_ items: [PlaybackItem], next: Bool) {
+        guard !playingFromMusic else {
+            onError(MapleError(status: 0, message: "Playing from Music — stop it to change your Maple queue.")); return
+        }
+        queue.enqueue(items, next: next); synchronizeEngineQueue(reload: true); save()
+    }
     func moveUpcoming(from offsets: IndexSet, to destination: Int) { guard !playingFromMusic else { return }; queue.moveUpcoming(from: offsets, to: destination); synchronizeEngineQueue(reload: true); save() }
     func removeEntries(_ ids: Set<UUID>) {
         guard !playingFromMusic else { return }
@@ -273,7 +290,7 @@ final class PlaybackController {
             playing: isPlaying, position: deferredRestore ? position.seconds : engine.position, playbackRate: engine.rate)
     }
     func sample() {
-        guard currentItem != nil, !isLoading, !deferredRestore else { return }
+        guard currentItem != nil, isPlaying, !isLoading, !deferredRestore else { return }
         let nextPosition = engine.position
         // Music.app can repeat one queue entry without changing its entry ID or playback status.
         // Reuse the cheap position sample to recognize that boundary; explicit Maple seeks update
@@ -287,8 +304,10 @@ final class PlaybackController {
             settleListening()
             position.seconds = nextPosition
         }
+        savePositionIfDue()
     }
     func refresh() {
+        apple.refresh()
         if adoptExternalPlayback() { return }
         reconcile(); publish()
     }
@@ -297,14 +316,15 @@ final class PlaybackController {
         guard !isLoading else { return false }
         if let state = apple.externalPlayback() {
             // A stale Music notification must not stop newly started, audible local playback.
-            guard playingFromMusic || !(currentItem?.source == .local && local.isPlaying) else { return false }
+            let replacingOwnedMusic = currentItem?.source == .appleMusic && !deferredRestore
+            guard playingFromMusic || ((apple.isPlaying || replacingOwnedMusic) && !(currentItem?.source == .local && (wantsPlayback || local.isPlaying))) else { return false }
             if !playingFromMusic {
                 let savedPosition = position.seconds
                 parked = ParkedPlayback(item: currentItem, position: savedPosition, duration: duration,
                                         artwork: artworkData, playID: playID)
                 endPlay(completed: false)
                 local.pause()
-                playingFromMusic = true; deferredRestore = false
+                deferredRestore = false
             }
             if externalOccurrence != state.occurrence || currentItem != state.item {
                 generation += 1; artworkTask?.cancel()
@@ -324,7 +344,6 @@ final class PlaybackController {
     private func leaveExternalPlayback() {
         guard playingFromMusic else { return }
         generation += 1; artworkTask?.cancel(); externalOccurrence = nil
-        playingFromMusic = false
         currentItem = parked?.item; duration = parked?.duration ?? 0
         position.seconds = parked?.position ?? 0; artworkData = parked?.artwork
         playID = parked?.playID ?? UUID(); parked = nil
@@ -358,12 +377,13 @@ final class PlaybackController {
         started = false; listenedAt = nil
     }
     private func receive(_ event: PlaybackEngineEvent, source: PlaybackItem.Source) {
+        if case .loadingProgress(let progress) = event {
+            if isLoading, queue.current?.item.source == source { loadingProgress = progress }
+            return
+        }
         guard !isLoading else { return }
         switch event {
-        case .unavailableEntries(let ids):
-            guard source == .appleMusic, !playingFromMusic else { return }
-            queue.remove(ids); save()
-            onError(MapleError(status: 0, message: "Unavailable Apple Music queue entries were skipped."))
+        case .loadingProgress: break
         case .itemChanged(let item, let occurrence, let queueEntryID):
             guard source == .appleMusic else { return }
             if queueEntryID == nil { _ = adoptExternalPlayback(); return }
@@ -429,17 +449,27 @@ final class PlaybackController {
     }
     func save() {
         guard !playingFromMusic, let persistence else { return }
-        let value = PlaybackCheckpoint(queue: queue, position: currentItem == nil ? 0 : (deferredRestore ? position.seconds : engine.position))
+        let key = UUID(); checkpointKey = key; positionSavedAt = clock()
+        let value = PlaybackCheckpoint(queue: queue, position: currentItem == nil ? 0 : (deferredRestore ? position.seconds : engine.position), positionKey: key)
         let previous = saving
         saving = Task { [weak self] in
             await previous?.value
             do { try await persistence.save(value) } catch { self?.onError(error) }
         }
     }
+    private func savePositionIfDue() {
+        guard !playingFromMusic, let persistence, let key = checkpointKey, clock() - positionSavedAt >= 30 else { return }
+        positionSavedAt = clock()
+        let seconds = position.seconds, previous = saving
+        saving = Task { [weak self] in
+            await previous?.value
+            do { try await persistence.savePosition(seconds, key: key) } catch { self?.onError(error) }
+        }
+    }
     func restore(localItem: (UUID) -> PlaybackItem?) async {
         do {
             if let persistence, let saved = try await persistence.load(), queue.entries.isEmpty {
-                queue = saved.queue
+                queue = saved.queue; checkpointKey = saved.positionKey; positionSavedAt = clock()
                 let missing = Set(queue.entries.filter { entry in
                     entry.item.source == .local && entry.item.libraryID.flatMap(localItem) == nil
                 }.map(\.id))

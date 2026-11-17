@@ -3,12 +3,12 @@ import MusicKit
 
 /// Music owns only a contiguous segment. Maple wraps mixed queues at their real boundary.
 enum AppleMusicQueuePolicy {
-    static func repeatMode(for queue: PlaybackQueue, installedEntries: Set<UUID>? = nil) -> MusicKit.MusicPlayer.RepeatMode {
-        switch queue.repeatMode {
-        case .one: return .one
-        case .all where !queue.entries.isEmpty && queue.entries.allSatisfy({ $0.item.source == .appleMusic }) && (installedEntries == nil || installedEntries == Set(queue.entries.map(\.id))): return .all
-        case .off, .all: return .none
-        }
+    static func mapleRepeatMode(for queue: PlaybackQueue) -> PlaybackRepeat {
+        if queue.repeatMode == .all && queue.entries.contains(where: { $0.item.source != .appleMusic }) { return .off }
+        return queue.repeatMode
+    }
+    static func repeatMode(for queue: PlaybackQueue) -> MusicKit.MusicPlayer.RepeatMode {
+        switch mapleRepeatMode(for: queue) { case .off: return .none; case .one: return .one; case .all: return .all }
     }
     static func context(for queue: PlaybackQueue, fallback: PlaybackItem) -> [PlaybackEntry] {
         guard let current = queue.index, queue.entries[current].item.source == .appleMusic else {

@@ -22,10 +22,19 @@ import Foundation
     func load(_ item: PlaybackItem) async throws {
         stop()
         let ticket = generation
-        guard let url = item.audioURL else { throw LibraryError.unreadableAudio }
+        guard let url = item.audioURL, !url.isFileURL || FileManager.default.isReadableFile(atPath: url.path) else { throw LibraryError.unreadableAudio }
         let asset = AVURLAsset(url: url)
-        guard try await asset.load(.isPlayable) else { throw LibraryError.unreadableAudio }
-        _ = try await asset.load(.duration)
+        do {
+            guard try await asset.load(.isPlayable) else { throw LibraryError.unreadableAudio }
+            _ = try await asset.load(.duration)
+        } catch {
+            let failure = error as NSError
+            let fileCodes = [CocoaError.fileReadNoSuchFile.rawValue, CocoaError.fileReadNoPermission.rawValue, CocoaError.fileReadCorruptFile.rawValue]
+            if failure.domain == NSCocoaErrorDomain, fileCodes.contains(failure.code) { throw LibraryError.unreadableAudio }
+            if failure.domain == AVFoundationErrorDomain,
+               [AVError.fileFormatNotRecognized.rawValue, AVError.fileFailedToParse.rawValue].contains(failure.code) { throw LibraryError.unreadableAudio }
+            throw error
+        }
         try Task.checkCancellation()
         guard generation == ticket else { throw CancellationError() }
         let new = AVPlayerItem(asset: asset)

@@ -18,6 +18,9 @@ struct FullPlayer: View {
                     Text(player.currentItem?.title ?? "Nothing Playing").font(.headline).multilineTextAlignment(.center)
                     Text(player.currentItem?.artist ?? "Choose a track from your library").font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }
+                if player.isLoading {
+                    ProgressView("Preparing queue…", value: player.loadingProgress).font(.footnote)
+                }
                 PlaybackScrubber()
                 PlayerTransport()
                 if player.playingFromMusic { Text("Playing from Music").font(.footnote).foregroundStyle(.secondary) }

@@ -147,7 +147,7 @@ final class PlaybackReporter {
         }
     }
     private func synchronizeHeartbeat() {
-        guard automaticHeartbeat, ownsPlayback, snapshot?.playing == true else {
+        guard automaticHeartbeat, ownsPlayback else {
             heartbeat?.cancel(); heartbeat = nil; return
         }
         guard heartbeat == nil else { return }
@@ -218,7 +218,7 @@ final class PlaybackReporter {
         if ownsPlayback { await sendUpdate() } else { await reclaim() }
     }
     private func refreshSnapshot() {
-        if let fresh = snapshotProvider?(), fresh.identity == snapshot?.identity { snapshot = fresh }
+        if let fresh = snapshotProvider?(), (snapshot == nil || fresh.identity == snapshot?.identity) { snapshot = fresh }
     }
     private func reclaim() async {
         refreshSnapshot()

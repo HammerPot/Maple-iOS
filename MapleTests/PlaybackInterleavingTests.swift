@@ -10,6 +10,8 @@ import Testing
     var rate = 1.0
     var isPlaying = false
     var suspendLoads = false
+    var loadErrors: [String: Error] = [:]
+    var playError: Error?
     var loads = 0
     var plays = 0
     var contexts: [PlaybackQueue] = []
@@ -30,6 +32,7 @@ import Testing
                 observers.removeValue(forKey: number)?.resume()
             }
         }
+        if let error = loadErrors[item.id] { throw error }
         position = 0; isPlaying = false
     }
     func waitForLoad(_ number: Int) async {
@@ -37,7 +40,7 @@ import Testing
         await withCheckedContinuation { observers[number] = $0 }
     }
     func release(_ number: Int) { pending.removeValue(forKey: number)?.resume() }
-    func play() async throws { plays += 1; isPlaying = true }
+    func play() async throws { if let playError { throw playError }; plays += 1; isPlaying = true }
     func pause() { isPlaying = false }
     func stop() { isPlaying = false; position = 0 }
     func seek(to seconds: Double) async { position = seconds }

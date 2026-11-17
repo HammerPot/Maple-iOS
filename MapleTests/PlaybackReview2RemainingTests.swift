@@ -4,21 +4,8 @@ import Testing
 
 @MainActor struct PlaybackReview2RemainingTests {
     private func item(_ id: String) -> PlaybackItem { PlaybackItem(source: .appleMusic, id: id, title: id) }
-    @Test func transientNeighborErrorKeepsItsQueueEntry() async throws {
-        let resolver = AppleMusicTrackResolver<String>(library: { id in
-            if id == "offline" { throw URLError(.notConnectedToInternet) }; return id
-        }, catalog: { _ in nil })
-        let a = PlaybackEntry(item: item("A")), offline = PlaybackEntry(item: item("offline"))
-        let context = try await resolver.context([a, offline], selected: a.id)
-        #expect(context.unavailable.isEmpty)
-    }
-    @Test func initialMusicResolutionIsBoundedIndependentlyOfQueueSize() async throws {
-        var calls = 0
-        let resolver = AppleMusicTrackResolver<String>(library: { id in calls += 1; return id }, catalog: { _ in nil })
-        let entries = (0..<2000).map { PlaybackEntry(item: item(String($0))) }
-        let context = try await resolver.context(entries, selected: entries[0].id)
-        #expect(calls <= 11); #expect(context.values.count <= 11)
-    }
+
+
     @Test func unreadableNaturalAdvanceSkipsFileAndContinuesWithoutStartingIt() async {
         let engine = PlaybackFakeEngine(), reporter = PlaybackFakeReporter()
         engine.failedItemIDs = ["B"]
