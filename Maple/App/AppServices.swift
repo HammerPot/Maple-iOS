@@ -39,8 +39,7 @@ final class AppServices {
         let credentials = WebhookCredentials()
         settings = SettingsModel(credentials: credentials)
         webhook = WebhookReporter(configuredURL: {
-            let value = (try? await credentials.read()) ?? ""
-            return DiscordWebhookURL.isValid(value) ? value : ""
+            return DiscordWebhookURL.configuredValue((try? await credentials.read()) ?? "")
         })
         auth = AuthSessionModel(api: api)
         friends = FriendsModel(api: api)

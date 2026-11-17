@@ -76,3 +76,18 @@ extension SettingsTests {
         #expect(model.webhookValidationMessage == nil); #expect(await credentials.read().isEmpty)
     }
 }
+
+extension SettingsTests {
+    @Test func whitespaceLegacyWebhookMigratesTrimmedAndUsesSameDeliveryValidation() async throws {
+        let suite = "SettingsTests." + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let expected = "https://discord.com/api/webhooks/123/test-token"
+        defaults.set(" \n" + expected + " \n", forKey: "webhookURL")
+        let credentials = SettingsFakeCredentials(), model = SettingsModel(credentials: credentials, defaults: defaults)
+        try await model.load()
+        #expect(await credentials.read() == expected); #expect(model.webhookValidationMessage == nil)
+        #expect(DiscordWebhookURL.configuredValue(" \n" + expected + " \n") == expected)
+        #expect(DiscordWebhookURL.configuredValue("https://evil.test/hook") == "")
+    }
+}

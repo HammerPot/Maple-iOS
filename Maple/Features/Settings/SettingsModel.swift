@@ -18,7 +18,8 @@ import Observation
     func load() async throws {
         guard !isLoaded else { return }
         let secure = try await credentials.read()
-        if let legacy = defaults.string(forKey: "webhookURL") {
+        if let rawLegacy = defaults.string(forKey: "webhookURL") {
+            let legacy = rawLegacy.trimmingCharacters(in: .whitespacesAndNewlines)
             // Never remove the legacy copy before a durable Keychain write succeeds.
             if secure.isEmpty, !legacy.isEmpty {
                 try await credentials.write(legacy)

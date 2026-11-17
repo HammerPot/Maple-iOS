@@ -47,6 +47,10 @@ struct WebhookCredentialError: LocalizedError {
 }
 
 enum DiscordWebhookURL {
+    static func configuredValue(_ raw: String) -> String {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return isValid(value) ? value : ""
+    }
     static func isValid(_ value: String) -> Bool {
         guard let url = URLComponents(string: value), url.scheme == "https", url.user == nil, url.password == nil,
               url.port == nil || url.port == 443, url.fragment == nil,
