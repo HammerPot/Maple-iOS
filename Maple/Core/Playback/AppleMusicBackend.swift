@@ -134,7 +134,8 @@ struct AppleMusicInstallation {
                     throw error
                 }
             }
-            try Task.checkCancellation()
+            // An expired assertion cancels pending work, but an insertion already performed
+            // must still be reflected in the engine's cursor. Replacement remains fenced by ticket.
             guard ticket == preparationGeneration else { throw CancellationError() }
             return AppleMusicInstallation(entries: installed, unavailable: resolved.unavailable, insertionSeconds: elapsed)
         } catch {

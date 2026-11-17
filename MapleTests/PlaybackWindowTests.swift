@@ -37,7 +37,8 @@ import Testing
         player.stop(); await player.waitForReports()
     }
     @Test func eagerFillCompletesWithoutMovementAndEnablesNativeRepeatWithoutAnotherClaim() async {
-        let backend = ReviewMusicBackend(), engine = AppleMusicPlaybackEngine(backend: backend)
+        let backend = ReviewMusicBackend(), assertions = FillAssertionProbe()
+        let engine = AppleMusicPlaybackEngine(backend: backend, makeFillAssertion: assertions.make)
         let socket = FakePlaybackTransport(), reporter = PlaybackReporter(transport: socket, automaticHeartbeat: false)
         let player = PlaybackController(local: PlaybackFakeEngine(), apple: engine, reporter: reporter, automaticSampling: false)
         let entered = TestGate(), release = TestGate()
@@ -45,6 +46,7 @@ import Testing
         let items = songs(861)
         await player.start(items); await entered.wait()
         player.setRepeat(.all); await player.waitForLoad()
+        #expect(assertions.begins == 1); #expect(assertions.ends == 0); #expect(assertions.active.count == 1)
         #expect(backend.installed.count == 50); #expect(backend.mode == .off)
         // Notifications must keep working during the fill, including pause/resume.
         player.pause(); #expect(!player.isPlaying)
@@ -57,10 +59,12 @@ import Testing
         #expect(backend.prepares == 1); #expect(backend.plays == 2)
         #expect(backend.mode == .all); #expect(player.isPlaying); #expect(!player.playingFromMusic)
         #expect(socket.events.filter { $0.0 == "playbackStart" }.count == claims)
+        #expect(assertions.begins == 1); #expect(assertions.ends == 1); #expect(assertions.active.isEmpty)
         player.stop(); await player.waitForReports()
     }
     @Test func replacementDrainsInflightInsertAndDropsRemainingOldBatches() async {
-        let backend = ReviewMusicBackend(), engine = AppleMusicPlaybackEngine(backend: backend)
+        let backend = ReviewMusicBackend(), assertions = FillAssertionProbe()
+        let engine = AppleMusicPlaybackEngine(backend: backend, makeFillAssertion: assertions.make)
         let player = PlaybackController(local: PlaybackFakeEngine(), apple: engine, reporter: PlaybackFakeReporter(), automaticSampling: false)
         let entered = TestGate(), release = TestGate(), replacementResolving = TestGate()
         backend.nativeInsertion = { await entered.open(); await release.wait() }
@@ -72,6 +76,7 @@ import Testing
         let replacement = PlaybackItem(source: .appleMusic, id: "replacement", title: "Replacement")
         let next = Task { await player.start([replacement]) }
         await replacementResolving.wait()
+        #expect(assertions.begins == 1); #expect(assertions.ends == 1); #expect(assertions.active.isEmpty)
         #expect(backend.installed.count == 50); #expect(backend.activeInsertions == 1)
         #expect(backend.mutations == ["prepare:song0"])
         await release.open(); await next.value; await engine.waitForExtension()
@@ -79,11 +84,13 @@ import Testing
         #expect(backend.appends == 1); #expect(backend.maxInsertions == 1)
         #expect(backend.installed.map(\.item.id) == ["replacement"])
         #expect(player.currentItem?.id == "replacement"); #expect(player.isPlaying); #expect(!player.playingFromMusic)
+        #expect(assertions.begins == 1); #expect(assertions.ends == 1); #expect(assertions.active.isEmpty)
         player.stop()
     }
     @Test(arguments: [false, true])
     func failedOrSlowInsertionStopsEagerWorkAndLaterMovementRefillsLazily(slow: Bool) async {
-        let backend = ReviewMusicBackend(), engine = AppleMusicPlaybackEngine(backend: backend)
+        let backend = ReviewMusicBackend(), assertions = FillAssertionProbe()
+        let engine = AppleMusicPlaybackEngine(backend: backend, makeFillAssertion: assertions.make)
         let player = PlaybackController(local: PlaybackFakeEngine(), apple: engine, reporter: PlaybackFakeReporter(), automaticSampling: false)
         var attempts = 0, errors = 0
         player.onError = { _ in errors += 1 }
@@ -105,6 +112,7 @@ import Testing
         #expect(backend.appends == 2); #expect(backend.installed.count == (slow ? 150 : 100))
         #expect(player.queue.index == index); #expect(player.position.seconds == 12)
         #expect(backend.prepares == 1); #expect(backend.plays == 1); #expect(player.isPlaying)
+        #expect(assertions.begins == 1); #expect(assertions.ends == 1); #expect(assertions.active.isEmpty)
         player.stop()
     }
     @Test func middleWindowIncludesPreviousEntriesAndNeverRepeatsAnIncompletePrefix() async {

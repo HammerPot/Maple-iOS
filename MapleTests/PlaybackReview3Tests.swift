@@ -86,7 +86,7 @@ import Testing
             mutations.append("append:\(entries.first?.item.id ?? "")")
             installed.append(contentsOf: added.map(\.entry))
         }
-        try Task.checkCancellation()
+        // A native insertion may succeed despite cancellation; return the inserted descriptors.
         guard ticket == preparationGeneration else { throw CancellationError() }
         return AppleMusicInstallation(entries: added, unavailable: result.unavailable, insertionSeconds: insertionSeconds)
     }

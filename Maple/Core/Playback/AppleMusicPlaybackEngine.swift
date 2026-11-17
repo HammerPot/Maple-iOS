@@ -17,6 +17,8 @@ import OSLog
     private var installed: [AppleMusicInstalledEntry] = []
     private var installedRange = 0..<0
     private var extending: Task<Void, Never>?
+    private var fillAssertion: AppleMusicFillAssertion?
+    private let makeFillAssertion: @MainActor () -> AppleMusicFillAssertion
     private var eagerPending = true
     private var lastLazyAttempt: UUID?
     /// Stop eager work after a slow native call returns; never race an uncancellable insertion.
@@ -30,8 +32,9 @@ import OSLog
     var duration: Double { backend.state.item?.duration ?? 0 }
     var rate: Double { backend.state.rate }
     var isPlaying: Bool { allowed() && backend.state.status == .playing }
-    init(backend: any AppleMusicBackend, allowed: @escaping () -> Bool = { true }) {
-        self.backend = backend; self.allowed = allowed
+    init(backend: any AppleMusicBackend, allowed: @escaping () -> Bool = { true },
+         makeFillAssertion: @escaping @MainActor () -> AppleMusicFillAssertion = { AppleMusicFillAssertion() }) {
+        self.backend = backend; self.allowed = allowed; self.makeFillAssertion = makeFillAssertion
         backend.onChange = { [weak self] in self?.refresh() }
     }
     convenience init() {
@@ -135,6 +138,7 @@ import OSLog
         if extending != nil {
             AppleMusicDiagnostics.logger.info("fill skipped generation=\(self.generation, privacy: .public) reason=\(reason, privacy: .public)")
         }
+        fillAssertion?.end(reason: reason); fillAssertion = nil
         extending?.cancel(); extending = nil
     }
     private func extendIfNeeded(current: UUID) {
@@ -145,10 +149,26 @@ import OSLog
         eagerPending = false
         if !eager { lastLazyAttempt = current }
         let ticket = generation
+        let assertion = eager ? makeFillAssertion() : nil
+        if let assertion {
+            fillAssertion = assertion
+            guard assertion.start(generation: ticket, onExpiration: { [weak self, weak assertion] in
+                guard let self, let assertion, self.fillAssertion === assertion else { return }
+                // Cancel pending resolution/insertions. Drain a native insertion already in flight
+                // and remember its result, but never issue another eager batch after expiration.
+                self.lastLazyAttempt = self.configured.currentID
+                self.extending?.cancel()
+            }) else {
+                fillAssertion = nil
+                AppleMusicDiagnostics.logger.info("fill fallback generation=\(ticket, privacy: .public) reason=background assertion denied")
+                return
+            }
+        }
         extending = Task { [weak self] in
+            defer { assertion?.end(reason: "completion") }
             guard let self else { return }
             let began = Date()
-            defer { if ticket == self.generation { self.extending = nil } }
+            defer { if ticket == self.generation { self.extending = nil; self.fillAssertion = nil } }
             repeat {
                 guard ticket == self.generation, !Task.isCancelled, self.ownership.ownsQueue,
                       let anchor = self.installed.first(where: { $0.entry.id == self.configured.currentID })?.entry else {
@@ -159,7 +179,7 @@ import OSLog
                 let next = Array(self.segment[self.installedRange.upperBound..<end])
                 do {
                     let added = try await self.backend.append(next, after: anchor)
-                    guard ticket == self.generation, !Task.isCancelled, self.ownership.ownsQueue else {
+                    guard ticket == self.generation, self.ownership.ownsQueue else {
                         AppleMusicDiagnostics.logger.info("fill skipped generation=\(ticket, privacy: .public) reason=cancelled or replaced after insertion")
                         return
                     }
@@ -168,7 +188,13 @@ import OSLog
                     self.unavailableEntryIDs.formUnion(added.unavailable)
                     self.installedRange = self.installedRange.lowerBound..<end
                     self.configureNativeModes()
+                    // With the assertion held, UIKit allows this call to finish without suspension.
+                    // Expiration cancels the worker and releases the assertion immediately. Its
+                    // returned call may include suspended time: retain its inserted entries, then
+                    // leave lazy refill to continue; do not classify that interval as slow native work.
+                    if Task.isCancelled || assertion?.expired == true { return }
                     if eager && added.insertionSeconds > Self.slowInsertionSeconds {
+                        assertion?.end(reason: "slow fallback")
                         AppleMusicDiagnostics.logger.info("fill fallback generation=\(ticket, privacy: .public) reason=slow insertion seconds=\(added.insertionSeconds, privacy: .public)")
                         return
                     }
@@ -179,6 +205,7 @@ import OSLog
                     }
                     // Keep playing the installed window. A later track change can retry lazily.
                     self.lastLazyAttempt = self.configured.currentID
+                    assertion?.end(reason: "error fallback")
                     AppleMusicDiagnostics.logger.info("fill fallback generation=\(ticket, privacy: .public) reason=insertion error domain=\((error as NSError).domain, privacy: .public) code=\((error as NSError).code, privacy: .public)")
                     return
                 }
