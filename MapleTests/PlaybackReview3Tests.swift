@@ -10,6 +10,12 @@ import Testing
     var plays = 0
     var stops = 0
     var appends = 0
+    var beforeAppend: (() async throws -> Void)?
+    var nativeInsertion: (() async throws -> Void)?
+    var insertionSeconds = 0.0
+    var activeInsertions = 0
+    var maxInsertions = 0
+    var mutations: [String] = []
     var watchdogEntryCount: Int?
     var timeouts = 0
     private var lateNativeMutations: [() -> Void] = []
@@ -34,6 +40,7 @@ import Testing
         try await nativePreparation.run { [self] in
             try Task.checkCancellation()
             guard ticket == preparationGeneration else { throw CancellationError() }
+            mutations.append("prepare:\(entries.first?.item.id ?? "")")
             installed = result.entries.map(\.entry)
             if resetsModesOnAssignment { mode = .off }
             state = AppleMusicPlayerState(item: entries.first { $0.id == selected }?.item, occurrence: result.entries.first { $0.entry.id == selected }?.systemID, status: preparedStatus)
@@ -63,6 +70,7 @@ import Testing
     func append(_ entries: [PlaybackEntry], after current: PlaybackEntry) async throws -> AppleMusicInstallation {
         appends += 1
         let ticket = preparationGeneration
+        try await beforeAppend?()
         let result: AppleMusicInstallation
         if let resolve { result = try await resolve([current] + entries, current.id, { _ in }) }
         else { result = AppleMusicInstallation(entries: entries.map { AppleMusicInstalledEntry(entry: $0, identities: $0.item.musicIdentityIDs, systemID: "created:\($0.id)") }) }
@@ -71,9 +79,16 @@ import Testing
         try await nativePreparation.run { [self] in
             try Task.checkCancellation()
             guard ticket == preparationGeneration else { throw CancellationError() }
+            activeInsertions += 1; maxInsertions = max(maxInsertions, activeInsertions)
+            defer { activeInsertions -= 1 }
+            // Deliberately uncancellable, like the native remote insert API.
+            try await nativeInsertion?()
+            mutations.append("append:\(entries.first?.item.id ?? "")")
             installed.append(contentsOf: added.map(\.entry))
         }
-        return AppleMusicInstallation(entries: added, unavailable: result.unavailable)
+        try Task.checkCancellation()
+        guard ticket == preparationGeneration else { throw CancellationError() }
+        return AppleMusicInstallation(entries: added, unavailable: result.unavailable, insertionSeconds: insertionSeconds)
     }
     func cancelPreparation() {
         preparationGeneration += 1
@@ -126,6 +141,8 @@ import Testing
             catalogCalls.append(ids); return Dictionary(uniqueKeysWithValues: ids.map { ($0,$0) })
         })
         let backend = ReviewMusicBackend(), entered = TestGate(), release = TestGate()
+        let appendRelease = TestGate()
+        backend.beforeAppend = { await appendRelease.wait() }
         backend.resolve = { entries, selected, progress in
             await entered.open(); await release.wait()
             let resolved = try await resolver.context(entries, selected: selected, progress: progress)
@@ -149,6 +166,7 @@ import Testing
         for s in songs { browsing.register(s.id, id: s.id) }
         let entries = songs.map { PlaybackEntry(item: $0) }
         #expect(try await browsing.context(entries, selected: entries[100].id).values.count == 250)
+        player.stop(); await appendRelease.open()
     }
     @Test func rewrittenEntryIDsAndEquivalentSongIDsKeepOwnershipAndChooseNearestDuplicate() async {
         let backend = ReviewMusicBackend(), player = player(backend)

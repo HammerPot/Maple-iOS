@@ -21,6 +21,7 @@ struct AppleMusicInstalledEntry {
 struct AppleMusicInstallation {
     var entries: [AppleMusicInstalledEntry]
     var unavailable: Set<UUID> = []
+    var insertionSeconds = 0.0
 }
 
 /// The framework boundary. Engine and controller tests use the same session logic with a fake here.
@@ -106,24 +107,42 @@ struct AppleMusicInstallation {
     }
     func append(_ context: [PlaybackEntry], after current: PlaybackEntry) async throws -> AppleMusicInstallation {
         let ticket = preparationGeneration
-        // The loaded current item anchors resolution; a missing upcoming item cannot fail it.
-        let resolved = try await resolver.context([current] + context, selected: current.id)
-        let values = try Self.playableTracks(resolved.values, selected: current.id).filter { $0.0.id != current.id }
-        let native = values.map { MusicKit.MusicPlayer.Queue.Entry($0.1) }
-        let installed = zip(values, native).map { value, entry in
-            AppleMusicInstalledEntry(entry: value.0, identities: value.0.item.musicIdentityIDs.union(Self.item(value.1).musicIdentityIDs), systemID: String(describing: entry.id))
-        }
-        try await preparation.run { [self] in
+        do {
+            // The loaded current item anchors resolution; a missing upcoming item cannot fail it.
+            let resolved = try await resolver.context([current] + context, selected: current.id)
+            let values = try Self.playableTracks(resolved.values, selected: current.id).filter { $0.0.id != current.id }
+            let native = values.map { MusicKit.MusicPlayer.Queue.Entry($0.1) }
+            let installed = zip(values, native).map { value, entry in
+                AppleMusicInstalledEntry(entry: value.0, identities: value.0.item.musicIdentityIDs.union(Self.item(value.1).musicIdentityIDs), systemID: String(describing: entry.id))
+            }
+            let elapsed = try await preparation.run { [self] () async throws -> Double in
+                try Task.checkCancellation()
+                guard ticket == preparationGeneration else { throw CancellationError() }
+                guard !native.isEmpty else { return 0 }
+                // Queue assignment uses this same lane, so it cannot replace this target until
+                // the insertion returns. Never re-read player.queue after the asynchronous call.
+                let targetQueue = player.queue
+                let began = Date()
+                AppleMusicDiagnostics.logger.info("append begin generation=\(ticket, privacy: .public) count=\(native.count, privacy: .public)")
+                do {
+                    try await targetQueue.insert(native, position: .tail)
+                    let elapsed = Date().timeIntervalSince(began)
+                    AppleMusicDiagnostics.logger.info("append count=\(native.count, privacy: .public) generation=\(ticket, privacy: .public) elapsed=\(elapsed, privacy: .public) entries=\(AppleMusicDiagnostics.installation(installed), privacy: .public)")
+                    return elapsed
+                } catch {
+                    AppleMusicDiagnostics.logger.info("append failed generation=\(ticket, privacy: .public) elapsed=\(Date().timeIntervalSince(began), privacy: .public) errorDomain=\((error as NSError).domain, privacy: .public) code=\((error as NSError).code, privacy: .public)")
+                    throw error
+                }
+            }
             try Task.checkCancellation()
             guard ticket == preparationGeneration else { throw CancellationError() }
-            guard !native.isEmpty else { return }
-            let began = Date()
-            try await player.queue.insert(native, position: .tail)
-            AppleMusicDiagnostics.logger.info("append count=\(native.count, privacy: .public) elapsed=\(Date().timeIntervalSince(began), privacy: .public) entries=\(AppleMusicDiagnostics.installation(installed), privacy: .public)")
+            return AppleMusicInstallation(entries: installed, unavailable: resolved.unavailable, insertionSeconds: elapsed)
+        } catch {
+            if Task.isCancelled || ticket != preparationGeneration {
+                AppleMusicDiagnostics.logger.info("append skipped generation=\(ticket, privacy: .public) active=\(self.preparationGeneration, privacy: .public) reason=cancelled or replaced")
+            }
+            throw error
         }
-        try Task.checkCancellation()
-        guard ticket == preparationGeneration else { throw CancellationError() }
-        return AppleMusicInstallation(entries: installed, unavailable: resolved.unavailable)
     }
     func cancelPreparation() {
         preparationGeneration += 1

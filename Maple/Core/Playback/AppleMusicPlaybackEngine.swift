@@ -17,6 +17,10 @@ import OSLog
     private var installed: [AppleMusicInstalledEntry] = []
     private var installedRange = 0..<0
     private var extending: Task<Void, Never>?
+    private var eagerPending = true
+    private var lastLazyAttempt: UUID?
+    /// Stop eager work after a slow native call returns; never race an uncancellable insertion.
+    private static let slowInsertionSeconds = 2.0
     private(set) var unavailableEntryIDs: Set<UUID> = []
     var position: Double {
         let state = backend.state
@@ -49,7 +53,8 @@ import OSLog
     func load(_ item: PlaybackItem) async throws {
         guard allowed() else { throw MapleError(status: 0, message: "Enable Apple Music and allow library access in Settings.") }
         generation += 1
-        extending?.cancel(); extending = nil
+        cancelExtension(reason: "new selection")
+        eagerPending = true; lastLazyAttempt = nil
         let ticket = generation
         preparing = true
         defer { if generation == ticket { preparing = false } }
@@ -76,7 +81,7 @@ import OSLog
     func pause() { backend.pause() }
     func stop() {
         generation += 1; preparing = false
-        extending?.cancel(); extending = nil
+        cancelExtension(reason: "stop")
         backend.cancelPreparation()
         guard ownership.ownsQueue else { return }
         AppleMusicDiagnostics.logger.info("stop classification=user stop reason=Maple stop or new selection")
@@ -85,7 +90,7 @@ import OSLog
     func stopExternalPlayback() {
         guard allowed() else { return }
         generation += 1; preparing = false; backend.cancelPreparation()
-        extending?.cancel(); extending = nil
+        cancelExtension(reason: "stop")
         AppleMusicDiagnostics.logger.info("stop classification=user stop reason=explicit external Stop")
         ownership.relinquish(); backend.stop(); lastEntry = nil; lastOccurrence = nil
     }
@@ -96,7 +101,7 @@ import OSLog
     func seek(to seconds: Double) async { backend.seek(to: seconds) }
     func refresh() {
         let state = backend.state
-        guard allowed(), !preparing, extending == nil else {
+        guard allowed(), !preparing else {
             AppleMusicDiagnostics.logger.info("notification status=\(state.reportedStatus ?? String(describing: state.status), privacy: .public) song=\(state.item?.id ?? "nil", privacy: .public) kind=\(AppleMusicDiagnostics.kind(state.item), privacy: .public) entry=\(state.occurrence ?? "nil", privacy: .public) modes=\(state.reportedModes ?? "unknown", privacy: .public) decision=ignored songMatch=not-evaluated entryMatch=not-evaluated allowed=\(self.allowed(), privacy: .public) preparing=\(self.preparing, privacy: .public)")
             if state.status == .stopped {
                 AppleMusicDiagnostics.logger.info("stop classification=unknown reason=notification while disabled or preparing; no automatic advance")
@@ -104,7 +109,13 @@ import OSLog
             return
         }
         let result = ownership.observe(state)
-        if let current = result.entry { configured.select(current); extendIfNeeded(current: current) }
+        if let current = result.entry {
+            configured.select(current)
+            if state.status == .playing { extendIfNeeded(current: current) }
+        } else if !ownership.ownsQueue, extending != nil {
+            cancelExtension(reason: "ownership lost")
+            backend.cancelPreparation()
+        }
         AppleMusicDiagnostics.logger.info("notification status=\(state.reportedStatus ?? String(describing: state.status), privacy: .public) song=\(state.item?.id ?? "nil", privacy: .public) kind=\(AppleMusicDiagnostics.kind(state.item), privacy: .public) entry=\(state.occurrence ?? "nil", privacy: .public) position=\(state.position, privacy: .public) modes=\(state.reportedModes ?? "unknown", privacy: .public) decision=\(result.decision, privacy: .public) songMatch=\(result.songMatched, privacy: .public) entryMatch=\(result.entryMatched, privacy: .public)")
         if state.status == .stopped || result.stopReason.hasPrefix("takeover") {
             AppleMusicDiagnostics.logger.info("stop classification=\(result.ended ? "natural end" : (result.stopReason.hasPrefix("takeover") ? "takeover" : "unknown"), privacy: .public) reason=\(result.stopReason, privacy: .public)")
@@ -120,31 +131,59 @@ import OSLog
         else if result.stopped { onEvent?(.stopped) }
         else { onEvent?(.stateChanged) }
     }
+    private func cancelExtension(reason: String) {
+        if extending != nil {
+            AppleMusicDiagnostics.logger.info("fill skipped generation=\(self.generation, privacy: .public) reason=\(reason, privacy: .public)")
+        }
+        extending?.cancel(); extending = nil
+    }
     private func extendIfNeeded(current: UUID) {
         guard ownership.ownsQueue, extending == nil, installedRange.upperBound < segment.count,
-              let index = installed.firstIndex(where: { $0.entry.id == current }),
-              installed.count - index - 1 <= AppleMusicQueuePolicy.refillThreshold,
-              let anchor = installed.first(where: { $0.entry.id == current })?.entry else { return }
+              let index = installed.firstIndex(where: { $0.entry.id == current }) else { return }
+        let eager = eagerPending
+        guard eager || (installed.count - index - 1 <= AppleMusicQueuePolicy.refillThreshold && lastLazyAttempt != current) else { return }
+        eagerPending = false
+        if !eager { lastLazyAttempt = current }
         let ticket = generation
-        let end = min(segment.count, installedRange.upperBound + AppleMusicQueuePolicy.windowSize)
-        let next = Array(segment[installedRange.upperBound..<end])
         extending = Task { [weak self] in
             guard let self else { return }
-            do {
-                let added = try await self.backend.append(next, after: anchor)
-                guard ticket == self.generation, !Task.isCancelled else { return }
-                self.installed.append(contentsOf: added.entries)
-                self.ownership.append(added.entries)
-                self.unavailableEntryIDs.formUnion(added.unavailable)
-                self.installedRange = self.installedRange.lowerBound..<end
-                self.configureNativeModes()
-                self.extending = nil
-                self.refresh()
-            } catch {
-                guard ticket == self.generation, !Task.isCancelled else { return }
-                self.extending = nil
-                self.onEvent?(.failed(error))
-            }
+            let began = Date()
+            defer { if ticket == self.generation { self.extending = nil } }
+            repeat {
+                guard ticket == self.generation, !Task.isCancelled, self.ownership.ownsQueue,
+                      let anchor = self.installed.first(where: { $0.entry.id == self.configured.currentID })?.entry else {
+                    AppleMusicDiagnostics.logger.info("fill skipped generation=\(ticket, privacy: .public) reason=cancelled or replaced")
+                    return
+                }
+                let end = min(self.segment.count, self.installedRange.upperBound + AppleMusicQueuePolicy.windowSize)
+                let next = Array(self.segment[self.installedRange.upperBound..<end])
+                do {
+                    let added = try await self.backend.append(next, after: anchor)
+                    guard ticket == self.generation, !Task.isCancelled, self.ownership.ownsQueue else {
+                        AppleMusicDiagnostics.logger.info("fill skipped generation=\(ticket, privacy: .public) reason=cancelled or replaced after insertion")
+                        return
+                    }
+                    self.installed.append(contentsOf: added.entries)
+                    self.ownership.append(added.entries)
+                    self.unavailableEntryIDs.formUnion(added.unavailable)
+                    self.installedRange = self.installedRange.lowerBound..<end
+                    self.configureNativeModes()
+                    if eager && added.insertionSeconds > Self.slowInsertionSeconds {
+                        AppleMusicDiagnostics.logger.info("fill fallback generation=\(ticket, privacy: .public) reason=slow insertion seconds=\(added.insertionSeconds, privacy: .public)")
+                        return
+                    }
+                } catch {
+                    guard ticket == self.generation, !Task.isCancelled else {
+                        AppleMusicDiagnostics.logger.info("fill skipped generation=\(ticket, privacy: .public) reason=cancelled or replaced during insertion")
+                        return
+                    }
+                    // Keep playing the installed window. A later track change can retry lazily.
+                    self.lastLazyAttempt = self.configured.currentID
+                    AppleMusicDiagnostics.logger.info("fill fallback generation=\(ticket, privacy: .public) reason=insertion error domain=\((error as NSError).domain, privacy: .public) code=\((error as NSError).code, privacy: .public)")
+                    return
+                }
+            } while eager && self.installedRange.upperBound < self.segment.count
+            AppleMusicDiagnostics.logger.info("fill finished generation=\(ticket, privacy: .public) eager=\(eager, privacy: .public) considered=\(self.installedRange.upperBound, privacy: .public)/\(self.segment.count, privacy: .public) installed=\(self.installed.count, privacy: .public) elapsed=\(Date().timeIntervalSince(began), privacy: .public)")
         }
     }
     func waitForExtension() async { await extending?.value }
