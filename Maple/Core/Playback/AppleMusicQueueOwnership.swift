@@ -33,7 +33,8 @@ struct AppleMusicQueueOwnership {
             state.item.map { !entries[position].identities.isDisjoint(with: $0.musicIdentityIDs) } ?? false
         }
         let matchingID = matches.first { state.occurrence != nil && entries[$0].systemID == state.occurrence }
-        var result = Observation(songMatched: !matches.isEmpty, entryMatched: matchingID != nil)
+        let entryMatched = entries.contains { state.occurrence != nil && $0.systemID == state.occurrence }
+        var result = Observation(songMatched: !matches.isEmpty, entryMatched: entryMatched)
         if state.status == .stopped {
             // A stopped entry/time may already be nil or reset. Only prior playing evidence can
             // authorize automatic playback; identity membership by itself cannot authorize it.
@@ -53,6 +54,7 @@ struct AppleMusicQueueOwnership {
             result.stopReason = "takeover: current song not installed"
             relinquish(); return result
         }
+        if state.status == .paused { lastPlaying = nil }
         let sameSong = matches.contains(index)
         let moved = state.occurrence != nil && state.occurrence != lastSystemID
         // A rewritten ID at the same song/position is not an advance. Exact installed IDs

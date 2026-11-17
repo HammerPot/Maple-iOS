@@ -73,6 +73,8 @@ import Testing
         #expect(backend.state.item == songs[75]); #expect(!player.playingFromMusic)
         player.setRepeat(.all); await player.waitForLoad()
         #expect(backend.mode == .all)
+        await player.start(songs, startingAt: 75)
+        #expect(backend.mode == .all) // fake resets modes at queue assignment
         #expect(backend.installed.first?.item == songs.first)
         backend.change(songs[74], id: "changed-id", status: .playing)
         #expect(player.queue.current?.item == songs[74]); #expect(!player.playingFromMusic)
@@ -82,7 +84,10 @@ import Testing
     }
     @Test func bulkRestoreResolvesAllBeforePlayAndWarmBrowsingNeedsNoLookup() async throws {
         var libraryCalls: [[String]] = [], catalogCalls: [[String]] = []
-        let resolver = AppleMusicTrackResolver<String>(library: { ids in libraryCalls.append(ids); return [:] }, catalog: { ids in
+        let resolver = AppleMusicTrackResolver<String>(library: { ids in
+            libraryCalls.append(ids)
+            return Dictionary(uniqueKeysWithValues: ids.filter { (Int($0.dropFirst(2)) ?? 0) % 2 == 0 }.map { ($0,$0) })
+        }, catalog: { ids in
             catalogCalls.append(ids); return Dictionary(uniqueKeysWithValues: ids.map { ($0,$0) })
         })
         let backend = ReviewMusicBackend(), entered = TestGate(), release = TestGate()
@@ -91,12 +96,17 @@ import Testing
             let resolved = try await resolver.context(entries, selected: selected, progress: progress)
             return AppleMusicInstallation(entries: resolved.values.map { AppleMusicInstalledEntry(entry: $0.0, identities: [$0.1], systemID: nil) }, unavailable: resolved.unavailable)
         }
-        let player = player(backend), songs = (0..<250).map { song(String($0)) }
+        let player = player(backend)
+        let songs = (0..<250).map { number in
+            var item = song("i.\(number)")
+            item.appleMusicIdentity = AppleMusicIdentity(libraryID: item.id, catalogID: String(number))
+            return item
+        }
         let start = Task { await player.start(songs, startingAt: 100) }
         await entered.wait()
         #expect(backend.plays == 0); #expect(player.isLoading)
         await release.open(); await start.value
-        #expect(libraryCalls.map(\.count) == [100,100,50]); #expect(catalogCalls.map(\.count) == [100,100,50])
+        #expect(libraryCalls.map(\.count) == [100,100,50]); #expect(catalogCalls.map(\.count) == [50,50,25])
         #expect(backend.installed.count == 250); #expect(backend.plays == 1); #expect(player.loadingProgress == 1)
         await player.start(songs)
         #expect(libraryCalls.count == 3); #expect(catalogCalls.count == 3)

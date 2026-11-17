@@ -11,6 +11,7 @@ struct AppleMusicPlayerState {
     var position = 0.0
     var rate = 1.0
     var reportedStatus: String? = nil
+    var reportedModes: String? = nil
 }
 struct AppleMusicInstalledEntry {
     var entry: PlaybackEntry
@@ -64,7 +65,8 @@ struct AppleMusicInstallation {
         let time = player.playbackTime, rate = Double(player.state.playbackRate)
         return AppleMusicPlayerState(item: song, occurrence: entry.map { String(describing: $0.id) }, status: status,
                                     position: time.isFinite ? max(0, time) : 0, rate: rate > 0 ? rate : 1,
-                                    reportedStatus: String(describing: player.state.playbackStatus))
+                                    reportedStatus: String(describing: player.state.playbackStatus),
+                                    reportedModes: "repeat=\(String(describing: player.state.repeatMode)) shuffle=\(String(describing: player.state.shuffleMode))")
     }
     func register(_ values: [MusicKit.Track]) { for value in values { resolver.register(value, id: value.id.rawValue) } }
     func prepare(_ context: [PlaybackEntry], selected: UUID, progress: (Double) -> Void) async throws -> AppleMusicInstallation {

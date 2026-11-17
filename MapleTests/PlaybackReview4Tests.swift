@@ -32,7 +32,7 @@ import Testing
         await player.resume(userInitiated: false)
         #expect(backend.prepares == 1); #expect(!player.isPlaying)
     }
-    @Test(arguments: ["early-final", "unknown-duration", "reset-first", "never-played"])
+    @Test(arguments: ["early-final", "unknown-duration", "reset-first", "never-played", "paused-near-end"])
     func uncertainStopsCannotEmitNaturalEnd(_ scenario: String) async throws {
         let backend = ReviewMusicBackend(), engine = AppleMusicPlaybackEngine(backend: backend)
         let a = song("A"), b = song("B", duration: scenario == "unknown-duration" ? 0 : 180)
@@ -41,7 +41,8 @@ import Testing
         var ended = 0, stopped = 0
         engine.onEvent = { event in if case .ended = event { ended += 1 }; if case .stopped = event { stopped += 1 } }
         if scenario != "never-played" {
-            backend.change(b, id: "rewritten", status: .playing, position: scenario == "reset-first" ? 179 : 20)
+            backend.change(b, id: "rewritten", status: .playing, position: (scenario == "reset-first" || scenario == "paused-near-end") ? 179 : 20)
+            if scenario == "paused-near-end" { backend.change(b, id: "paused", status: .paused, position: 179) }
         }
         backend.change(scenario == "reset-first" ? a : b, id: "stop", status: .stopped, position: 180)
         #expect(ended == 0); #expect(stopped == 1)
