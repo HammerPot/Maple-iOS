@@ -47,6 +47,11 @@ final class MapleRealtime: PlaybackTransport {
     @ObservationIgnored var onConnect: (() -> Void)?
     @ObservationIgnored var onDisconnect: (() -> Void)?
     @ObservationIgnored var validateSession: (() async -> SessionValidity)?
+    /// The app's current session cookies. Asked whenever the connection might be stale (a revalidated session, a return
+    /// to the foreground) so it never keeps presenting a cookie the server has replaced.
+    @ObservationIgnored var cookieProvider: (() -> [HTTPCookie])?
+    /// The cookies the live manager handshakes with.
+    @ObservationIgnored private(set) var presentedCookies: [HTTPCookie] = []
     @ObservationIgnored private var manager: SocketManager?
     @ObservationIgnored private(set) var socket: SocketIOClient?
     @ObservationIgnored private var revalidation: Task<Void, Never>?
@@ -56,16 +61,26 @@ final class MapleRealtime: PlaybackTransport {
     @ObservationIgnored private var ackTimeouts: [UUID: Task<Void, Never>] = [:]
     private var generation = 0
     private var checkedSession = false
+    /// Consecutive handshakes the server refused. Reset by a successful connection or an explicit disconnect.
+    private var authFailures = 0
     private let logger = Logger(subsystem: "dev.hammerpot.Maple-iOS", category: "Realtime")
 
     init(openSocket: @escaping (SocketIOClient) -> Void = { $0.connect() },
          retrySleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         self.openSocket = openSocket; self.retrySleep = retrySleep
     }
+    /// Opens the connection with these cookies. A live connection that already presents exactly these is kept; one that
+    /// presents different cookies (the session was replaced, for instance by a password change) is rebuilt, because the
+    /// server rejects the old cookie and the manager cannot be given a new one.
     func connect(cookies: [HTTPCookie]) {
-        guard manager == nil else { return }
+        if manager != nil {
+            guard !cookies.isEmpty, !Self.samePresentation(cookies, presentedCookies) else { return }
+            logger.info("Session cookie changed; rebuilding realtime connection")
+            teardown()
+        }
         guard !cookies.isEmpty else { logger.error("Realtime connection has no session cookie"); return }
         logger.info("Starting authenticated realtime connection")
+        presentedCookies = cookies
         generation += 1
         let manager = SocketManager(socketURL: MapleHTTP.baseURL, config: [
             .cookies(cookies), .extraHeaders(["Origin": MapleHTTP.origin]), .log(false),
@@ -101,8 +116,11 @@ final class MapleRealtime: PlaybackTransport {
                 let message = String(describing: data.first)
                 if message.contains("Invalid session") { self.logger.error("Realtime authentication rejected") }
                 else { self.logger.error("Realtime connection failed") }
-                // A rejected authentication handshake stops reconnecting. Check the session once per connection attempt.
+                // A rejected authentication handshake stops reconnecting. Check the session, and if it is still valid
+                // connect again with the current cookies (see `revalidate`).
                 if message.contains("Authentication error") {
+                    // A refusal after the session checked out is new information: check again (after a pause).
+                    self.authFailures += 1; self.checkedSession = false
                     // The SDK leaves namespace handshake failures in `.connecting`; end that failed attempt first.
                     socket?.disconnect()
                     self.revalidate(socket: socket)
@@ -120,7 +138,7 @@ final class MapleRealtime: PlaybackTransport {
         openSocket(socket)
     }
     func socketDidConnect() {
-        isConnected = true; checkedSession = false; revalidation?.cancel(); revalidation = nil
+        isConnected = true; checkedSession = false; authFailures = 0; revalidation?.cancel(); revalidation = nil
         onConnect?()
     }
     func socketDidLose() {
@@ -128,19 +146,26 @@ final class MapleRealtime: PlaybackTransport {
         for id in Array(pendingAcks.keys) { finishAck(id, reply: nil) }
         onDisconnect?()
     }
+    /// How long to wait before asking the server again after a valid session was still refused at the handshake.
+    /// The first refusal is checked at once; repeats back off to a minute, and never stop while the session is valid.
+    private var authRetryDelay: Duration? {
+        authFailures > 1 ? .seconds(min(60, 5 << min(authFailures - 2, 4))) : nil
+    }
     private func revalidate(socket: SocketIOClient?) {
         guard !checkedSession, revalidation == nil, let socket, socket.status != .connected,
               socket.status != .connecting else { return }
         let version = generation
         let sleep = retrySleep
+        let initialDelay = authRetryDelay
         revalidation = Task { [weak self, weak socket] in
+            if let initialDelay { do { try await sleep(initialDelay) } catch { return } }
             while !Task.isCancelled {
                 let result = await self?.validateSession?() ?? .invalid
                 guard !Task.isCancelled, let self, self.generation == version, self.socket === socket else { return }
                 switch result {
                 case .valid:
                     self.checkedSession = true; self.revalidation = nil
-                    if let socket, socket.status == .notConnected || socket.status == .disconnected { self.openSocket(socket) }
+                    self.reconnectValidSession(socket)
                     return
                 case .invalid:
                     self.checkedSession = true; self.revalidation = nil; return
@@ -150,16 +175,36 @@ final class MapleRealtime: PlaybackTransport {
             }
         }
     }
+    /// The session is still valid, so the connection must come back: with the current cookies if they changed,
+    /// otherwise by reopening the same socket.
+    private func reconnectValidSession(_ socket: SocketIOClient?) {
+        if let current = cookieProvider?(), !current.isEmpty, !Self.samePresentation(current, presentedCookies) {
+            connect(cookies: current)
+        } else if let socket, socket.status == .notConnected || socket.status == .disconnected {
+            openSocket(socket)
+        }
+    }
     func sceneBecameActive() {
+        // A cookie replaced while the app was away (or while a stale socket was still up) must not stay presented.
+        if manager != nil, let current = cookieProvider?(), !current.isEmpty { connect(cookies: current) }
         guard !connected else { return }
-        checkedSession = false
+        checkedSession = false; authFailures = 0
+        revalidation?.cancel(); revalidation = nil
         revalidate(socket: socket)
     }
+    private static func samePresentation(_ lhs: [HTTPCookie], _ rhs: [HTTPCookie]) -> Bool {
+        func key(_ cookies: [HTTPCookie]) -> [String] { cookies.map { $0.name + "\u{0}" + $0.value }.sorted() }
+        return key(lhs) == key(rhs)
+    }
     func disconnect() {
+        authFailures = 0
+        teardown()
+    }
+    private func teardown() {
         generation += 1
         revalidation?.cancel(); revalidation = nil
         socket?.removeAllHandlers(); socket?.disconnect(); manager?.disconnect()
-        socket = nil; manager = nil; isConnected = false; checkedSession = false
+        socket = nil; manager = nil; isConnected = false; checkedSession = false; presentedCookies = []
         for id in Array(pendingAcks.keys) { finishAck(id, reply: nil) }
         lastRPCUpdate = nil
         onDisconnect?()
