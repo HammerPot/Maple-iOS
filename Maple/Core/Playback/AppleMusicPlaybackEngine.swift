@@ -2,7 +2,7 @@ import Foundation
 import MusicKit
 import OSLog
 
-/// Installs a complete segment before Play; Music.app needs no further Maple work to continue it.
+/// Bounds native preparation; extends the native tail without preparing or restarting audio.
 @MainActor final class AppleMusicPlaybackEngine: PlaybackEngine {
     var onEvent: ((PlaybackEngineEvent) -> Void)?
     private let backend: any AppleMusicBackend
@@ -13,6 +13,10 @@ import OSLog
     private var generation = 0
     private var lastEntry: UUID?
     private var lastOccurrence: String?
+    private var segment: [PlaybackEntry] = []
+    private var installed: [AppleMusicInstalledEntry] = []
+    private var installedRange = 0..<0
+    private var extending: Task<Void, Never>?
     private(set) var unavailableEntryIDs: Set<UUID> = []
     var position: Double {
         let state = backend.state
@@ -35,22 +39,32 @@ import OSLog
     func register(_ values: [MusicKit.Track]) { (backend as? SystemMusicBackend)?.register(values) }
     func configure(_ queue: PlaybackQueue) async throws {
         configured = queue
-        backend.configure(repeatMode: AppleMusicQueuePolicy.mapleRepeatMode(for: queue))
+        configureNativeModes()
+    }
+    private func configureNativeModes() {
+        let mode = AppleMusicQueuePolicy.mapleRepeatMode(for: configured)
+        let complete = installedRange.lowerBound == 0 && installedRange.upperBound == segment.count
+        backend.configure(repeatMode: mode == .all && !complete ? .off : mode)
     }
     func load(_ item: PlaybackItem) async throws {
         guard allowed() else { throw MapleError(status: 0, message: "Enable Apple Music and allow library access in Settings.") }
+        generation += 1
+        extending?.cancel(); extending = nil
         let ticket = generation
         preparing = true
         defer { if generation == ticket { preparing = false } }
         unavailableEntryIDs = []
         let context = AppleMusicQueuePolicy.context(for: configured, fallback: item)
         guard let selected = configured.currentID ?? context.first?.id else { throw CancellationError() }
-        let installed = try await backend.prepare(context, selected: selected, progress: { [weak self] in self?.onEvent?(.loadingProgress($0)) })
+        segment = context
+        installedRange = AppleMusicQueuePolicy.window(in: context, selected: selected)
+        let result = try await backend.prepare(Array(context[installedRange]), selected: selected, progress: { [weak self] in self?.onEvent?(.loadingProgress($0)) })
         try Task.checkCancellation()
         guard generation == ticket else { throw CancellationError() }
-        backend.configure(repeatMode: AppleMusicQueuePolicy.mapleRepeatMode(for: configured))
-        unavailableEntryIDs = installed.unavailable
-        ownership.install(installed.entries, selected: selected, observedID: backend.state.occurrence)
+        installed = result.entries
+        configureNativeModes()
+        unavailableEntryIDs = result.unavailable
+        ownership.install(result.entries, selected: selected, observedID: backend.state.occurrence)
         lastEntry = selected; lastOccurrence = backend.state.occurrence
     }
     func externalPlayback() -> ExternalPlaybackState? {
@@ -62,6 +76,7 @@ import OSLog
     func pause() { backend.pause() }
     func stop() {
         generation += 1; preparing = false
+        extending?.cancel(); extending = nil
         backend.cancelPreparation()
         guard ownership.ownsQueue else { return }
         AppleMusicDiagnostics.logger.info("stop classification=user stop reason=Maple stop or new selection")
@@ -70,6 +85,7 @@ import OSLog
     func stopExternalPlayback() {
         guard allowed() else { return }
         generation += 1; preparing = false; backend.cancelPreparation()
+        extending?.cancel(); extending = nil
         AppleMusicDiagnostics.logger.info("stop classification=user stop reason=explicit external Stop")
         ownership.relinquish(); backend.stop(); lastEntry = nil; lastOccurrence = nil
     }
@@ -80,7 +96,7 @@ import OSLog
     func seek(to seconds: Double) async { backend.seek(to: seconds) }
     func refresh() {
         let state = backend.state
-        guard allowed(), !preparing else {
+        guard allowed(), !preparing, extending == nil else {
             AppleMusicDiagnostics.logger.info("notification status=\(state.reportedStatus ?? String(describing: state.status), privacy: .public) song=\(state.item?.id ?? "nil", privacy: .public) kind=\(AppleMusicDiagnostics.kind(state.item), privacy: .public) entry=\(state.occurrence ?? "nil", privacy: .public) modes=\(state.reportedModes ?? "unknown", privacy: .public) decision=ignored songMatch=not-evaluated entryMatch=not-evaluated allowed=\(self.allowed(), privacy: .public) preparing=\(self.preparing, privacy: .public)")
             if state.status == .stopped {
                 AppleMusicDiagnostics.logger.info("stop classification=unknown reason=notification while disabled or preparing; no automatic advance")
@@ -88,6 +104,7 @@ import OSLog
             return
         }
         let result = ownership.observe(state)
+        if let current = result.entry { configured.select(current); extendIfNeeded(current: current) }
         AppleMusicDiagnostics.logger.info("notification status=\(state.reportedStatus ?? String(describing: state.status), privacy: .public) song=\(state.item?.id ?? "nil", privacy: .public) kind=\(AppleMusicDiagnostics.kind(state.item), privacy: .public) entry=\(state.occurrence ?? "nil", privacy: .public) position=\(state.position, privacy: .public) modes=\(state.reportedModes ?? "unknown", privacy: .public) decision=\(result.decision, privacy: .public) songMatch=\(result.songMatched, privacy: .public) entryMatch=\(result.entryMatched, privacy: .public)")
         if state.status == .stopped || result.stopReason.hasPrefix("takeover") {
             AppleMusicDiagnostics.logger.info("stop classification=\(result.ended ? "natural end" : (result.stopReason.hasPrefix("takeover") ? "takeover" : "unknown"), privacy: .public) reason=\(result.stopReason, privacy: .public)")
@@ -103,6 +120,34 @@ import OSLog
         else if result.stopped { onEvent?(.stopped) }
         else { onEvent?(.stateChanged) }
     }
+    private func extendIfNeeded(current: UUID) {
+        guard ownership.ownsQueue, extending == nil, installedRange.upperBound < segment.count,
+              let index = installed.firstIndex(where: { $0.entry.id == current }),
+              installed.count - index - 1 <= AppleMusicQueuePolicy.refillThreshold,
+              let anchor = installed.first(where: { $0.entry.id == current })?.entry else { return }
+        let ticket = generation
+        let end = min(segment.count, installedRange.upperBound + AppleMusicQueuePolicy.windowSize)
+        let next = Array(segment[installedRange.upperBound..<end])
+        extending = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let added = try await self.backend.append(next, after: anchor)
+                guard ticket == self.generation, !Task.isCancelled else { return }
+                self.installed.append(contentsOf: added.entries)
+                self.ownership.append(added.entries)
+                self.unavailableEntryIDs.formUnion(added.unavailable)
+                self.installedRange = self.installedRange.lowerBound..<end
+                self.configureNativeModes()
+                self.extending = nil
+                self.refresh()
+            } catch {
+                guard ticket == self.generation, !Task.isCancelled else { return }
+                self.extending = nil
+                self.onEvent?(.failed(error))
+            }
+        }
+    }
+    func waitForExtension() async { await extending?.value }
     func logBoundary(_ boundary: String) {
         let state = backend.state
         AppleMusicDiagnostics.logger.info("boundary=\(boundary, privacy: .public) status=\(state.reportedStatus ?? String(describing: state.status), privacy: .public) song=\(state.item?.id ?? "nil", privacy: .public) kind=\(AppleMusicDiagnostics.kind(state.item), privacy: .public) entry=\(state.occurrence ?? "nil", privacy: .public) position=\(state.position, privacy: .public) modes=\(state.reportedModes ?? "unknown", privacy: .public)")

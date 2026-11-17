@@ -28,6 +28,7 @@ struct AppleMusicInstallation {
     var onChange: (() -> Void)? { get set }
     var state: AppleMusicPlayerState { get }
     func prepare(_ entries: [PlaybackEntry], selected: UUID, progress: (Double) -> Void) async throws -> AppleMusicInstallation
+    func append(_ entries: [PlaybackEntry], after current: PlaybackEntry) async throws -> AppleMusicInstallation
     func cancelPreparation()
     func configure(repeatMode: PlaybackRepeat)
     func play() async throws
@@ -90,7 +91,35 @@ struct AppleMusicInstallation {
             guard ticket == preparationGeneration else { throw CancellationError() }
             AppleMusicDiagnostics.logger.info("install count=\(installed.count, privacy: .public) entries=\(AppleMusicDiagnostics.installation(installed), privacy: .public)")
             player.queue = SystemMusicPlayer.Queue(entries, startingAt: start)
-            try await player.prepareToPlay()
+            let began = Date()
+            do {
+                try await player.prepareToPlay()
+                AppleMusicDiagnostics.logger.info("prepare count=\(entries.count, privacy: .public) elapsed=\(Date().timeIntervalSince(began), privacy: .public) result=success")
+            } catch {
+                AppleMusicDiagnostics.logger.info("prepare count=\(entries.count, privacy: .public) elapsed=\(Date().timeIntervalSince(began), privacy: .public) errorDomain=\((error as NSError).domain, privacy: .public) code=\((error as NSError).code, privacy: .public)")
+                throw error
+            }
+        }
+        try Task.checkCancellation()
+        guard ticket == preparationGeneration else { throw CancellationError() }
+        return AppleMusicInstallation(entries: installed, unavailable: resolved.unavailable)
+    }
+    func append(_ context: [PlaybackEntry], after current: PlaybackEntry) async throws -> AppleMusicInstallation {
+        let ticket = preparationGeneration
+        // The loaded current item anchors resolution; a missing upcoming item cannot fail it.
+        let resolved = try await resolver.context([current] + context, selected: current.id)
+        let values = try Self.playableTracks(resolved.values, selected: current.id).filter { $0.0.id != current.id }
+        let native = values.map { MusicKit.MusicPlayer.Queue.Entry($0.1) }
+        let installed = zip(values, native).map { value, entry in
+            AppleMusicInstalledEntry(entry: value.0, identities: value.0.item.musicIdentityIDs.union(Self.item(value.1).musicIdentityIDs), systemID: String(describing: entry.id))
+        }
+        try await preparation.run { [self] in
+            try Task.checkCancellation()
+            guard ticket == preparationGeneration else { throw CancellationError() }
+            guard !native.isEmpty else { return }
+            let began = Date()
+            try await player.queue.insert(native, position: .tail)
+            AppleMusicDiagnostics.logger.info("append count=\(native.count, privacy: .public) elapsed=\(Date().timeIntervalSince(began), privacy: .public) entries=\(AppleMusicDiagnostics.installation(installed), privacy: .public)")
         }
         try Task.checkCancellation()
         guard ticket == preparationGeneration else { throw CancellationError() }

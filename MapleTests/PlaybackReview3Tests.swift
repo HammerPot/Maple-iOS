@@ -9,6 +9,10 @@ import Testing
     var prepares = 0
     var plays = 0
     var stops = 0
+    var appends = 0
+    var watchdogEntryCount: Int?
+    var timeouts = 0
+    private var lateNativeMutations: [() -> Void] = []
     var mode = PlaybackRepeat.off
     var preparationGeneration = 0
     let nativePreparation = AppleMusicPreparation()
@@ -35,11 +39,41 @@ import Testing
             state = AppleMusicPlayerState(item: entries.first { $0.id == selected }?.item, occurrence: result.entries.first { $0.entry.id == selected }?.systemID, status: preparedStatus)
             if let item = state.item, let systemItem { state.item = systemItem(item) }
             if let systemEntryID { state.occurrence = systemEntryID(state.occurrence) }
+            if let watchdogEntryCount, entries.count == watchdogEntryCount {
+                timeouts += 1
+                let abandoned = state
+                // Real device: the remote service mutates again AFTER the API throws,
+                // even when the next prepare call waited for the first to return.
+                lateNativeMutations.append { [weak self] in
+                    self?.state = AppleMusicPlayerState(status: .stopped); self?.onChange?()
+                    self?.state = abandoned; self?.onChange?()
+                }
+                throw URLError(.timedOut)
+            }
             try await afterAssignment?()
         }
         try Task.checkCancellation()
         guard ticket == preparationGeneration else { throw CancellationError() }
         return result
+    }
+    func deliverLateNativeMutations() {
+        let pending = lateNativeMutations; lateNativeMutations.removeAll()
+        pending.forEach { $0() }
+    }
+    func append(_ entries: [PlaybackEntry], after current: PlaybackEntry) async throws -> AppleMusicInstallation {
+        appends += 1
+        let ticket = preparationGeneration
+        let result: AppleMusicInstallation
+        if let resolve { result = try await resolve([current] + entries, current.id, { _ in }) }
+        else { result = AppleMusicInstallation(entries: entries.map { AppleMusicInstalledEntry(entry: $0, identities: $0.item.musicIdentityIDs, systemID: "created:\($0.id)") }) }
+        try Task.checkCancellation()
+        let added = result.entries.filter { $0.entry.id != current.id }
+        try await nativePreparation.run { [self] in
+            try Task.checkCancellation()
+            guard ticket == preparationGeneration else { throw CancellationError() }
+            installed.append(contentsOf: added.map(\.entry))
+        }
+        return AppleMusicInstallation(entries: added, unavailable: result.unavailable)
     }
     func cancelPreparation() {
         preparationGeneration += 1
@@ -65,25 +99,25 @@ import Testing
     private func player(_ backend: ReviewMusicBackend, local: (any PlaybackEngine)? = nil) -> PlaybackController {
         PlaybackController(local: local ?? PlaybackFakeEngine(), apple: AppleMusicPlaybackEngine(backend: backend), reporter: PlaybackFakeReporter(), automaticSampling: false)
     }
-    @Test func wholeSegmentIsReadyBeforePlayAndMidAlbumRepeatKeepsPreviousSongs() async {
+    @Test func smallSegmentIsReadyBeforePlayAndMidAlbumRepeatKeepsPreviousSongs() async {
         let backend = ReviewMusicBackend(), player = player(backend)
         backend.resetsModesOnAssignment = true
-        let songs = (0..<200).map { song(String($0)) }
-        await player.start(songs, startingAt: 75)
+        let songs = (0..<40).map { song(String($0)) }
+        await player.start(songs, startingAt: 5)
         #expect(backend.plays == 1); #expect(backend.installed.map(\.item.id) == songs.map(\.id))
-        #expect(backend.state.item == songs[75]); #expect(!player.playingFromMusic)
+        #expect(backend.state.item == songs[5]); #expect(!player.playingFromMusic)
         player.setRepeat(.all); await player.waitForLoad()
         #expect(backend.mode == .all)
-        await player.start(songs, startingAt: 75)
+        await player.start(songs, startingAt: 5)
         #expect(backend.mode == .all) // fake resets modes at queue assignment
         #expect(backend.installed.first?.item == songs.first)
-        backend.change(songs[74], id: "changed-id", status: .playing)
-        #expect(player.queue.current?.item == songs[74]); #expect(!player.playingFromMusic)
+        backend.change(songs[4], id: "changed-id", status: .playing)
+        #expect(player.queue.current?.item == songs[4]); #expect(!player.playingFromMusic)
         let local = song("Local", source: .local)
         await player.start([songs[0], songs[1], local]); player.setRepeat(.all); await player.waitForLoad()
         #expect(backend.mode == .off)
     }
-    @Test func bulkRestoreResolvesAllBeforePlayAndWarmBrowsingNeedsNoLookup() async throws {
+    @Test func restoreResolvesOnlyTheWindowBeforePlayAndWarmBrowsingNeedsNoLookup() async throws {
         var libraryCalls: [[String]] = [], catalogCalls: [[String]] = []
         let resolver = AppleMusicTrackResolver<String>(library: { ids in
             libraryCalls.append(ids)
@@ -107,10 +141,10 @@ import Testing
         await entered.wait()
         #expect(backend.plays == 0); #expect(player.isLoading)
         await release.open(); await start.value
-        #expect(libraryCalls.map(\.count) == [100,100,50]); #expect(catalogCalls.map(\.count) == [50,50,25])
-        #expect(backend.installed.count == 250); #expect(backend.plays == 1); #expect(player.loadingProgress == 1)
-        await player.start(songs)
-        #expect(libraryCalls.count == 3); #expect(catalogCalls.count == 3)
+        #expect(libraryCalls.map(\.count) == [50]); #expect(catalogCalls.map(\.count) == [25])
+        #expect(backend.installed.count == 50); #expect(backend.plays == 1); #expect(player.loadingProgress == 1)
+        await player.start(songs, startingAt: 100)
+        #expect(libraryCalls.count == 1); #expect(catalogCalls.count == 1)
         let browsing = AppleMusicTrackResolver<String>(library: { _ in Issue.record("Warm browsing looked up library"); return [:] }, catalog: { _ in Issue.record("Warm browsing looked up catalog"); return [:] })
         for s in songs { browsing.register(s.id, id: s.id) }
         let entries = songs.map { PlaybackEntry(item: $0) }

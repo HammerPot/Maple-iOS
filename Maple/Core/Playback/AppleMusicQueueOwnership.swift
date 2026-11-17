@@ -16,6 +16,7 @@ struct AppleMusicQueueOwnership {
     private var lastSystemID: String?
     private var lastPlaying: (index: Int, position: Double, duration: Double)?
     var ownsQueue: Bool { !entries.isEmpty }
+    mutating func append(_ values: [AppleMusicInstalledEntry]) { entries.append(contentsOf: values) }
     mutating func install(_ entries: [AppleMusicInstalledEntry], selected: UUID, observedID: String?) {
         self.entries = entries; index = entries.firstIndex { $0.entry.id == selected } ?? 0
         lastSystemID = observedID; lastPlaying = nil
