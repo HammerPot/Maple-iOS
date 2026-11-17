@@ -4,6 +4,27 @@ import Testing
 @testable import Maple
 
 @MainActor struct PlaybackDeviceTests {
+    @Test func cancelledNativePreparationDrainsAndCancelledWaitingInstallIsSkipped() async throws {
+        let lane = AppleMusicPreparation(), entered = TestGate(), release = TestGate()
+        var calls: [String] = []
+        let old = Task {
+            try await lane.run {
+                calls.append("old assigned")
+                await entered.open(); await release.wait() // native call ignores cancellation
+                calls.append("old finished")
+            }
+        }
+        await entered.wait(); old.cancel()
+        let abandoned = Task { try await lane.run { calls.append("abandoned assigned") } }
+        abandoned.cancel()
+        let next = Task { try await lane.run { calls.append("new assigned") } }
+        await release.open()
+        _ = try? await old.value
+        do { try await abandoned.value; Issue.record("Cancelled waiting install executed") }
+        catch { #expect(error is CancellationError) }
+        try await next.value
+        #expect(calls == ["old assigned", "old finished", "new assigned"])
+    }
     @Test func missingPlaybackParametersNeverReachTheSystemQueueOrPruneMapleEntries() throws {
         let playable = try JSONDecoder().decode(MusicKit.Song.self, from: Data(#"{"id":"i.available","type":"library-songs","attributes":{"name":"Available","artistName":"Artist","playParams":{"id":"i.available","kind":"song","isLibrary":true}}}"#.utf8))
         let unplayable = try JSONDecoder().decode(MusicKit.Song.self, from: Data(#"{"id":"i.unavailable","type":"library-songs","attributes":{"name":"Unavailable","artistName":"Artist"}}"#.utf8))

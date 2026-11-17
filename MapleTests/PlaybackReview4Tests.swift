@@ -115,25 +115,33 @@ import Testing
         #expect(!socket.events.contains { $0.0 == "playbackStart" && $0.1.title == "Abandoned" })
         player.stop(); await player.waitForReports()
     }
-    @Test func cancelledPrepareAfterAssignmentCannotStopANewerInstallOrClaimOldSong() async {
-        let backend = ReviewMusicBackend(), entered = TestGate(), release = TestGate()
+    @Test func nativePreparationDrainsBeforeNewAssignmentWithoutAbandonedClaim() async {
+        let backend = ReviewMusicBackend(), entered = TestGate(), release = TestGate(), nextResolved = TestGate()
         backend.afterAssignment = { await entered.open(); await release.wait() }
-        let player = controller(backend)
+        let socket = FakePlaybackTransport(), reporter = PlaybackReporter(transport: socket, automaticHeartbeat: false)
+        let player = PlaybackController(local: PlaybackFakeEngine(), apple: AppleMusicPlaybackEngine(backend: backend), reporter: reporter, automaticSampling: false)
         let old = Task { await player.start([song("A")]) }
         await entered.wait(); backend.afterAssignment = nil
-        await player.start([song("B")])
-        #expect(backend.installed.map(\.item.id) == ["B"]); #expect(player.isPlaying)
-        let stops = backend.stops
-        await release.open(); await old.value
-        #expect(backend.state.item?.id == "B"); #expect(backend.stops == stops)
-        #expect(backend.plays == 1); #expect(player.currentItem?.id == "B")
+        backend.resolve = { entries, _, _ in
+            await nextResolved.open()
+            return AppleMusicInstallation(entries: entries.map { AppleMusicInstalledEntry(entry: $0, identities: $0.item.musicIdentityIDs) })
+        }
+        let next = Task { await player.start([song("B")]) }
+        await nextResolved.wait()
+        #expect(backend.installed.map(\.item.id) == ["A"])
+        #expect(backend.stops == 0); #expect(backend.plays == 0)
+        await release.open(); await old.value; await next.value; await player.waitForReports()
+        #expect(backend.installed.map(\.item.id) == ["B"])
+        #expect(backend.plays == 1); #expect(player.isPlaying); #expect(!player.playingFromMusic)
+        #expect(socket.events.filter { $0.0 == "playbackStart" }.map { $0.1.title } == ["B"])
+        player.stop(); await player.waitForReports()
     }
-    @Test func failureAfterQueueAssignmentStopsItAndNeverClaims() async {
+    @Test func failureAfterQueueAssignmentNeverStartsOrStopsAnotherQueue() async {
         let backend = ReviewMusicBackend(); backend.afterAssignment = { throw URLError(.timedOut) }
         let socket = FakePlaybackTransport(), reporter = PlaybackReporter(transport: socket, automaticHeartbeat: false)
         let player = PlaybackController(local: PlaybackFakeEngine(), apple: AppleMusicPlaybackEngine(backend: backend), reporter: reporter, automaticSampling: false)
         await player.start([song("A")]); await player.waitForReports()
-        #expect(backend.stops == 1); #expect(backend.state.status == .stopped)
+        #expect(backend.stops == 0); #expect(backend.state.status == .paused)
         #expect(backend.plays == 0); #expect(!player.isPlaying)
         #expect(!socket.events.contains { $0.0 == "playbackStart" })
     }

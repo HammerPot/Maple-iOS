@@ -11,7 +11,7 @@ import Testing
     var stops = 0
     var mode = PlaybackRepeat.off
     var preparationGeneration = 0
-    var preparingInstalledQueue = false
+    let nativePreparation = AppleMusicPreparation()
     var afterAssignment: (() async throws -> Void)?
     var resetsModesOnAssignment = false
     var preparedStatus = AppleMusicPlayerState.Status.paused
@@ -22,31 +22,27 @@ import Testing
     func prepare(_ entries: [PlaybackEntry], selected: UUID, progress: (Double) -> Void) async throws -> AppleMusicInstallation {
         prepares += 1; preparationGeneration += 1
         let ticket = preparationGeneration
-        defer { if ticket == preparationGeneration { preparingInstalledQueue = false } }
         let result: AppleMusicInstallation
         if let resolve { result = try await resolve(entries, selected, progress) }
         else { result = AppleMusicInstallation(entries: entries.map { AppleMusicInstalledEntry(entry: $0, identities: $0.item.musicIdentityIDs, systemID: "created:\($0.id)") }) }
         try Task.checkCancellation()
         guard ticket == preparationGeneration else { throw CancellationError() }
-        installed = result.entries.map(\.entry)
-        if resetsModesOnAssignment { mode = .off }
-        state = AppleMusicPlayerState(item: entries.first { $0.id == selected }?.item, occurrence: result.entries.first { $0.entry.id == selected }?.systemID, status: preparedStatus)
-        if let item = state.item, let systemItem { state.item = systemItem(item) }
-        if let systemEntryID { state.occurrence = systemEntryID(state.occurrence) }
-        preparingInstalledQueue = true
-        do {
-            try await afterAssignment?()
+        try await nativePreparation.run { [self] in
             try Task.checkCancellation()
             guard ticket == preparationGeneration else { throw CancellationError() }
-        } catch {
-            if ticket == preparationGeneration { stop() }
-            throw error
+            installed = result.entries.map(\.entry)
+            if resetsModesOnAssignment { mode = .off }
+            state = AppleMusicPlayerState(item: entries.first { $0.id == selected }?.item, occurrence: result.entries.first { $0.entry.id == selected }?.systemID, status: preparedStatus)
+            if let item = state.item, let systemItem { state.item = systemItem(item) }
+            if let systemEntryID { state.occurrence = systemEntryID(state.occurrence) }
+            try await afterAssignment?()
         }
+        try Task.checkCancellation()
+        guard ticket == preparationGeneration else { throw CancellationError() }
         return result
     }
     func cancelPreparation() {
         preparationGeneration += 1
-        if preparingInstalledQueue { stop(); preparingInstalledQueue = false }
     }
     func configure(repeatMode: PlaybackRepeat) { mode = repeatMode }
     func play() async throws { plays += 1; state.status = .playing; onChange?() }

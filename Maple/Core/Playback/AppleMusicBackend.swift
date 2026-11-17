@@ -41,7 +41,7 @@ struct AppleMusicInstallation {
     var onChange: (() -> Void)?
     private let player = SystemMusicPlayer.shared
     private var preparationGeneration = 0
-    private var preparingInstalledQueue = false
+    private let preparation = AppleMusicPreparation()
     private var observations: Set<AnyCancellable> = []
     private let resolver = AppleMusicTrackResolver<MusicKit.Track>(library: { (ids: [String]) async throws -> [String: MusicKit.Track] in
         var request = MusicLibraryRequest<MusicKit.Song>()
@@ -72,7 +72,6 @@ struct AppleMusicInstallation {
     func prepare(_ context: [PlaybackEntry], selected: UUID, progress: (Double) -> Void) async throws -> AppleMusicInstallation {
         preparationGeneration += 1
         let ticket = preparationGeneration
-        defer { if ticket == preparationGeneration { preparingInstalledQueue = false } }
         let resolved = try await resolver.context(context, selected: selected, progress: progress)
         var entries: [MusicKit.MusicPlayer.Queue.Entry] = [], installed: [AppleMusicInstalledEntry] = []
         var start: MusicKit.MusicPlayer.Queue.Entry?
@@ -86,28 +85,20 @@ struct AppleMusicInstallation {
         guard let start else { throw AppleMusicResolutionError.notFound }
         try Task.checkCancellation()
         guard ticket == preparationGeneration else { throw CancellationError() }
-        AppleMusicDiagnostics.logger.info("install count=\(installed.count, privacy: .public) entries=\(AppleMusicDiagnostics.installation(installed), privacy: .public)")
-        player.queue = SystemMusicPlayer.Queue(entries, startingAt: start)
-        preparingInstalledQueue = true
-        do {
-            try await player.prepareToPlay()
+        try await preparation.run { [self, entries, start, installed] in
             try Task.checkCancellation()
             guard ticket == preparationGeneration else { throw CancellationError() }
-        } catch {
-            if ticket == preparationGeneration {
-                AppleMusicDiagnostics.logger.info("stop classification=unknown reason=prepare failed or cancelled after assignment")
-                player.stop()
-            }
-            throw error
+            AppleMusicDiagnostics.logger.info("install count=\(installed.count, privacy: .public) entries=\(AppleMusicDiagnostics.installation(installed), privacy: .public)")
+            player.queue = SystemMusicPlayer.Queue(entries, startingAt: start)
+            try await player.prepareToPlay()
         }
+        try Task.checkCancellation()
+        guard ticket == preparationGeneration else { throw CancellationError() }
         return AppleMusicInstallation(entries: installed, unavailable: resolved.unavailable)
     }
     func cancelPreparation() {
         preparationGeneration += 1
-        if preparingInstalledQueue {
-            AppleMusicDiagnostics.logger.info("stop classification=user stop reason=cancel superseded preparation after assignment")
-            player.stop(); preparingInstalledQueue = false
-        }
+        // Preparation never starts audio. Do not send a late native stop into the next install.
     }
     func configure(repeatMode: PlaybackRepeat) {
         player.state.shuffleMode = .off
