@@ -15,6 +15,9 @@ import Testing
     var afterAssignment: (() async throws -> Void)?
     var resetsModesOnAssignment = false
     var preparedStatus = AppleMusicPlayerState.Status.paused
+    // Hardware may expose the catalog equivalent and a rewritten ID, already during prepare.
+    var systemItem: ((PlaybackItem) -> PlaybackItem)?
+    var systemEntryID: ((String?) -> String?)?
     var resolve: (([PlaybackEntry], UUID, (Double) -> Void) async throws -> AppleMusicInstallation)?
     func prepare(_ entries: [PlaybackEntry], selected: UUID, progress: (Double) -> Void) async throws -> AppleMusicInstallation {
         prepares += 1; preparationGeneration += 1
@@ -28,6 +31,8 @@ import Testing
         installed = result.entries.map(\.entry)
         if resetsModesOnAssignment { mode = .off }
         state = AppleMusicPlayerState(item: entries.first { $0.id == selected }?.item, occurrence: result.entries.first { $0.entry.id == selected }?.systemID, status: preparedStatus)
+        if let item = state.item, let systemItem { state.item = systemItem(item) }
+        if let systemEntryID { state.occurrence = systemEntryID(state.occurrence) }
         preparingInstalledQueue = true
         do {
             try await afterAssignment?()

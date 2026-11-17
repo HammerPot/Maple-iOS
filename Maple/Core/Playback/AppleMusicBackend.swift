@@ -124,9 +124,24 @@ struct AppleMusicInstallation {
         var item = PlaybackItem(source: .appleMusic, id: track.id.rawValue, title: track.title,
             artist: track.artistName, album: track.albumTitle ?? "", duration: track.duration ?? 0,
             artworkURL: track.artwork?.url(width: 800, height: 800))
-        let catalogID = track.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems?.first(where: { $0.name == "i" })?.value
+        let parameters = track.playParameters.flatMap { try? JSONEncoder().encode($0) }
+        let catalogID = AppleMusicIdentity.catalogID(url: track.url, playParameters: parameters)
         if UInt64(item.id) != nil { item.appleMusicIdentity = AppleMusicIdentity(catalogID: item.id) }
         else if item.id.hasPrefix("i.") { item.appleMusicIdentity = AppleMusicIdentity(libraryID: item.id, catalogID: catalogID) }
         return item
+    }
+}
+
+extension AppleMusicIdentity {
+    /// Library URLs may be absent. The Codable playback payload carries the catalog equivalent
+    /// used by SystemMusicPlayer, whose current Song and Entry IDs are rewritten on hardware.
+    static func catalogID(url: URL?, playParameters: Data?) -> String? {
+        struct Parameters: Decodable { var catalogId: String? }
+        if let playParameters, let id = (try? JSONDecoder().decode(Parameters.self, from: playParameters))?.catalogId,
+           UInt64(id) != nil { return id }
+        guard let url, let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        if let id = components.queryItems?.first(where: { $0.name == "i" })?.value, UInt64(id) != nil { return id }
+        if components.path.contains("/song/"), UInt64(url.lastPathComponent) != nil { return url.lastPathComponent }
+        return nil
     }
 }
