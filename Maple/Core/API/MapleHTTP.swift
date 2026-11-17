@@ -1,15 +1,15 @@
 import Foundation
 import BetterAuth
 
-/// Called when an authenticated request is rejected with 401 for the session that sent it.
-final class UnauthorizedHook: @unchecked Sendable {
+/// Callback storage shared by the HTTP actor and app setup. The lock protects every access to the handler.
+final class HTTPHook<Value: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
-    private var handler: (@Sendable (String) async -> Void)?
-    func set(_ handler: (@Sendable (String) async -> Void)?) { lock.lock(); self.handler = handler; lock.unlock() }
-    private func currentHandler() -> (@Sendable (String) async -> Void)? {
+    private var handler: (@Sendable (Value) async -> Void)?
+    func set(_ handler: (@Sendable (Value) async -> Void)?) { lock.lock(); self.handler = handler; lock.unlock() }
+    private func currentHandler() -> (@Sendable (Value) async -> Void)? {
         lock.lock(); defer { lock.unlock() }; return handler
     }
-    func fire(token: String) async { await currentHandler()?(token) }
+    func fire(_ value: Value) async { await currentHandler()?(value) }
 }
 
 /// One cookie jar for Better Auth, REST, image requests and Socket.IO. The library persists it to Keychain.
@@ -18,16 +18,20 @@ actor MapleHTTP {
     static let baseURL = URL(string: origin + "/") ?? URL(fileURLWithPath: "/")
     static let sessionCookieName = "__Secure-maple.session_token"
     nonisolated let cookies: CookieStorage
-    nonisolated let unauthorized = UnauthorizedHook()
+    nonisolated let unauthorized = HTTPHook<String>()
+    /// Any response may replace a session cookie, including get-session's rolling refresh.
+    nonisolated let sessionChanged = HTTPHook<Void>()
     private let session: URLSession
+    private var cookieRevision = 0
 
     init(cookies: CookieStorage = MapleHTTP.persistentCookies(), protocolClasses: [AnyClass]? = nil,
          configuration: URLSessionConfiguration = .ephemeral) {
         self.cookies = cookies
         let config = configuration
-        config.httpCookieStorage = cookies
-        config.httpCookieAcceptPolicy = .always
-        config.httpShouldSetCookies = true
+        // Apply response cookies ourselves: URLSession would otherwise let a late get-session response
+        // delete the replacement cookie from a concurrent password change before we can check its revision.
+        config.httpCookieStorage = nil
+        config.httpShouldSetCookies = false
         config.urlCache = nil
         if let protocolClasses { config.protocolClasses = protocolClasses }
         session = URLSession(configuration: config)
@@ -50,13 +54,18 @@ actor MapleHTTP {
         request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let token = sessionToken
+        let version = cookieRevision
+        attachCookies(to: &request)
         let (data, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        try acceptCookies(from: response, token: token, revision: version)
+        if token != sessionToken { await sessionChanged.fire(()) }
         guard (200..<300).contains(response.statusCode) else {
             // Only a 401 for the session that made the request ends the session; 403 never does, and a stale
             // response from before a new sign-in must not sign the new account out.
-            if response.statusCode == 401, let token, token == sessionToken, Self.sessionBearing(path: path) {
-                await unauthorized.fire(token: token)
+            if response.statusCode == 401, version == cookieRevision, let token,
+               sessionToken == nil || token == sessionToken, Self.sessionBearing(path: path) {
+                await unauthorized.fire(token)
             }
             throw MapleError.response(status: response.statusCode, data: data, contentType: response.value(forHTTPHeaderField: "Content-Type"))
         }
@@ -87,12 +96,32 @@ actor MapleHTTP {
         var request = URLRequest(url: url)
         // The Maple origin is only meaningful (and only sent) to Maple's own host.
         if url.host == MapleHTTP.baseURL.host { request.setValue(Self.origin, forHTTPHeaderField: "Origin") }
+        let token = sessionToken
+        let version = cookieRevision
+        attachCookies(to: &request)
         let (data, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        try acceptCookies(from: response, token: token, revision: version)
+        if token != sessionToken { await sessionChanged.fire(()) }
         guard (200..<300).contains(response.statusCode) else {
             throw MapleError.response(status: response.statusCode, data: data, contentType: response.value(forHTTPHeaderField: "Content-Type"))
         }
         return data
+    }
+    /// A credential mutation makes replies already in flight with the old session obsolete.
+    func invalidatePendingSessionResponses() { cookieRevision += 1 }
+    private func attachCookies(to request: inout URLRequest) {
+        request.httpShouldHandleCookies = false
+        guard let url = request.url, url.host == Self.baseURL.host else { return }
+        for (name, value) in HTTPCookie.requestHeaderFields(with: cookies.cookies(for: url) ?? []) {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+    }
+    private func acceptCookies(from response: HTTPURLResponse, token: String?, revision: Int) throws {
+        guard revision == cookieRevision, token == sessionToken,
+              let url = response.url, url.scheme == "https", url.host == Self.baseURL.host,
+              let header = response.value(forHTTPHeaderField: "Set-Cookie") else { return }
+        try cookies.setCookie(header, for: url)
     }
     /// Revokes the captured old session without reading or modifying a subsequent sign-in's cookie jar.
     func revokeSession(cookies: [HTTPCookie]) async {

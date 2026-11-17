@@ -18,6 +18,9 @@ final class AuthSessionModel {
     @ObservationIgnored let api: MapleAPI
     @ObservationIgnored var didChange: (() -> Void)?
     private var revision = 0
+    /// Password changes in flight. While one runs, the server ends the session the old cookie names and replaces it,
+    /// so a `get-session` made with the old cookie says nothing about whether the account is still signed in.
+    private var credentialChanges = 0
     @ObservationIgnored private var retryTask: Task<Void, Never>?
     @ObservationIgnored private let retryDelays: [Duration]
     @ObservationIgnored private let sleep: @Sendable (Duration) async throws -> Void
@@ -48,7 +51,10 @@ final class AuthSessionModel {
         do {
             try await refresh()
         }
-        catch let error as MapleError where error.status == 401 { await invalidate() }
+        catch let error as MapleError where error.status == 401 {
+            guard version == revision, credentialChanges == 0 else { return }
+            await invalidate()
+        }
         catch {
             guard version == revision, !Task.isCancelled, !api.http.sessionCookies.isEmpty else { return }
             sessionUnreachable = true; isRestoring = true
@@ -94,14 +100,30 @@ final class AuthSessionModel {
     func sceneBecameActive() async { await retryRestore() }
     /// A 401 invalidates restoring sessions too. A late response cannot invalidate a new account.
     func handleUnauthorized(token: String? = nil) async {
-        if let token, api.http.sessionToken != token { return }
+        guard credentialChanges == 0 else { return }
+        if let token, let current = api.http.sessionToken, current != token { return }
         await invalidate()
     }
     func refresh() async throws {
+        if credentialChanges > 0 { throw MapleError(status: 0, code: "SESSION_CHANGING", message: "Your session is being updated. Try again in a moment.") }
         let version = revision
-        let session: SessionReply? = try await api.http.request("api/auth/get-session")
+        let token = api.http.sessionToken
+        let session: SessionReply?
+        do { session = try await api.http.request("api/auth/get-session") }
+        catch {
+            // A request begun before a credential replacement may fail while the old session is being deleted.
+            guard version == revision, credentialChanges == 0 else {
+                throw MapleError(status: 0, code: "SESSION_CHANGING", message: "Your session is being updated. Try again in a moment.")
+            }
+            throw error
+        }
         guard version == revision else { return }
-        guard let session else { await invalidate(); return }
+        guard let session else {
+            // `null` answers the cookie that was sent. If a different session replaced it meanwhile
+            // (password change, new sign-in), the reply says nothing about the new one.
+            if let current = api.http.sessionToken, current != token { return }
+            await invalidate(); return
+        }
         guard session.user.emailVerified else { sessionResolved(); state = .needsEmailVerification; didChange?(); return }
         let user = try await api.me()
         guard version == revision else { return }
@@ -120,9 +142,9 @@ final class AuthSessionModel {
         do {
             // Same rule as the web client: only a valid email address uses the email route.
             if AccountRules.isEmail(identifier) {
-                _ = try await client.signIn.email(with: .init(email: identifier, password: password))
+                let _: SignInReply = try await post("api/auth/sign-in/email", AuthRequest.SignInEmail(email: identifier, password: password))
             } else {
-                _ = try await client.signIn.username(with: .init(username: identifier, password: password))
+                let _: SignInReply = try await post("api/auth/sign-in/username", AuthRequest.SignInUsername(username: identifier, password: password))
             }
             try await refresh()
         } catch {
@@ -135,26 +157,47 @@ final class AuthSessionModel {
         }
     }
     func signUp(username: String, email: String, password: String) async throws {
-        _ = try await client.signUp.email(with: UsernameSignUpEmailRequest(email: email, password: password, name: username, username: username))
+        // The server answers `{"token": null, "user": {…}}` (no session until the email is verified).
+        let _: SignUpReply = try await post("api/auth/sign-up/email", AuthRequest.SignUp(email: email, password: password, name: username, username: username))
         state = .needsEmailVerification; didChange?()
     }
     func resendVerification(email: String) async throws {
-        _ = try await client.sendVerificationEmail(with: .init(email: email, callbackURL: "https://play.maple.music"))
+        let _: StatusReply = try await post("api/auth/send-verification-email", AuthRequest.SendVerification(email: email, callbackURL: "https://play.maple.music"))
     }
     func enrollLegacy(username: String, password: String, email: String, newUsername: String? = nil) async throws {
-        struct Enrollment: Encodable { let username: String; let password: String; let email: String; let newUsername: String? }
-        let _: StatusReply = try await api.http.request("api/auth/legacy/enroll", method: "POST", body: JSONEncoder().encode(Enrollment(username: username, password: password, email: email, newUsername: newUsername)))
+        let _: StatusReply = try await post("api/auth/legacy/enroll", AuthRequest.LegacyEnrollment(username: username, password: password, email: email, newUsername: newUsername))
         needsLegacyEnrollment = false; state = .needsEmailVerification; didChange?()
     }
-    func requestPasswordReset(email: String) async throws { _ = try await client.requestPasswordReset(with: .init(email: email, redirectTo: "https://play.maple.music/reset-password")) }
-    func changeEmail(_ email: String) async throws { _ = try await client.changeEmail(with: .init(newEmail: email, callbackURL: "https://play.maple.music")) }
+    func requestPasswordReset(email: String) async throws {
+        let _: StatusReply = try await post("api/auth/request-password-reset", AuthRequest.PasswordReset(email: email, redirectTo: "https://play.maple.music/reset-password"))
+    }
+    /// The server answers `{"status": true}` only (no `message`) and emails the new address.
+    func changeEmail(_ email: String) async throws {
+        let _: StatusReply = try await post("api/auth/change-email", AuthRequest.ChangeEmail(newEmail: email, callbackURL: "https://play.maple.music"))
+    }
     func changePassword(current: String, new: String, revokeOtherSessions: Bool = true) async throws {
-        _ = try await client.changePassword(with: .init(currentPassword: current, newPassword: new, revokeOtherSessions: revokeOtherSessions))
+        revision += 1 // Discard refreshes already in flight with the old session.
+        credentialChanges += 1
+        await api.http.invalidatePendingSessionResponses()
+        let before = api.http.sessionToken
+        do {
+            let _: ChangePasswordReply = try await post("api/auth/change-password", AuthRequest.ChangePassword(currentPassword: current, newPassword: new, revokeOtherSessions: revokeOtherSessions))
+        } catch { credentialChanges -= 1; throw error }
+        credentialChanges -= 1
+        // Revoking the other sessions also ends this one on the server, which answers with a replacement cookie.
+        // Tell the app so the realtime connection stops presenting the old one.
+        if api.http.sessionToken != before { didChange?() }
     }
     func listSessions() async throws -> [AuthSession] { try await api.http.request("api/auth/list-sessions") }
     func listAccounts() async throws -> [LinkedAccount] { try await api.http.request("api/auth/list-accounts") }
-    func revokeSession(token: String) async throws { _ = try await client.revokeSession(with: .init(token: token)); try await refresh() }
-    func revokeOtherSessions() async throws { _ = try await client.revokeOtherSessions() }
+    func revokeSession(token: String) async throws {
+        let _: StatusReply = try await post("api/auth/revoke-session", AuthRequest.RevokeSession(token: token))
+        try await refresh()
+    }
+    func revokeOtherSessions() async throws { let _: StatusReply = try await post("api/auth/revoke-other-sessions", AuthRequest.Empty()) }
+    private func post<Body: Encodable, Reply: Decodable & Sendable>(_ path: String, _ body: Body) async throws -> Reply {
+        try await api.http.request(path, method: "POST", body: JSONEncoder().encode(body))
+    }
     /// Clear local state before the best-effort, bounded server request, using only the old session cookie.
     func signOut() async throws {
         let cookies = api.http.sessionCookies
