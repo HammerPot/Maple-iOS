@@ -18,6 +18,15 @@ import Testing
         let abandoned = Task { try await lane.run { calls.append("abandoned assigned") } }
         abandoned.cancel()
         let next = Task { try await lane.run { calls.append("new assigned") } }
+        // Drain enqueued MainActor jobs (including run's child job) while native A is
+        // still suspended. This observes overlap before releasing A, rather than merely
+        // hoping the scheduler starts B before the final order assertion.
+        for _ in 0..<3 {
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
+        }
+        #expect(calls == ["old assigned"])
         await release.open()
         _ = try? await old.value
         do { try await abandoned.value; Issue.record("Cancelled waiting install executed") }
