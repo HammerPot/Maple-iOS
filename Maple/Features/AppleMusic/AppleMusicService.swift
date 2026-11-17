@@ -38,7 +38,7 @@ import OSLog
         let response = try await MusicLibraryRequest<MusicKit.Song>().response()
         let tracks = try await all(response.items).map { MusicKit.Track.song($0) }
         // This source is known to be the library even if its raw IDs happen to be numeric.
-        AppleMusicDiagnostics.logger.debug("resolution source=library-browse requested=all returned=\(tracks.count, privacy: .public) numeric=\(tracks.filter { UInt64($0.id.rawValue) != nil }.count, privacy: .public) sample=[\(AppleMusicDiagnostics.ids(Array(tracks.prefix(3)).map { $0.id.rawValue } + Array(tracks.suffix(3)).map { $0.id.rawValue }), privacy: .public)]")
+        AppleMusicDiagnostics.logger.info("resolution source=library-browse requested=all returned=\(tracks.count, privacy: .public) numeric=\(tracks.filter { UInt64($0.id.rawValue) != nil }.count, privacy: .public) sample=[\(AppleMusicDiagnostics.ids(Array(tracks.prefix(3)).map { $0.id.rawValue } + Array(tracks.suffix(3)).map { $0.id.rawValue }), privacy: .public)]")
         engine.register(tracks)
         return tracks
     }

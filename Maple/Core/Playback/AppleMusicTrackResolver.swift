@@ -49,13 +49,13 @@ enum AppleMusicResolutionError: LocalizedError {
             if !libraryIDs.isEmpty {
                 do {
                     let songs = try await library(libraryIDs)
-                    AppleMusicDiagnostics.logger.debug("resolution source=library batch=\(offset / 100, privacy: .public) requested=\(libraryIDs.count, privacy: .public) returned=\(songs.count, privacy: .public) ids=[\(AppleMusicDiagnostics.ids(libraryIDs), privacy: .public)] songs=[\(AppleMusicDiagnostics.ids(songs.keys.sorted()), privacy: .public)]")
+                    AppleMusicDiagnostics.logger.info("resolution source=library batch=\(offset / 100, privacy: .public) requested=\(libraryIDs.count, privacy: .public) returned=\(songs.count, privacy: .public) ids=[\(AppleMusicDiagnostics.ids(libraryIDs), privacy: .public)] songs=[\(AppleMusicDiagnostics.ids(songs.keys.sorted()), privacy: .public)]")
                     for (id, value) in songs { register(value, id: id) }
                 }
                 catch is CancellationError { throw CancellationError() }
                 catch {
                     for id in libraryIDs { lookupErrors[id] = error }
-                    AppleMusicDiagnostics.logger.debug("resolution source=library batch=\(offset / 100, privacy: .public) requested=\(libraryIDs.count, privacy: .public) returned=error ids=[\(AppleMusicDiagnostics.ids(libraryIDs), privacy: .public)] errorDomain=\((error as NSError).domain, privacy: .public) code=\((error as NSError).code, privacy: .public)")
+                    AppleMusicDiagnostics.logger.info("resolution source=library batch=\(offset / 100, privacy: .public) requested=\(libraryIDs.count, privacy: .public) returned=error ids=[\(AppleMusicDiagnostics.ids(libraryIDs), privacy: .public)] errorDomain=\((error as NSError).domain, privacy: .public) code=\((error as NSError).code, privacy: .public)")
                 }
             }
             try Task.checkCancellation()
@@ -64,13 +64,13 @@ enum AppleMusicResolutionError: LocalizedError {
             if !catalogIDs.isEmpty {
                 do {
                     let songs = try await catalog(catalogIDs)
-                    AppleMusicDiagnostics.logger.debug("resolution source=catalog batch=\(offset / 100, privacy: .public) requested=\(catalogIDs.count, privacy: .public) returned=\(songs.count, privacy: .public) ids=[\(AppleMusicDiagnostics.ids(catalogIDs), privacy: .public)] songs=[\(AppleMusicDiagnostics.ids(songs.keys.sorted()), privacy: .public)]")
+                    AppleMusicDiagnostics.logger.info("resolution source=catalog batch=\(offset / 100, privacy: .public) requested=\(catalogIDs.count, privacy: .public) returned=\(songs.count, privacy: .public) ids=[\(AppleMusicDiagnostics.ids(catalogIDs), privacy: .public)] songs=[\(AppleMusicDiagnostics.ids(songs.keys.sorted()), privacy: .public)]")
                     for (id, value) in songs { register(value, id: id) }
                 }
                 catch is CancellationError { throw CancellationError() }
                 catch {
                     for id in catalogIDs { lookupErrors[id] = error }
-                    AppleMusicDiagnostics.logger.debug("resolution source=catalog batch=\(offset / 100, privacy: .public) requested=\(catalogIDs.count, privacy: .public) returned=error ids=[\(AppleMusicDiagnostics.ids(catalogIDs), privacy: .public)] errorDomain=\((error as NSError).domain, privacy: .public) code=\((error as NSError).code, privacy: .public)")
+                    AppleMusicDiagnostics.logger.info("resolution source=catalog batch=\(offset / 100, privacy: .public) requested=\(catalogIDs.count, privacy: .public) returned=error ids=[\(AppleMusicDiagnostics.ids(catalogIDs), privacy: .public)] errorDomain=\((error as NSError).domain, privacy: .public) code=\((error as NSError).code, privacy: .public)")
                 }
             }
             try Task.checkCancellation()
