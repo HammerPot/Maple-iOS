@@ -63,6 +63,9 @@ enum AccountErrorCopy {
         "EMAIL_NOT_VERIFIED": "Verify your email address to continue.",
         "LEGACY_ENROLLMENT_REQUIRED": "Add an email address to finish moving your account.",
         "SESSION_EXPIRED": "For your security, sign out and sign in again before doing this.",
+        // `list-sessions` answers 403 for a session older than a day (Better Auth `freshSessionMiddleware`).
+        "SESSION_NOT_FRESH": "For your security, sign out and sign in again before viewing your devices.",
+        "SESSION_CHANGING": "Your session is being updated. Try again in a moment.",
         // Registration and validation
         "USERNAME_IS_ALREADY_TAKEN": "That username is already taken.",
         "USERNAME_TAKEN": "That username is already taken.",

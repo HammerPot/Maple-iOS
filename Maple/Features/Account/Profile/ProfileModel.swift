@@ -13,6 +13,8 @@ final class ProfileModel {
     var alertMessage: String?
     /// Display-name failures are shown inline on the edit screen instead.
     private(set) var nameError: String?
+    /// The visibility the server last accepted from this screen, until a refresh brings the account's own copy up to date.
+    @ObservationIgnored private var acceptedShares: Bool?
 
     @ObservationIgnored private let api: any AccountProfileService
     @ObservationIgnored private let session: any AccountSecurityService
@@ -25,6 +27,7 @@ final class ProfileModel {
 
     func syncFromUser() {
         guard !isSavingVisibility else { return }
+        acceptedShares = nil
         sharesListening = session.user?.listeningVisibility != .private
     }
 
@@ -60,16 +63,22 @@ final class ProfileModel {
     }
 
     func setSharesListening(_ shares: Bool) async {
-        let previous = session.user?.listeningVisibility != .private
+        let previous = acceptedShares ?? (session.user?.listeningVisibility != .private)
         guard shares != previous else { return }
         sharesListening = shares
         isSavingVisibility = true; defer { isSavingVisibility = false }
-        do {
-            try await api.setListeningVisibility(shares ? .public : .private)
-            try await session.refresh()
-        } catch {
+        do { try await api.setListeningVisibility(shares ? .public : .private) }
+        catch {
             sharesListening = previous
             await fail(error, context: "listening visibility")
+            return
+        }
+        // The server has the new value. Failing to re-read the account afterwards must not put the old one on screen.
+        acceptedShares = shares
+        do { try await session.refresh() }
+        catch {
+            logger.error("Refreshing the account after a visibility change failed: status \(AccountErrorCopy.status(of: error) ?? 0, privacy: .public)")
+            if AccountErrorCopy.endsSession(error) { await session.invalidate() }
         }
     }
 

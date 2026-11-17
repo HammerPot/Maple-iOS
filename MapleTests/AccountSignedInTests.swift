@@ -42,6 +42,35 @@ struct AccountProfileTests {
         #expect(!model.sharesListening && model.alertMessage == nil)
     }
 
+    /// L2: the server accepted the change; a failed re-read must not put the old value back on screen.
+    @Test func visibilityStaysAtTheServerValueWhenTheFollowUpRefreshFails() async {
+        let api = FakeProfileAPI(); let session = FakeSecurityService()
+        session.refreshError = URLError(.timedOut)
+        let model = ProfileModel(api: api, session: session)
+        await model.setSharesListening(false)
+        #expect(await api.visibilities == [.private])
+        #expect(!model.sharesListening); #expect(model.alertMessage == nil)
+        // The cached account is stale (still public), so turning it back on must still reach the server.
+        await model.setSharesListening(true)
+        #expect(await api.visibilities == [.private, .public]); #expect(model.sharesListening)
+        // A later successful refresh brings the account up to date.
+        session.refreshError = nil
+        session.onRefresh = { session.user = Fixture.user(visibility: .public) }
+        try? await session.refresh()
+        model.syncFromUser()
+        #expect(model.sharesListening)
+    }
+
+    @Test func visibilityStillRevertsWhenTheUpdateItselfFails() async {
+        let api = FakeProfileAPI(); let session = FakeSecurityService()
+        await api.fail(visibility: URLError(.timedOut))
+        session.refreshError = URLError(.timedOut)
+        let model = ProfileModel(api: api, session: session)
+        await model.setSharesListening(false)
+        #expect(model.sharesListening); #expect(model.alertMessage != nil)
+        #expect(session.refreshes == 0, "A rejected update is not followed by a refresh")
+    }
+
     @Test func photoFailuresAreVisible() async {
         let api = FakeProfileAPI()
         await api.fail(avatar: Fixture.error(400, error: "Upload a JPG, PNG or GIF image."))
@@ -144,7 +173,27 @@ struct AccountSecurityTests {
         #expect(session.signedOutEverywhere == 1 && model.errorMessage == nil)
         session.everywhereError = Fixture.error(500)
         await model.signOutEverywhere()
-        #expect(model.errorMessage == "Maple is unavailable right now. Try again shortly.")
+        // No toast sink: the message stays on the model.
+        #expect(model.errorMessage == "Signed out on this device, but Maple couldn’t sign out your other devices. Sign in and try again.")
+    }
+
+    /// M1: this device is signed out first, which closes the screen, so the failure goes where the app can still show it.
+    @Test func signOutEverywhereFailureIsReportedOutsideTheClosedScreen() async {
+        let session = FakeSecurityService()
+        let model = SessionsModel(session: session)
+        var reported: [String] = []
+        model.report = { reported.append($0) }
+        session.everywhereError = URLError(.notConnectedToInternet)
+        await model.signOutEverywhere()
+        #expect(reported == ["Signed out on this device, but Maple couldn’t sign out your other devices. Sign in and try again."])
+        #expect(model.errorMessage == nil)
+        // A 401 means this session had already ended; the other devices are still signed in.
+        session.everywhereError = Fixture.error(401)
+        await model.signOutEverywhere()
+        #expect(reported.count == 2); #expect(reported[1].contains("already ended")); #expect(session.invalidations == 1)
+        session.everywhereError = nil
+        await model.signOutEverywhere()
+        #expect(reported.count == 2, "Success reports nothing")
     }
 
     @Test func deleteRequiresTypedUsername() async {

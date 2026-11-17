@@ -160,6 +160,13 @@ final class LibraryStore {
         try await disk.save(catalog)
     }
 
+    /// The background save. A library that never loaded has nothing to write, and saying so on every backgrounding
+    /// would only repeat the load failure that was already reported.
+    func flushIfLoaded() async throws {
+        guard isLoaded else { return }
+        try await flush()
+    }
+
     private func report(_ error: Error) {
         logger.error("Library operation failed: \(error.localizedDescription, privacy: .public)")
         errorMessage = error.localizedDescription

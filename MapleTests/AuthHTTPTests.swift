@@ -22,6 +22,23 @@ struct AuthHTTPTests {
         #expect((http.sessionToken == nil) == (status == 401))
         await model.invalidate()
     }
+    /// Session middleware may expire its cookie as it rejects the request; that still ends this session.
+    @Test func aCurrent401ThatDeletesTheCookieAlsoClearsSignedInState() async throws {
+        let rejected = Locked(false)
+        let http = try testHTTP { request in
+            if rejected.read() {
+                return StubReply(#"{"code":"UNAUTHORIZED","message":"Unauthorized"}"#, status: 401,
+                                 headers: ["Set-Cookie": "__Secure-maple.session_token=; Path=/; Secure; Max-Age=0"])
+            }
+            return signedInReply(request)
+        }
+        let model = AuthSessionModel(api: MapleAPI(http: http)); await model.restore()
+        #expect(model.user != nil)
+        rejected.update { $0 = true }
+        _ = try? await http.raw("api/auth/list-sessions")
+        #expect(model.user == nil); #expect(http.sessionToken == nil)
+    }
+
     @Test func restoring401ClearsSessionButWrongCredentialsDoNot() async throws {
         let http = try testHTTP { _ in StubReply("Unauthorized", status: 401) }
         let model = AuthSessionModel(api: MapleAPI(http: http))
@@ -145,8 +162,8 @@ struct AuthHTTPTests {
         // A slash, dot segment, percent, query or fragment in a username stays inside the one path segment.
         #expect(url == MapleHTTP.origin + "/public/get/user/a%20b%2Fc%2E%2E%25%3F%23")
     }
-    @Test func booleanQueriesUseWordsAndKeepNumbers() async {
-        let query = await BetterAuthHTTP.queryItems(from: ["enabled": NSNumber(value: true), "disabled": NSNumber(value: false), "limit": NSNumber(value: 1), "empty": NSNull()])
+    @Test func booleanQueriesUseWordsAndKeepNumbers() {
+        let query = BetterAuthHTTP.queryItems(from: ["enabled": NSNumber(value: true), "disabled": NSNumber(value: false), "limit": NSNumber(value: 1), "empty": NSNull()])
         #expect(Dictionary(uniqueKeysWithValues: query.map { ($0.name, $0.value ?? "") }) == ["enabled": "true", "disabled": "false", "limit": "1"])
     }
     @Test func freshInstallWipesOnlyItsKeychainServiceOnce() throws {

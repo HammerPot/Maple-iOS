@@ -27,7 +27,8 @@ struct ContentView: View {
             case .active: library.scanForNewFiles(silently: true) // pick up files added in the Files app
             case .background:
                 player.sample(); player.save()
-                Task { do { try await library.flush() } catch { toasts.show(error) } }
+                Task { do { try await library.flushIfLoaded() } catch { toasts.show(error) } }
+
             default: break
             }
         }

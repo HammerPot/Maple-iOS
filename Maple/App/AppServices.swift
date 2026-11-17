@@ -46,6 +46,7 @@ final class AppServices {
         friends = FriendsModel(api: api)
         let realtime = MapleRealtime()
         self.realtime = realtime
+        realtime.cookieProvider = { http.sessionCookies }
         playback = PlaybackReporter(transport: realtime, upload: { try await api.setAlbumArt($0, playbackId: $1) }, reportError: { toasts.show($0) })
         let apple = AppleMusicPlaybackEngine()
         music = AppleMusicService(engine: apple)
@@ -61,6 +62,7 @@ final class AppServices {
             }
         }
         auth.didChange = { [weak self] in self?.sessionChanged() }
+        http.sessionChanged.set { [weak self] in await self?.syncSocket() }
         realtime.onOwnership = { [weak playback] in playback?.ownershipChanged($0) }
         realtime.onDisconnect = { [weak playback] in playback?.disconnected() }
         realtime.onConnect = { [weak self] in

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SessionsView: View {
+    @Environment(ToastCenter.self) private var toasts
     @State private var model: SessionsModel
     @State private var confirmsEverywhere = false
     @State private var pendingRevoke: SessionsModel.Row?
@@ -61,7 +62,10 @@ struct SessionsView: View {
         .accountFormKeyboard()
         .navigationTitle("Signed-In Devices")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await model.load() }
+        .task {
+            model.report = { toasts.show($0) }
+            await model.load()
+        }
         .refreshable { await model.load() }
         .confirmationDialog("Sign out everywhere?", isPresented: $confirmsEverywhere, titleVisibility: .visible) {
             Button("Sign Out Everywhere", role: .destructive) { Task { await model.signOutEverywhere() } }

@@ -9,7 +9,8 @@ final class LibraryBackgroundAssertion {
     static func begin(_ name: String) -> LibraryBackgroundAssertion {
         let assertion = LibraryBackgroundAssertion()
         assertion.identifier = UIApplication.shared.beginBackgroundTask(withName: name) { [weak assertion] in
-            Task { @MainActor in assertion?.end() }
+            // UIKit invokes expiration handlers on the main thread. End synchronously before returning.
+            MainActor.assumeIsolated { assertion?.end() }
         }
         return assertion
     }

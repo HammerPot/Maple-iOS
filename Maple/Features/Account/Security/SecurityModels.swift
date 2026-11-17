@@ -117,6 +117,9 @@ final class SessionsModel {
     private(set) var revoking: Set<String> = []
     private(set) var isSigningOutEverywhere = false
     var errorMessage: String?
+    /// Where to say that Sign Out Everywhere failed. This device is signed out first, which closes the screen
+    /// (and its alert) before the server answers, so the app's toast center is used instead.
+    @ObservationIgnored var report: (@MainActor (String) -> Void)?
     /// Tokens stay in memory only, keyed by session ID, and are never shown or logged.
     @ObservationIgnored private var tokens: [String: String] = [:]
     @ObservationIgnored private let session: any AccountSecurityService
@@ -161,8 +164,15 @@ final class SessionsModel {
         isSigningOutEverywhere = true; defer { isSigningOutEverywhere = false }
         do { try await session.signOutEverywhere() }
         catch {
-            if AccountErrorCopy.endsSession(error) { await session.invalidate(); return }
-            errorMessage = AccountErrorCopy.message(for: error)
+            // This device is already signed out here; the other devices are what failed.
+            let message: String
+            if AccountErrorCopy.endsSession(error) {
+                await session.invalidate()
+                message = "Your session had already ended, so your other devices were not signed out. Sign in and try again."
+            } else {
+                message = "Signed out on this device, but Maple couldn’t sign out your other devices. Sign in and try again."
+            }
+            if let report { report(message) } else { errorMessage = message }
         }
     }
 }

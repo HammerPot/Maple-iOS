@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import SocketIO
+import BetterAuth
 @testable import Maple
 
 @MainActor
@@ -231,4 +232,146 @@ struct RealtimeAdapterTests {
         #expect(checks == 1); #expect(!realtime.connected)
         realtime.disconnect()
     }
+}
+
+/// The realtime connection presents the session cookie it was built with; a replaced cookie (password change with
+/// "Sign Out Other Devices", a new sign-in) must never leave it handshaking with the old one.
+@MainActor
+struct RealtimeSessionReplacementTests {
+    private func cookies(_ token: String) throws -> [HTTPCookie] {
+        let jar = CookieStorage(storage: MemoryCookieStorage())
+        try jar.setCookie("__Secure-maple.session_token=\(token); Path=/; Secure; SameSite=None", for: MapleHTTP.baseURL)
+        return (jar.cookies(for: MapleHTTP.baseURL) ?? [])
+    }
+    private func value(_ cookies: [HTTPCookie]) -> String? { cookies.first { $0.name == MapleHTTP.sessionCookieName }?.value }
+
+    @Test func aReplacedCookieRebuildsTheConnectionAndTheSameCookieKeepsIt() throws {
+        var opened: [SocketIOClient] = []
+        let realtime = MapleRealtime(openSocket: { opened.append($0) })
+        var disconnects = 0; realtime.onDisconnect = { disconnects += 1 }
+        realtime.connect(cookies: try cookies("old"))
+        let first = try #require(realtime.socket)
+        realtime.connect(cookies: try cookies("old"))
+        #expect(realtime.socket === first); #expect(opened.count == 1); #expect(disconnects == 0)
+        realtime.connect(cookies: try cookies("new"))
+        #expect(realtime.socket !== first); #expect(opened.count == 2); #expect(disconnects == 1)
+        #expect(value(realtime.presentedCookies) == "new")
+        realtime.disconnect()
+        #expect(realtime.presentedCookies.isEmpty)
+    }
+
+    @Test func emptyCookiesNeverTearDownALiveConnection() throws {
+        let realtime = MapleRealtime(openSocket: { _ in })
+        realtime.connect(cookies: try cookies("old"))
+        let socket = realtime.socket
+        realtime.connect(cookies: [])
+        #expect(realtime.socket === socket); #expect(value(realtime.presentedCookies) == "old")
+        realtime.disconnect()
+    }
+
+    /// The reviewer's H2 sequence: the server ends the socket's session, the app revalidates (valid, with the new
+    /// cookie in the jar) and must reconnect with that cookie rather than reopen the old socket.
+    @Test func aServerDisconnectAfterACookieReplacementReconnectsWithTheCurrentCookie() async throws {
+        let rebuilt = TestGate(); var opens = 0
+        let realtime = MapleRealtime(openSocket: { _ in opens += 1; if opens == 2 { Task { await rebuilt.open() } } }, retrySleep: { _ in })
+        var jar = try cookies("old")
+        realtime.cookieProvider = { jar }
+        realtime.connect(cookies: jar)
+        let old = try #require(realtime.socket)
+        realtime.validateSession = { .valid }
+        jar = try cookies("new")                       // change-password stored the replacement cookie
+        old.didDisconnect(reason: "Got Disconnect")     // the server ended the old session
+        await rebuilt.wait()
+        #expect(realtime.socket !== old); #expect(value(realtime.presentedCookies) == "new"); #expect(opens == 2)
+        realtime.disconnect()
+    }
+
+    @Test func returningToTheForegroundPicksUpAReplacedCookie() throws {
+        var opens = 0
+        let realtime = MapleRealtime(openSocket: { _ in opens += 1 })
+        var jar = try cookies("old")
+        realtime.cookieProvider = { jar }
+        realtime.connect(cookies: jar)
+        let old = try #require(realtime.socket)
+        old.didConnect(toNamespace: "/", payload: nil)
+        jar = try cookies("new")
+        realtime.sceneBecameActive()
+        #expect(realtime.socket !== old); #expect(value(realtime.presentedCookies) == "new"); #expect(opens == 2)
+        realtime.disconnect()
+    }
+
+    /// An authentication failure while the session is still valid is retried for as long as that stays true, with a
+    /// growing pause, and a successful connection starts the count over.
+    @Test func aRefusedHandshakeWithAValidSessionKeepsRetryingWithBackoff() async throws {
+        let sleeper = TestSleeper(); var opens = 0; var validations = 0
+        var reopened = TestGate()
+        let realtime = MapleRealtime(openSocket: { _ in opens += 1; let gate = reopened; Task { await gate.open() } }, retrySleep: { try await sleeper.sleep($0) })
+        let jar = try cookies("same")
+        realtime.cookieProvider = { jar }
+        realtime.connect(cookies: jar)
+        let socket = try #require(realtime.socket)
+        realtime.validateSession = { validations += 1; return .valid }
+        func reject() { socket.handleClientEvent(.error, data: ["Authentication error: Invalid session"]) }
+
+        reopened = TestGate(); reject(); await reopened.wait()           // first refusal: checked at once
+        #expect(validations == 1); #expect(opens == 2); #expect(await sleeper.delays.isEmpty)
+        reopened = TestGate(); reject()                                   // second: waits 5 s first
+        await sleeper.waitForSleep(); #expect(validations == 1); await sleeper.advance(); await reopened.wait()
+        #expect(validations == 2); #expect(opens == 3)
+        reopened = TestGate(); reject()                                   // third: 10 s
+        await sleeper.waitForSleep(); await sleeper.advance(); await reopened.wait()
+        #expect(await sleeper.delays == [.seconds(5), .seconds(10)]); #expect(opens == 4)
+
+        socket.didConnect(toNamespace: "/", payload: nil)                 // connected: the count starts over
+        reopened = TestGate(); socket.didDisconnect(reason: "Got Disconnect"); await reopened.wait()
+        #expect(await sleeper.delays.count == 2); #expect(validations == 4)
+        realtime.disconnect()
+    }
+
+    @Test func aRefusedHandshakeForAnEndedSessionStopsRetrying() async throws {
+        let validated = TestGate(); var validations = 0
+        let realtime = MapleRealtime(openSocket: { _ in }, retrySleep: { _ in })
+        realtime.connect(cookies: try cookies("gone"))
+        let socket = try #require(realtime.socket)
+        realtime.validateSession = { validations += 1; await validated.open(); return .invalid }
+        socket.handleClientEvent(.error, data: ["Authentication error: Invalid session"])
+        await validated.wait()
+        #expect(validations == 1)
+        realtime.disconnect()
+    }
+
+    /// The pieces the app wires together: a password change replaces the cookie, `didChange` runs `syncSocket`.
+    @Test func changingThePasswordMovesTheLiveConnectionToTheNewCookie() async throws {
+        let replacement: WireHarness.Route = { jar in
+            try? jar.setCookie("__Secure-maple.session_token=new-session; Path=/; Max-Age=604800; Secure; HttpOnly; SameSite=None", for: MapleHTTP.baseURL)
+            return StubReply(Wire.changePasswordReplaced)
+        }
+        let h = try WireHarness(token: "old-session", routes: ["POST /api/auth/change-password": replacement])
+        let realtime = MapleRealtime(openSocket: { _ in })
+        let http = h.http
+        realtime.cookieProvider = { http.sessionCookies }
+        h.auth.didChange = { realtime.connect(cookies: http.sessionCookies) }   // AppServices.sessionChanged → syncSocket
+        realtime.connect(cookies: http.sessionCookies)
+        let old = try #require(realtime.socket)
+        #expect(value(realtime.presentedCookies) == "old-session")
+        try await h.auth.changePassword(current: "OldPass123", new: "NewPass123", revokeOtherSessions: true)
+        #expect(realtime.socket !== old); #expect(value(realtime.presentedCookies) == "new-session")
+        realtime.disconnect()
+    }
+    /// Any authenticated HTTP route can refresh the cookie; AppServices wires this hook to syncSocket.
+    @Test func aCookieChangedBySessionLookupImmediatelyRebuildsRealtime() async throws {
+        let h = try WireHarness(token: "old-session", routes: ["GET /api/auth/get-session": { jar in
+            try? jar.setCookie("__Secure-maple.session_token=new-session; Path=/; Secure", for: MapleHTTP.baseURL)
+            return StubReply(Wire.getSession)
+        }])
+        let realtime = MapleRealtime(openSocket: { _ in })
+        let http = h.http
+        realtime.connect(cookies: http.sessionCookies)
+        let old = try #require(realtime.socket)
+        http.sessionChanged.set { _ in await realtime.connect(cookies: http.sessionCookies) }
+        _ = try await h.auth.currentSession()
+        #expect(realtime.socket !== old); #expect(value(realtime.presentedCookies) == "new-session")
+        realtime.disconnect()
+    }
+
 }
