@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import MusicKit
+import OSLog
 
 struct AppleMusicPlayerState {
     enum Status { case playing, paused, stopped }
@@ -9,6 +10,7 @@ struct AppleMusicPlayerState {
     var status: Status = .stopped
     var position = 0.0
     var rate = 1.0
+    var reportedStatus: String? = nil
 }
 struct AppleMusicInstalledEntry {
     var entry: PlaybackEntry
@@ -25,6 +27,7 @@ struct AppleMusicInstallation {
     var onChange: (() -> Void)? { get set }
     var state: AppleMusicPlayerState { get }
     func prepare(_ entries: [PlaybackEntry], selected: UUID, progress: (Double) -> Void) async throws -> AppleMusicInstallation
+    func cancelPreparation()
     func configure(repeatMode: PlaybackRepeat)
     func play() async throws
     func pause()
@@ -36,6 +39,8 @@ struct AppleMusicInstallation {
 @MainActor final class SystemMusicBackend: AppleMusicBackend {
     var onChange: (() -> Void)?
     private let player = SystemMusicPlayer.shared
+    private var preparationGeneration = 0
+    private var preparingInstalledQueue = false
     private var observations: Set<AnyCancellable> = []
     private let resolver = AppleMusicTrackResolver<MusicKit.Track>(library: { (ids: [String]) async throws -> [String: MusicKit.Track] in
         var request = MusicLibraryRequest<MusicKit.Song>()
@@ -58,10 +63,14 @@ struct AppleMusicInstallation {
         let status: AppleMusicPlayerState.Status = player.state.playbackStatus == .playing ? .playing : (player.state.playbackStatus == .stopped ? .stopped : .paused)
         let time = player.playbackTime, rate = Double(player.state.playbackRate)
         return AppleMusicPlayerState(item: song, occurrence: entry.map { String(describing: $0.id) }, status: status,
-                                    position: time.isFinite ? max(0, time) : 0, rate: rate > 0 ? rate : 1)
+                                    position: time.isFinite ? max(0, time) : 0, rate: rate > 0 ? rate : 1,
+                                    reportedStatus: String(describing: player.state.playbackStatus))
     }
     func register(_ values: [MusicKit.Track]) { for value in values { resolver.register(value, id: value.id.rawValue) } }
     func prepare(_ context: [PlaybackEntry], selected: UUID, progress: (Double) -> Void) async throws -> AppleMusicInstallation {
+        preparationGeneration += 1
+        let ticket = preparationGeneration
+        defer { if ticket == preparationGeneration { preparingInstalledQueue = false } }
         let resolved = try await resolver.context(context, selected: selected, progress: progress)
         var entries: [MusicKit.MusicPlayer.Queue.Entry] = [], installed: [AppleMusicInstalledEntry] = []
         var start: MusicKit.MusicPlayer.Queue.Entry?
@@ -74,9 +83,29 @@ struct AppleMusicInstallation {
         }
         guard let start else { throw AppleMusicResolutionError.notFound }
         try Task.checkCancellation()
+        guard ticket == preparationGeneration else { throw CancellationError() }
+        AppleMusicDiagnostics.logger.info("install count=\(installed.count, privacy: .public) entries=\(AppleMusicDiagnostics.installation(installed), privacy: .public)")
         player.queue = SystemMusicPlayer.Queue(entries, startingAt: start)
-        try await player.prepareToPlay()
+        preparingInstalledQueue = true
+        do {
+            try await player.prepareToPlay()
+            try Task.checkCancellation()
+            guard ticket == preparationGeneration else { throw CancellationError() }
+        } catch {
+            if ticket == preparationGeneration {
+                AppleMusicDiagnostics.logger.info("stop classification=unknown reason=prepare failed or cancelled after assignment")
+                player.stop()
+            }
+            throw error
+        }
         return AppleMusicInstallation(entries: installed, unavailable: resolved.unavailable)
+    }
+    func cancelPreparation() {
+        preparationGeneration += 1
+        if preparingInstalledQueue {
+            AppleMusicDiagnostics.logger.info("stop classification=user stop reason=cancel superseded preparation after assignment")
+            player.stop(); preparingInstalledQueue = false
+        }
     }
     func configure(repeatMode: PlaybackRepeat) {
         player.state.shuffleMode = .off

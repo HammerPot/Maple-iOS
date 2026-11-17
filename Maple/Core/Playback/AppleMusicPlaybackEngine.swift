@@ -1,5 +1,6 @@
 import Foundation
 import MusicKit
+import OSLog
 
 /// Installs a complete segment before Play; Music.app needs no further Maple work to continue it.
 @MainActor final class AppleMusicPlaybackEngine: PlaybackEngine {
@@ -9,10 +10,15 @@ import MusicKit
     private var configured = PlaybackQueue()
     private var ownership = AppleMusicQueueOwnership()
     private var preparing = false
+    private var generation = 0
     private var lastEntry: UUID?
     private var lastOccurrence: String?
     private(set) var unavailableEntryIDs: Set<UUID> = []
-    var position: Double { backend.state.position }
+    var position: Double {
+        let state = backend.state
+        ownership.recordPlaying(state)
+        return state.position
+    }
     var duration: Double { backend.state.item?.duration ?? 0 }
     var rate: Double { backend.state.rate }
     var isPlaying: Bool { allowed() && backend.state.status == .playing }
@@ -33,13 +39,16 @@ import MusicKit
     }
     func load(_ item: PlaybackItem) async throws {
         guard allowed() else { throw MapleError(status: 0, message: "Enable Apple Music and allow library access in Settings.") }
+        let ticket = generation
         preparing = true
-        defer { preparing = false }
+        defer { if generation == ticket { preparing = false } }
         unavailableEntryIDs = []
         let context = AppleMusicQueuePolicy.context(for: configured, fallback: item)
         guard let selected = configured.currentID ?? context.first?.id else { throw CancellationError() }
         let installed = try await backend.prepare(context, selected: selected, progress: { [weak self] in self?.onEvent?(.loadingProgress($0)) })
         try Task.checkCancellation()
+        guard generation == ticket else { throw CancellationError() }
+        backend.configure(repeatMode: AppleMusicQueuePolicy.mapleRepeatMode(for: configured))
         unavailableEntryIDs = installed.unavailable
         ownership.install(installed.entries, selected: selected, observedID: backend.state.occurrence)
         lastEntry = selected; lastOccurrence = backend.state.occurrence
@@ -52,11 +61,16 @@ import MusicKit
     func play() async throws { try await backend.play() }
     func pause() { backend.pause() }
     func stop() {
+        generation += 1; preparing = false
+        backend.cancelPreparation()
         guard ownership.ownsQueue else { return }
+        AppleMusicDiagnostics.logger.info("stop classification=user stop reason=Maple stop or new selection")
         ownership.relinquish(); backend.stop(); lastEntry = nil; lastOccurrence = nil
     }
     func stopExternalPlayback() {
         guard allowed() else { return }
+        generation += 1; preparing = false; backend.cancelPreparation()
+        AppleMusicDiagnostics.logger.info("stop classification=user stop reason=explicit external Stop")
         ownership.relinquish(); backend.stop(); lastEntry = nil; lastOccurrence = nil
     }
     func skipExternal(forward: Bool) async throws -> Bool {
@@ -65,12 +79,29 @@ import MusicKit
     }
     func seek(to seconds: Double) async { backend.seek(to: seconds) }
     func refresh() {
-        guard allowed(), !preparing else { return }
-        let state = backend.state, result = ownership.observe(backend.state)
-        if let item = state.item, result.entry != lastEntry || state.occurrence != lastOccurrence {
-            lastEntry = result.entry; lastOccurrence = state.occurrence
+        let state = backend.state
+        guard allowed(), !preparing else {
+            AppleMusicDiagnostics.logger.debug("notification status=\(state.reportedStatus ?? String(describing: state.status), privacy: .public) song=\(state.item?.id ?? "nil", privacy: .public) kind=\(AppleMusicDiagnostics.kind(state.item), privacy: .public) entry=\(state.occurrence ?? "nil", privacy: .public) decision=ignored allowed=\(self.allowed(), privacy: .public) preparing=\(self.preparing, privacy: .public)")
+            return
+        }
+        let result = ownership.observe(state)
+        AppleMusicDiagnostics.logger.debug("notification status=\(state.reportedStatus ?? String(describing: state.status), privacy: .public) song=\(state.item?.id ?? "nil", privacy: .public) kind=\(AppleMusicDiagnostics.kind(state.item), privacy: .public) entry=\(state.occurrence ?? "nil", privacy: .public) position=\(state.position, privacy: .public) decision=\(result.decision, privacy: .public) songMatch=\(result.songMatched, privacy: .public) entryMatch=\(result.entryMatched, privacy: .public)")
+        if state.status == .stopped || result.stopReason.hasPrefix("takeover") {
+            AppleMusicDiagnostics.logger.info("stop classification=\(result.ended ? "natural end" : (result.stopReason.hasPrefix("takeover") ? "takeover" : "unknown"), privacy: .public) reason=\(result.stopReason, privacy: .public)")
+        }
+        // Entry-ID rewrites never create a new Maple play. For external sessions the system ID
+        // remains useful to distinguish occurrences, because there is no Maple occurrence to follow.
+        let changed = result.entry != nil ? result.entry != lastEntry : state.occurrence != lastOccurrence
+        if !result.stopped && !result.ended, let item = state.item, changed {
             onEvent?(.itemChanged(item, occurrence: state.occurrence ?? item.id, queueEntryID: result.entry))
         }
-        if result.ended { onEvent?(.ended) } else { onEvent?(.stateChanged) }
+        if !result.stopped && !result.ended { lastEntry = result.entry; lastOccurrence = state.occurrence }
+        if result.ended { onEvent?(.ended) }
+        else if result.stopped { onEvent?(.stopped) }
+        else { onEvent?(.stateChanged) }
+    }
+    func logBoundary(_ boundary: String) {
+        let state = backend.state
+        AppleMusicDiagnostics.logger.info("boundary=\(boundary, privacy: .public) status=\(state.reportedStatus ?? String(describing: state.status), privacy: .public) song=\(state.item?.id ?? "nil", privacy: .public) kind=\(AppleMusicDiagnostics.kind(state.item), privacy: .public) entry=\(state.occurrence ?? "nil", privacy: .public) position=\(state.position, privacy: .public)")
     }
 }

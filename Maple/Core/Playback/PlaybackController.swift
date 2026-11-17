@@ -119,12 +119,12 @@ final class PlaybackController {
         } while !queue.entries.isEmpty
         stop()
     }
-    /// Serialize engine mutations: an obsolete prepare must finish before a newer queue is installed.
-    /// Generation fences superseded edits; intentRevision fences commands received across awaits.
+    /// Cancel superseded preparation; a new user choice never waits for abandoned framework work.
+    /// Generation protects controller state; engines fence installation after their own awaits.
     private func scheduleLoad(ticket: Int, userInitiated: Bool) -> Task<Void, Never> {
-        let previous = loading, context = queue
+        loading?.cancel()
+        let context = queue
         let task = Task { [weak self] in
-            await previous?.value
             guard let self, self.generation == ticket else { return }
             guard let item = context.current?.item else { self.isLoading = false; return }
             let target = item.source == .local ? self.local : self.apple
@@ -179,6 +179,7 @@ final class PlaybackController {
         return task
     }
     func resume(userInitiated: Bool = true) async {
+        if deferredRestore, !userInitiated { return }
         if deferredRestore { await loadCurrent(autoplay: true, at: position.seconds, userInitiated: userInitiated); return }
         wantsPlayback = true; intentRevision += 1
         if isLoading { return }
@@ -203,6 +204,7 @@ final class PlaybackController {
         if playingFromMusic {
             apple.stopExternalPlayback(); leaveExternalPlayback(); publishStop(); stateChanged(); return
         }
+        loading?.cancel()
         generation += 1; wantsPlayback = false; intentRevision += 1; endPlay(completed: false)
         if currentItem?.source == .appleMusic, !deferredRestore { apple.stopExternalPlayback() }
         deferredRestore = false
@@ -397,6 +399,11 @@ final class PlaybackController {
             if source == .appleMusic, adoptExternalPlayback() { return }
             guard currentItem?.source == source else { return }
             reconcile(); publish()
+        case .stopped:
+            guard source == .appleMusic, currentItem?.source == .appleMusic, !playingFromMusic else { return }
+            // Do not copy the system's reset/foreign stopped position into Maple's checkpoint.
+            settleListening(); wantsPlayback = false; isPlaying = false; listenedAt = nil
+            deferredRestore = true; synchronizeSampling(); publish(); save()
         case .ended:
             if source == .appleMusic, playingFromMusic { _ = adoptExternalPlayback(); return }
             guard currentItem?.source == source else { return }

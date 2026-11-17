@@ -10,16 +10,38 @@ import Testing
     var plays = 0
     var stops = 0
     var mode = PlaybackRepeat.off
+    var preparationGeneration = 0
+    var preparingInstalledQueue = false
+    var afterAssignment: (() async throws -> Void)?
+    var resetsModesOnAssignment = false
     var preparedStatus = AppleMusicPlayerState.Status.paused
     var resolve: (([PlaybackEntry], UUID, (Double) -> Void) async throws -> AppleMusicInstallation)?
     func prepare(_ entries: [PlaybackEntry], selected: UUID, progress: (Double) -> Void) async throws -> AppleMusicInstallation {
-        prepares += 1
+        prepares += 1; preparationGeneration += 1
+        let ticket = preparationGeneration
+        defer { if ticket == preparationGeneration { preparingInstalledQueue = false } }
         let result: AppleMusicInstallation
         if let resolve { result = try await resolve(entries, selected, progress) }
         else { result = AppleMusicInstallation(entries: entries.map { AppleMusicInstalledEntry(entry: $0, identities: $0.item.musicIdentityIDs, systemID: "created:\($0.id)") }) }
+        try Task.checkCancellation()
+        guard ticket == preparationGeneration else { throw CancellationError() }
         installed = result.entries.map(\.entry)
-        state = AppleMusicPlayerState(item: entries.first { $0.id == selected }?.item, occurrence: "rewritten-by-system", status: preparedStatus)
+        if resetsModesOnAssignment { mode = .off }
+        state = AppleMusicPlayerState(item: entries.first { $0.id == selected }?.item, occurrence: result.entries.first { $0.entry.id == selected }?.systemID, status: preparedStatus)
+        preparingInstalledQueue = true
+        do {
+            try await afterAssignment?()
+            try Task.checkCancellation()
+            guard ticket == preparationGeneration else { throw CancellationError() }
+        } catch {
+            if ticket == preparationGeneration { stop() }
+            throw error
+        }
         return result
+    }
+    func cancelPreparation() {
+        preparationGeneration += 1
+        if preparingInstalledQueue { stop(); preparingInstalledQueue = false }
     }
     func configure(repeatMode: PlaybackRepeat) { mode = repeatMode }
     func play() async throws { plays += 1; state.status = .playing; onChange?() }
@@ -44,6 +66,7 @@ import Testing
     }
     @Test func wholeSegmentIsReadyBeforePlayAndMidAlbumRepeatKeepsPreviousSongs() async {
         let backend = ReviewMusicBackend(), player = player(backend)
+        backend.resetsModesOnAssignment = true
         let songs = (0..<200).map { song(String($0)) }
         await player.start(songs, startingAt: 75)
         #expect(backend.plays == 1); #expect(backend.installed.map(\.item.id) == songs.map(\.id))
@@ -138,7 +161,7 @@ import Testing
         #expect(ended == 0)
         #expect(player.queue.index == 0); #expect(backend.prepares == 1); #expect(backend.plays == 0)
     }
-    @Test func transientNeighborLookupFailureKeepsWholeMapleQueueAndDoesNotStartPartialAudio() async {
+    @Test func transientNeighborLookupFailureDefersNeighborAndStartsAvailableAudio() async {
         let backend = ReviewMusicBackend()
         let resolver = AppleMusicTrackResolver<String>(library: { ids in Dictionary(uniqueKeysWithValues: ids.filter { $0 == "A" }.map { ($0,$0) }) }, catalog: { _ in throw URLError(.notConnectedToInternet) })
         backend.resolve = { entries, selected, progress in
@@ -148,7 +171,7 @@ import Testing
         let player = player(backend)
         await player.start([song("A"),song("offline")])
         #expect(player.queue.entries.map(\.item.id) == ["A","offline"])
-        #expect(!player.isPlaying); #expect(backend.installed.isEmpty); #expect(backend.plays == 0)
+        #expect(player.isPlaying); #expect(backend.installed.map(\.item.id) == ["A"]); #expect(backend.plays == 1)
     }
     @Test func externalEnqueueShowsNoticeForBothLibraryActions() {
         let backend = ReviewMusicBackend(), player = player(backend)
@@ -254,10 +277,12 @@ extension PlaybackReview3Tests {
         await player.restore { _ in nil }; await player.waitForReports()
         reporter.ownershipChanged("desktop")
         await player.resume(userInitiated: false); await player.waitForReports()
-        #expect(backend.state.position == 92); #expect(player.isPlaying)
+        #expect(!player.isPlaying); #expect(backend.prepares == 0)
+        #expect(player.position.seconds == 92)
         #expect(socket.events.filter { $0.0 == "playbackStart" }.isEmpty)
         player.pause(); await player.waitForReports(); await player.resume(); await player.waitForReports()
         #expect(socket.events.filter { $0.0 == "playbackStart" }.count == 1)
+        #expect(backend.state.position == 92)
         player.stop(); await player.waitForReports(); await player.waitForSave()
     }
     @Test func signInRefreshClaimsAlreadyPlayingSnapshotButNeverPaused() async {

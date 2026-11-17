@@ -130,6 +130,7 @@ final class AppServices {
         await restored
     }
     func sceneBecameActive() async {
+        music.engine.logBoundary("foreground")
         player.refresh()
         await music.refreshAuthorization()
         await auth.sceneBecameActive()

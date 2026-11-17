@@ -32,6 +32,7 @@ import Testing
                 observers.removeValue(forKey: number)?.resume()
             }
         }
+        try Task.checkCancellation()
         if let error = loadErrors[item.id] { throw error }
         position = 0; isPlaying = false
     }
@@ -73,16 +74,16 @@ import Testing
         #expect(engine.plays == 1); #expect(!player.isPlaying)
         #expect(player.position.seconds == 73); #expect(!player.isLoading)
     }
-    @Test func overlappingEditsAreSerializedAndObsoleteReloadCannotPlay() async {
+    @Test func overlappingEditsCancelObsoleteReloadWithoutWaiting() async {
         let engine = SuspendedPlaybackEngine(), player = controller(engine)
         await player.start([a]); engine.position = 12; engine.suspendLoads = true
         player.enqueue([b], next: false)
         await engine.waitForLoad(2)
         player.enqueue([c], next: false)
         await player.seek(to: 91)
-        #expect(engine.loads == 2)
-        engine.release(2)
         await engine.waitForLoad(3)
+        #expect(engine.loads == 3)
+        engine.release(2)
         #expect(engine.plays == 1)
         engine.release(3); await player.waitForLoad()
         #expect(engine.contexts.last?.entries.map(\.item.id) == ["A", "B", "C"])

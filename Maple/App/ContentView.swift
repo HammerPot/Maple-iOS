@@ -6,6 +6,7 @@ struct ContentView: View {
     @Environment(ToastCenter.self) private var toasts
     @Environment(FriendsModel.self) private var friends
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(AppleMusicService.self) private var music
     @Environment(PlaybackController.self) private var player
     @State private var showPlayer = false
 
@@ -26,6 +27,7 @@ struct ContentView: View {
             switch phase {
             case .active: library.scanForNewFiles(silently: true) // pick up files added in the Files app
             case .background:
+                music.engine.logBoundary("background")
                 player.sample(); player.save()
                 Task { do { try await library.flushIfLoaded() } catch { toasts.show(error) } }
 

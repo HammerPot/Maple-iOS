@@ -4,6 +4,7 @@ import Observation
 enum PlaybackEngineEvent {
     case loadingProgress(Double)
     case stateChanged
+    case stopped
     case ended
     case itemChanged(PlaybackItem, occurrence: String, queueEntryID: UUID? = nil)
     case failed(Error)
