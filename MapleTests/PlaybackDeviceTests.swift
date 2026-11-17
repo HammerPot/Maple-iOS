@@ -4,6 +4,19 @@ import Testing
 @testable import Maple
 
 @MainActor struct PlaybackDeviceTests {
+    @Test func missingPlaybackParametersNeverReachTheSystemQueueOrPruneMapleEntries() throws {
+        let playable = try JSONDecoder().decode(MusicKit.Song.self, from: Data(#"{"id":"i.available","type":"library-songs","attributes":{"name":"Available","artistName":"Artist","playParams":{"id":"i.available","kind":"song","isLibrary":true}}}"#.utf8))
+        let unplayable = try JSONDecoder().decode(MusicKit.Song.self, from: Data(#"{"id":"i.unavailable","type":"library-songs","attributes":{"name":"Unavailable","artistName":"Artist"}}"#.utf8))
+        let a = PlaybackEntry(item: SystemMusicBackend.item(.song(playable)))
+        let b = PlaybackEntry(item: SystemMusicBackend.item(.song(unplayable)))
+        let values: [(PlaybackEntry, MusicKit.Track)] = [(a,.song(playable)),(b,.song(unplayable)),(a,.song(playable))]
+        let installed = try SystemMusicBackend.playableTracks(values, selected: a.id)
+        #expect(installed.map { $0.0.id } == [a.id,a.id])
+        #expect(values.map { $0.0.id } == [a.id,b.id,a.id])
+        #expect(throws: AppleMusicResolutionError.notPlayable) {
+            try SystemMusicBackend.playableTracks(values, selected: b.id)
+        }
+    }
     @Test func libraryPlaybackParametersPreserveCatalogEquivalentWithoutURL() throws {
         let data = Data(#"{"id":"i.JL1PVeqt89OMq9G","kind":"song","isLibrary":true,"catalogId":"1525933488"}"#.utf8)
         // Exercise MusicKit's Codable boundary, not only our parser.

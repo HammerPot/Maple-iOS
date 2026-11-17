@@ -76,7 +76,7 @@ struct AppleMusicInstallation {
         let resolved = try await resolver.context(context, selected: selected, progress: progress)
         var entries: [MusicKit.MusicPlayer.Queue.Entry] = [], installed: [AppleMusicInstalledEntry] = []
         var start: MusicKit.MusicPlayer.Queue.Entry?
-        for (occurrence, track) in resolved.values {
+        for (occurrence, track) in try Self.playableTracks(resolved.values, selected: selected) {
             let entry = MusicKit.MusicPlayer.Queue.Entry(track)
             entries.append(entry)
             installed.append(AppleMusicInstalledEntry(entry: occurrence,
@@ -119,6 +119,16 @@ struct AppleMusicInstallation {
     func seek(to seconds: Double) { player.playbackTime = seconds }
     func skip(forward: Bool) async throws {
         if forward { try await player.skipToNextEntry() } else { try await player.skipToPreviousEntry() }
+    }
+    static func playableTracks(_ values: [(PlaybackEntry, MusicKit.Track)], selected: UUID) throws -> [(PlaybackEntry, MusicKit.Track)] {
+        try values.filter { entry, track in
+            guard track.playParameters != nil else {
+                AppleMusicDiagnostics.logger.info("resolution deferred song=\(track.id.rawValue, privacy: .public) reason=no playback parameters; keep Maple entry")
+                if entry.id == selected { throw AppleMusicResolutionError.notPlayable }
+                return false
+            }
+            return true
+        }
     }
     static func item(_ track: MusicKit.Track) -> PlaybackItem {
         var item = PlaybackItem(source: .appleMusic, id: track.id.rawValue, title: track.title,

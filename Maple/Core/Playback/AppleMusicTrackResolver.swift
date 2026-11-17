@@ -8,9 +8,14 @@ struct AppleMusicIdentity: Codable, Hashable, Sendable {
 extension PlaybackItem {
     var musicIdentityIDs: Set<String> { Set([id, appleMusicIdentity?.libraryID, appleMusicIdentity?.catalogID].compactMap { $0 }) }
 }
-enum AppleMusicResolutionError: LocalizedError {
-    case notFound
-    var errorDescription: String? { "This Apple Music track is no longer available." }
+enum AppleMusicResolutionError: LocalizedError, Equatable {
+    case notFound, notPlayable
+    var errorDescription: String? {
+        switch self {
+        case .notFound: "This Apple Music track is no longer available."
+        case .notPlayable: "This Apple Music track cannot be played on this device. Choose another track."
+        }
+    }
 }
 
 /// Complete segments, with bounded bulk requests rather than one round trip per song.
