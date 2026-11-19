@@ -29,7 +29,7 @@ struct Home: View {
 private struct HomeContent: View {
     @Environment(LibraryStore.self) private var library
     @Environment(LibraryActions.self) private var actions
-    @ObservedObject private var appleMusic = AppleMusicManager.shared
+    @Environment(AppleMusicService.self) private var appleMusic
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {

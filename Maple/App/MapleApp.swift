@@ -10,6 +10,9 @@ struct MapleApp: App {
             root
                 .modifier(ToastOverlay())
                 .environment(services)
+                .environment(services.player)
+                .environment(services.music)
+                .environment(services.settings)
                 .environment(services.library)
                 .environment(services.auth)
                 .environment(services.friends)

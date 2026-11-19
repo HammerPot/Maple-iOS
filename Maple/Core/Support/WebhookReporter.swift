@@ -4,15 +4,15 @@ import Foundation
 /// One reused, cookie-less session; no Maple `Origin` (this is a third-party host).
 actor WebhookReporter {
     private let session: URLSession
-    private let configuredURL: @Sendable () -> String
+    private let configuredURL: @Sendable () async -> String
     private let now: @Sendable () -> TimeInterval
     private let sleep: @Sendable (Duration) async throws -> Void
     private let minimumInterval: TimeInterval
     private var lastAttempt: TimeInterval?
     private var latest = 0
     init(session: URLSession = WebhookReporter.makeSession(), minimumInterval: TimeInterval = 10,
-         configuredURL: @escaping @Sendable () -> String = { UserDefaults.standard.string(forKey: "webhookURL") ?? "" },
-         now: @escaping @Sendable () -> TimeInterval = PlaybackReporter.monotonicNow,
+         configuredURL: @escaping @Sendable () async -> String = { "" },
+         now: @escaping @Sendable () -> TimeInterval = { PlaybackReporter.monotonicNow() },
          sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         self.session = session; self.minimumInterval = minimumInterval; self.configuredURL = configuredURL
         self.now = now; self.sleep = sleep
@@ -23,7 +23,7 @@ actor WebhookReporter {
         return URLSession(configuration: config)
     }
     func send(track: TrackSnapshot, artwork: Data?, userID: String) async throws {
-        let configured = configuredURL()
+        let configured = await configuredURL()
         guard !configured.isEmpty else { return }
         guard let url = URL(string: configured), url.scheme == "https" else {
             throw MapleError(status: 400, message: "The webhook URL must use HTTPS.")

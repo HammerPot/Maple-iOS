@@ -25,6 +25,7 @@ actor TestGate {
 }
 
 actor TestSleeper {
+    nonisolated let cancellationCount = Locked(0)
     private var pending: [UUID: CheckedContinuation<Void, Error>] = [:]
     private var cancelled: Set<UUID> = []
     private var observers: [CheckedContinuation<Void, Never>] = []
@@ -38,11 +39,19 @@ actor TestSleeper {
                 delays.append(duration); pending[id] = continuation
                 let observers = observers; self.observers = []; observers.forEach { $0.resume() }
             }
-        } onCancel: { Task { await self.cancel(id) } }
+        } onCancel: {
+            self.cancellationCount.update { $0 += 1 }
+            Task { await self.cancel(id) }
+        }
     }
     private func cancel(_ id: UUID) {
         if let waiter = pending.removeValue(forKey: id) { waiter.resume(throwing: CancellationError()) }
         else { cancelled.insert(id) }
+        let observers = observers; self.observers = []; observers.forEach { $0.resume() }
+    }
+    var pendingCount: Int { pending.count }
+    func waitForNoSleeps() async {
+        while !pending.isEmpty { await withCheckedContinuation { observers.append($0) } }
     }
     func waitForSleep() async { await waitForSleeps(1) }
     func waitForSleeps(_ count: Int) async {

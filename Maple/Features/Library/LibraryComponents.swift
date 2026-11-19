@@ -3,23 +3,13 @@ import SwiftUI
 /// The seam between library screens and the player. Everything that starts or queues local
 /// playback goes through here, so a new player only has to re-implement these three calls.
 @MainActor enum LibraryPlayback {
+    // Composition-root-installed commands keep existing library call sites independent of engines.
+    static var start: (([LibraryTrack], UUID?, Bool) -> Void)?
+    static var add: (([LibraryTrack], Bool) -> Void)?
     static func play(_ tracks: [LibraryTrack], startingAt id: UUID? = nil, shuffle: Bool = false) {
-        var queue = tracks
-        if shuffle {
-            queue.shuffle()
-            // A shuffled queue still starts with the track the user picked, if any.
-            if let id, let index = queue.firstIndex(where: { $0.id == id }) { queue.swapAt(0, index) }
-        }
-        guard !queue.isEmpty else { return }
-        let start = id.flatMap { id in queue.firstIndex { $0.id == id } } ?? 0
-        AudioPlayerManager.shared.setQueue(queue, startingAt: start)
-        AudioPlayerManager.shared.play()
+        start?(tracks, id, shuffle)
     }
-    /// "Play Next" (`next: true`) inserts after the current track; otherwise appends to the queue.
-    static func enqueue(_ tracks: [LibraryTrack], next: Bool) {
-        guard !tracks.isEmpty else { return }
-        AudioPlayerManager.shared.enqueueLibraryTracks(tracks, next: next)
-    }
+    static func enqueue(_ tracks: [LibraryTrack], next: Bool) { add?(tracks, next) }
 }
 
 /// Square artwork from a library reference, decoded at display size off the main thread.
