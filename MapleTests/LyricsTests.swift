@@ -35,3 +35,20 @@ struct LyricsTests {
         await #expect(throws: LyricsError.self) { try await reader.read(invalid) }
     }
 }
+
+extension LyricsTests {
+    @Test func cancelledParseCannotReplaceNewTrackLyrics() async {
+        let entered = TestGate(), release = TestGate()
+        let old = Task {
+            await LyricsDocument.parseForPresentation("old lyrics", parse: { text in
+                await entered.open(); await release.wait()
+                return LyricsDocument.parse(text)
+            })
+        }
+        await entered.wait(); old.cancel()
+        let current = await LyricsDocument.parseForPresentation("new lyrics")
+        await release.open()
+        #expect(await old.value == nil)
+        #expect(current?.lines.map(\.text) == ["new lyrics"])
+    }
+}

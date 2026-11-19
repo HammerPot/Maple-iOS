@@ -7,6 +7,7 @@ actor SettingsFakeCredentials: WebhookCredentialStoring {
     var fails: Bool
     init(_ value: String = "", fails: Bool = false) { self.value = value; self.fails = fails }
     func read() -> String { value }
+    func allowWrites() { fails = false }
     func write(_ value: String) throws {
         if fails { throw CocoaError(.fileWriteNoPermission) }
         self.value = value
@@ -89,5 +90,50 @@ extension SettingsTests {
         #expect(await credentials.read() == expected); #expect(model.webhookValidationMessage == nil)
         #expect(DiscordWebhookURL.configuredValue(" \n" + expected + " \n") == expected)
         #expect(DiscordWebhookURL.configuredValue("https://evil.test/hook") == "")
+    }
+}
+
+private actor SettingsSuspendedCredentials: WebhookCredentialStoring {
+    let entered = TestGate(), release = TestGate()
+    var value = ""
+    var reads = 0
+    var writes = 0
+    func read() async -> String {
+        let snapshot = value; reads += 1
+        await entered.open(); await release.wait()
+        return snapshot
+    }
+    func write(_ value: String) { writes += 1; self.value = value }
+}
+extension SettingsTests {
+    @Test func concurrentLoadsShareMigrationAndNeverOverwriteCredentialWithStaleEmptyRead() async throws {
+        let suite = "SettingsTests." + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let expected = "https://discord.com/api/webhooks/123/test-token"
+        defaults.set(expected, forKey: "webhookURL")
+        let credentials = SettingsSuspendedCredentials(), model = SettingsModel(credentials: credentials, defaults: defaults)
+        let first = Task { try await model.load() }
+        await credentials.entered.wait()
+        let second = Task { try await model.load() }
+        for _ in 0..<3 { await withCheckedContinuation { c in DispatchQueue.main.async { c.resume() } } }
+        #expect(await credentials.reads == 1)
+        await credentials.release.open()
+        try await first.value; try await second.value
+        #expect(model.webhookURL == expected); #expect(model.isLoaded)
+        #expect(await credentials.writes == 1); #expect(await credentials.reads == 2)
+        try await model.saveWebhook()
+        #expect(await credentials.value == expected)
+    }
+    @Test func failedSingleFlightLoadCanBeRetried() async throws {
+        let credentials = SettingsFakeCredentials(fails: true)
+        let suite = "SettingsTests." + UUID().uuidString, expected = "https://discord.com/api/webhooks/123/test-token"
+        let defaults = try #require(UserDefaults(suiteName: suite)); defaults.set(expected, forKey: "webhookURL")
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = SettingsModel(credentials: credentials, defaults: defaults)
+        await #expect(throws: CocoaError.self) { try await model.load() }
+        await credentials.allowWrites()
+        try await model.load()
+        #expect(model.webhookURL == expected); #expect(model.isLoaded)
     }
 }

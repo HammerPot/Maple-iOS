@@ -3,6 +3,7 @@ import Observation
 
 enum PlaybackEngineEvent {
     case loadingProgress(Double)
+    case unavailableEntries(Set<UUID>)
     case stateChanged
     case stopped
     case ended
@@ -26,6 +27,7 @@ struct ExternalPlaybackState {
     func refresh()
     func externalPlayback() -> ExternalPlaybackState?
     func load(_ item: PlaybackItem) async throws
+    func finishLoading()
     func play() async throws
     func pause()
     func stop()
@@ -37,6 +39,7 @@ struct ExternalPlaybackState {
 extension PlaybackEngine {
     var unavailableEntryIDs: Set<UUID> { [] }
     func refresh() {}
+    func finishLoading() {}
     func configure(_ queue: PlaybackQueue) async throws {}
     func externalPlayback() -> ExternalPlaybackState? { nil }
     func stopExternalPlayback() {}

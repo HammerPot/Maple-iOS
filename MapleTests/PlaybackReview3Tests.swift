@@ -8,6 +8,7 @@ import Testing
     var installed: [PlaybackEntry] = []
     var prepares = 0
     var plays = 0
+    var beforePlay: (() async throws -> Void)?
     var stops = 0
     var appends = 0
     var beforeAppend: (() async throws -> Void)?
@@ -94,7 +95,7 @@ import Testing
         preparationGeneration += 1
     }
     func configure(repeatMode: PlaybackRepeat) { mode = repeatMode }
-    func play() async throws { plays += 1; state.status = .playing; onChange?() }
+    func play() async throws { try await beforePlay?(); plays += 1; state.status = .playing; onChange?() }
     func pause() { state.status = .paused; onChange?() }
     func stop() { stops += 1; state.status = .stopped; onChange?() }
     func seek(to seconds: Double) { state.position = seconds }
@@ -249,7 +250,8 @@ import Testing
         backend.resolve = { _,_,_ in throw AppleMusicResolutionError.notFound }
         let player = player(backend); var notice = ""; player.onError = { notice = $0.localizedDescription }
         await player.start([song("gone")])
-        #expect(notice == "This Apple Music track is no longer available.")
+        #expect(notice == "An unavailable Apple Music track was skipped: gone")
+        #expect(player.queue.entries.isEmpty)
     }
 }
 

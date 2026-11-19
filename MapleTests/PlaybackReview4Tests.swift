@@ -37,7 +37,7 @@ import Testing
         let backend = ReviewMusicBackend(), engine = AppleMusicPlaybackEngine(backend: backend)
         let a = song("A"), b = song("B", duration: scenario == "unknown-duration" ? 0 : 180)
         var queue = PlaybackQueue(); queue.replace([a,b], startingAt: 1, shuffle: false)
-        try await engine.configure(queue); try await engine.load(b)
+        try await engine.configure(queue); try await engine.load(b); engine.finishLoading()
         var ended = 0, stopped = 0
         engine.onEvent = { event in if case .ended = event { ended += 1 }; if case .stopped = event { stopped += 1 } }
         if scenario != "never-played" {

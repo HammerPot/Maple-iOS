@@ -36,7 +36,8 @@ struct LyricsPanel: View {
         }
         .task(id: track?.lyrics) {
             let text = track?.lyrics ?? ""
-            document = await Task.detached { LyricsDocument.parse(text) }.value
+            document = LyricsDocument(lines: [])
+            if let parsed = await LyricsDocument.parseForPresentation(text) { document = parsed }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.plainText, .text] + [UTType(filenameExtension: "lrc")].compactMap { $0 }, onCompletion: importFile)
         .alert("Remove Lyrics?", isPresented: $removeConfirmation) {

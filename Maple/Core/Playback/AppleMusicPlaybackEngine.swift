@@ -60,7 +60,8 @@ import OSLog
         eagerPending = true; lastLazyAttempt = nil
         let ticket = generation
         preparing = true
-        defer { if generation == ticket { preparing = false } }
+        // Keep notification suppression through the controller's play/pause intent settlement.
+        // finishLoading ends the scope; a failed/cancelled load is stopped by the controller.
         unavailableEntryIDs = []
         let context = AppleMusicQueuePolicy.context(for: configured, fallback: item)
         guard let selected = configured.currentID ?? context.first?.id else { throw CancellationError() }
@@ -75,6 +76,7 @@ import OSLog
         ownership.install(result.entries, selected: selected, observedID: backend.state.occurrence)
         lastEntry = selected; lastOccurrence = backend.state.occurrence
     }
+    func finishLoading() { preparing = false; refresh() }
     func externalPlayback() -> ExternalPlaybackState? {
         guard allowed(), !preparing, !ownership.ownsQueue, backend.state.status != .stopped,
               let item = backend.state.item else { return nil }
@@ -186,6 +188,8 @@ import OSLog
                     self.installed.append(contentsOf: added.entries)
                     self.ownership.append(added.entries)
                     self.unavailableEntryIDs.formUnion(added.unavailable)
+                    self.configured.remove(added.unavailable)
+                    if !added.unavailable.isEmpty { self.onEvent?(.unavailableEntries(added.unavailable)) }
                     self.installedRange = self.installedRange.lowerBound..<end
                     self.configureNativeModes()
                     // With the assertion held, UIKit allows this call to finish without suspension.

@@ -35,7 +35,9 @@ import UIKit
         observers.append(NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
             let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue
             let options = (note.userInfo?[AVAudioSessionInterruptionOptionKey] as? NSNumber)?.uintValue ?? 0
-            Task { @MainActor in self?.interruption(type: type, options: options) }
+            // NotificationCenter's .main queue is synchronous here. Capture the playing
+            // intent before a queued AVPlayer status reconciliation can turn it false.
+            MainActor.assumeIsolated { self?.interruption(type: type, options: options) }
         })
         observers.append(NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak controller] note in
             let reason = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.uintValue

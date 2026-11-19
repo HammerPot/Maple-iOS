@@ -49,11 +49,11 @@ struct AppleMusicInstallation {
         var request = MusicLibraryRequest<MusicKit.Song>()
         request.filter(matching: \.id, memberOf: ids.map { MusicItemID($0) })
         request.limit = ids.count
-        return Dictionary(uniqueKeysWithValues: try await request.response().items.map { ($0.id.rawValue, MusicKit.Track.song($0)) })
+        return SystemMusicBackend.songsByID(Array(try await request.response().items))
     }, catalog: { (ids: [String]) async throws -> [String: MusicKit.Track] in
         var request = MusicCatalogResourceRequest<MusicKit.Song>(matching: \.id, memberOf: ids.map { MusicItemID($0) })
         request.limit = ids.count
-        return Dictionary(uniqueKeysWithValues: try await request.response().items.map { ($0.id.rawValue, MusicKit.Track.song($0)) })
+        return SystemMusicBackend.songsByID(Array(try await request.response().items))
     }, identities: { SystemMusicBackend.item($0).musicIdentityIDs })
     init() {
         player.state.objectWillChange.sink { [weak self] _ in Task { @MainActor in self?.onChange?() } }.store(in: &observations)
@@ -75,9 +75,10 @@ struct AppleMusicInstallation {
         preparationGeneration += 1
         let ticket = preparationGeneration
         let resolved = try await resolver.context(context, selected: selected, progress: progress)
+        let playable = try Self.playableResolution(resolved.values, selected: selected, unavailable: resolved.unavailable)
         var entries: [MusicKit.MusicPlayer.Queue.Entry] = [], installed: [AppleMusicInstalledEntry] = []
         var start: MusicKit.MusicPlayer.Queue.Entry?
-        for (occurrence, track) in try Self.playableTracks(resolved.values, selected: selected) {
+        for (occurrence, track) in playable.values {
             let entry = MusicKit.MusicPlayer.Queue.Entry(track)
             entries.append(entry)
             installed.append(AppleMusicInstalledEntry(entry: occurrence,
@@ -103,14 +104,15 @@ struct AppleMusicInstallation {
         }
         try Task.checkCancellation()
         guard ticket == preparationGeneration else { throw CancellationError() }
-        return AppleMusicInstallation(entries: installed, unavailable: resolved.unavailable)
+        return AppleMusicInstallation(entries: installed, unavailable: playable.unavailable)
     }
     func append(_ context: [PlaybackEntry], after current: PlaybackEntry) async throws -> AppleMusicInstallation {
         let ticket = preparationGeneration
         do {
             // The loaded current item anchors resolution; a missing upcoming item cannot fail it.
             let resolved = try await resolver.context([current] + context, selected: current.id)
-            let values = try Self.playableTracks(resolved.values, selected: current.id).filter { $0.0.id != current.id }
+            let playable = try Self.playableResolution(resolved.values, selected: current.id, unavailable: resolved.unavailable)
+            let values = playable.values.filter { $0.0.id != current.id }
             let native = values.map { MusicKit.MusicPlayer.Queue.Entry($0.1) }
             let installed = zip(values, native).map { value, entry in
                 AppleMusicInstalledEntry(entry: value.0, identities: value.0.item.musicIdentityIDs.union(Self.item(value.1).musicIdentityIDs), systemID: String(describing: entry.id))
@@ -137,7 +139,7 @@ struct AppleMusicInstallation {
             // An expired assertion cancels pending work, but an insertion already performed
             // must still be reflected in the engine's cursor. Replacement remains fenced by ticket.
             guard ticket == preparationGeneration else { throw CancellationError() }
-            return AppleMusicInstallation(entries: installed, unavailable: resolved.unavailable, insertionSeconds: elapsed)
+            return AppleMusicInstallation(entries: installed, unavailable: playable.unavailable, insertionSeconds: elapsed)
         } catch {
             if Task.isCancelled || ticket != preparationGeneration {
                 AppleMusicDiagnostics.logger.info("append skipped generation=\(ticket, privacy: .public) active=\(self.preparationGeneration, privacy: .public) reason=cancelled or replaced")
@@ -160,10 +162,19 @@ struct AppleMusicInstallation {
     func skip(forward: Bool) async throws {
         if forward { try await player.skipToNextEntry() } else { try await player.skipToPreviousEntry() }
     }
+    static func songsByID(_ songs: [MusicKit.Song]) -> [String: MusicKit.Track] {
+        Dictionary(songs.map { ($0.id.rawValue, MusicKit.Track.song($0)) }, uniquingKeysWith: { first, _ in first })
+    }
+    static func playableResolution(_ values: [(PlaybackEntry, MusicKit.Track)], selected: UUID,
+        unavailable: Set<UUID> = []
+    ) throws -> (values: [(PlaybackEntry, MusicKit.Track)], unavailable: Set<UUID>) {
+        let playable = try playableTracks(values, selected: selected)
+        return (playable, unavailable.union(values.filter { $0.1.playParameters == nil }.map { $0.0.id }))
+    }
     static func playableTracks(_ values: [(PlaybackEntry, MusicKit.Track)], selected: UUID) throws -> [(PlaybackEntry, MusicKit.Track)] {
         try values.filter { entry, track in
             guard track.playParameters != nil else {
-                AppleMusicDiagnostics.logger.info("resolution deferred song=\(track.id.rawValue, privacy: .public) reason=no playback parameters; keep Maple entry")
+                AppleMusicDiagnostics.logger.info("resolution deferred song=\(track.id.rawValue, privacy: .public) reason=no playback parameters; skip Maple occurrence")
                 if entry.id == selected { throw AppleMusicResolutionError.notPlayable }
                 return false
             }

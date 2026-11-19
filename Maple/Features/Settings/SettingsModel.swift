@@ -10,6 +10,7 @@ import Observation
     }
     private(set) var isSaving = false
     private(set) var isLoaded = false
+    @ObservationIgnored private var loading: Task<Void, Error>?
     @ObservationIgnored private let credentials: any WebhookCredentialStoring
     @ObservationIgnored private let defaults: UserDefaults
     init(credentials: any WebhookCredentialStoring, defaults: UserDefaults = .standard) {
@@ -17,6 +18,13 @@ import Observation
     }
     func load() async throws {
         guard !isLoaded else { return }
+        if let loading { return try await loading.value }
+        let task = Task { try await self.loadCredential() }
+        loading = task
+        defer { loading = nil }
+        try await task.value
+    }
+    private func loadCredential() async throws {
         let secure = try await credentials.read()
         if let rawLegacy = defaults.string(forKey: "webhookURL") {
             let legacy = rawLegacy.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -31,6 +39,7 @@ import Observation
         isLoaded = true
     }
     func saveWebhook() async throws {
+        if !isLoaded { try await load() }
         let value = webhookURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard value.isEmpty || DiscordWebhookURL.isValid(value) else {
             throw MapleError(status: 0, message: "Enter a Discord webhook URL beginning with https://discord.com/api/webhooks/.")

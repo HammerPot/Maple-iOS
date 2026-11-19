@@ -18,6 +18,13 @@ struct LyricsDocument: Equatable, Sendable {
         }
         return low > 0 ? lines[low - 1].id : nil
     }
+    static func parseForPresentation(_ text: String,
+        parse: @Sendable (String) async -> Self = { text in await Task.detached { Self.parse(text) }.value }
+    ) async -> Self? {
+        let result = await parse(text)
+        guard !Task.isCancelled else { return nil }
+        return result
+    }
     static func parse(_ text: String) -> Self {
         let rows = text.replacingOccurrences(of: "\u{feff}", with: "").components(separatedBy: .newlines)
         let timestamps = /\[(\d+):(\d{2}(?:\.\d+)?)\]/

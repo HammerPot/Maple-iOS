@@ -46,7 +46,7 @@ final class PlaybackController {
     @ObservationIgnored private var intendedPosition = 0.0
     @ObservationIgnored private var intentRevision = 0
     @ObservationIgnored private let chooseShuffleStart: (Range<Int>) -> Int
-    @ObservationIgnored private var failedLocalEntry: UUID?
+    @ObservationIgnored private var failedSkippedEntry: UUID?
     @ObservationIgnored private var skippingUnreadable = false
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var playID = UUID()
@@ -93,7 +93,7 @@ final class PlaybackController {
         endPlay(completed: false); queue.select(id)
         await loadCurrent(autoplay: true)
     }
-    private func loadCurrent(autoplay: Bool, at seconds: Double = 0, skipUnreadable: Bool = false, userInitiated: Bool = true) async {
+    private func loadCurrent(autoplay: Bool, at seconds: Double = 0, skipUnreadable: Bool = false, backward: Bool = false, userInitiated: Bool = true) async {
         var nextPosition = seconds
         var restoredPlayID: UUID? = deferredRestore ? playID : nil
         wantsPlayback = autoplay
@@ -108,13 +108,22 @@ final class PlaybackController {
             artworkData = nil; artworkTask?.cancel()
             position.seconds = 0; duration = 0; started = false
             playID = restoredPlayID ?? UUID(); restoredPlayID = nil
-            failedLocalEntry = nil; skippingUnreadable = skipUnreadable
+            failedSkippedEntry = nil; skippingUnreadable = skipUnreadable
             await scheduleLoad(ticket: ticket, userInitiated: userInitiated && autoplay).value
-            guard generation == ticket, skipUnreadable, let failed = failedLocalEntry else { return }
+            guard generation == ticket, let failed = failedSkippedEntry else { return }
             // Remove each unreadable occurrence once; even repeat-one/all can make at most one pass.
-            let following = queue.upcoming.first?.id ?? (queue.repeatMode == .all ? queue.entries.first(where: { $0.id != failed })?.id : nil)
+            let following: UUID?
+            if backward, let index = queue.index {
+                following = index > 0 ? queue.entries[index - 1].id : (queue.repeatMode == .all ? queue.entries.last(where: { $0.id != failed })?.id : nil)
+            } else {
+                following = queue.upcoming.first?.id ?? (queue.repeatMode == .all ? queue.entries.first(where: { $0.id != failed })?.id : nil)
+            }
             queue.remove([failed])
-            guard let following else { stop(); return }
+            guard let following else {
+                stop()
+                if let first = queue.entries.first { queue.select(first.id); save() }
+                return
+            }
             queue.select(following); nextPosition = 0
         } while !queue.entries.isEmpty
         stop()
@@ -129,12 +138,15 @@ final class PlaybackController {
             guard let item = context.current?.item else { self.isLoading = false; return }
             let target = item.source == .local ? self.local : self.apple
             var unreadableFile = false
+            var unavailableMusic = false
             do {
                 try await target.configure(context)
                 guard self.generation == ticket else { return }
                 do { try await target.load(item) }
                 catch {
                     if item.source == .local, case LibraryError.unreadableAudio = error { unreadableFile = true }
+                    if item.source == .appleMusic, let resolution = error as? AppleMusicResolutionError,
+                       resolution == .notFound || resolution == .notPlayable { unavailableMusic = true }
                     throw error
                 }
                 guard self.generation == ticket else { return }
@@ -158,6 +170,7 @@ final class PlaybackController {
                     if revision == self.intentRevision { break }
                 }
                 self.isLoading = false
+                target.finishLoading()
                 self.loadArtwork(item, ticket: ticket)
                 self.reconcile(); self.publish(userInitiated: userInitiated && self.wantsPlayback)
                 self.save()
@@ -166,9 +179,9 @@ final class PlaybackController {
                 target.stop(); self.currentItem = nil; self.isPlaying = false; self.isLoading = false
                 self.duration = 0; self.position.seconds = 0; self.started = false
                 self.synchronizeSampling()
-                if self.skippingUnreadable, unreadableFile {
-                    self.failedLocalEntry = context.currentID
-                    self.onError(MapleError(status: 0, message: "An unreadable audio file was skipped: \(item.title)"))
+                if unavailableMusic || (self.skippingUnreadable && unreadableFile) {
+                    self.failedSkippedEntry = context.currentID
+                    self.onError(MapleError(status: 0, message: unavailableMusic ? "An unavailable Apple Music track was skipped: \(item.title)" : "An unreadable audio file was skipped: \(item.title)"))
                 } else {
                     self.publishStop(); self.stateChanged(); self.save()
                     if !(error is CancellationError) { self.onError(error) }
@@ -226,7 +239,7 @@ final class PlaybackController {
         if playingFromMusic { _ = await skipExternal(forward: false); return }
         if (deferredRestore ? position.seconds : engine.position) > 3 { await seek(to: 0); return }
         if !queue.previous() { await seek(to: 0); return }
-        endPlay(completed: false); await loadCurrent(autoplay: true)
+        endPlay(completed: false); await loadCurrent(autoplay: true, backward: true)
     }
     private func skipExternal(forward: Bool) async -> Bool {
         guard playingFromMusic else { return false }
@@ -379,13 +392,21 @@ final class PlaybackController {
         started = false; listenedAt = nil
     }
     private func receive(_ event: PlaybackEngineEvent, source: PlaybackItem.Source) {
+        if case .unavailableEntries(let ids) = event {
+            guard source == .appleMusic, !playingFromMusic else { return }
+            let removed = ids.intersection(queue.entries.map(\.id))
+            guard !removed.isEmpty else { return }
+            queue.remove(removed); save()
+            onError(MapleError(status: 0, message: "Unavailable Apple Music queue entries were skipped."))
+            return
+        }
         if case .loadingProgress(let progress) = event {
             if isLoading, queue.current?.item.source == source { loadingProgress = progress }
             return
         }
         guard !isLoading else { return }
         switch event {
-        case .loadingProgress: break
+        case .loadingProgress, .unavailableEntries: break
         case .itemChanged(let item, let occurrence, let queueEntryID):
             guard source == .appleMusic else { return }
             if queueEntryID == nil { _ = adoptExternalPlayback(); return }
@@ -480,10 +501,12 @@ final class PlaybackController {
                 let missing = Set(queue.entries.filter { entry in
                     entry.item.source == .local && entry.item.libraryID.flatMap(localItem) == nil
                 }.map(\.id))
+                let restoredCurrent = queue.currentID
                 queue.remove(missing); queue.rebaseLocalItems(localItem)
+                if queue.current == nil, let first = queue.entries.first { queue.select(first.id) }
                 // All restore is metadata-only. Audio preparation waits for an explicit Play.
                 currentItem = queue.current?.item; deferredRestore = currentItem != nil
-                duration = currentItem?.duration ?? 0; position.seconds = max(0, saved.position)
+                duration = currentItem?.duration ?? 0; position.seconds = queue.currentID == restoredCurrent && currentItem != nil ? max(0, saved.position) : 0
                 if let item = currentItem { loadArtwork(item, ticket: generation) }
             }
             refresh()

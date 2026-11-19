@@ -83,7 +83,7 @@ import UIKit
         assertions.onEnd = { Task { await ended.open() } }
         var engine: AppleMusicPlaybackEngine? = AppleMusicPlaybackEngine(backend: backend, makeFillAssertion: assertions.make)
         let items = songs(); var queue = PlaybackQueue(); queue.replace(items, startingAt: 0, shuffle: false)
-        try await engine?.configure(queue); try await engine?.load(items[0])
+        try await engine?.configure(queue); try await engine?.load(items[0]); engine?.finishLoading()
         // No actor suspension between starting the worker and releasing its owner.
         backend.change(items[0], id: "native", status: .playing)
         #expect(assertions.active.count == 1)
