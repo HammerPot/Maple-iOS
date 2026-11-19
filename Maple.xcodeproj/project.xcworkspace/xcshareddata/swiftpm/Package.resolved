@@ -1,13 +1,22 @@
 {
-  "originHash" : "99d08b726fc8a5d1eadb9517384adc8574bb23797c83dba867de106adbb1796a",
+  "originHash" : "c6f99525a799863d78a8e8726f5b83798d56efc2ae6e93664d127f8759944955",
   "pins" : [
     {
-      "identity" : "alamofire",
+      "identity" : "betterauthswift",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Alamofire/Alamofire.git",
+      "location" : "https://github.com/ouwargui/BetterAuthSwift.git",
       "state" : {
-        "revision" : "513364f870f6bfc468f9d2ff0a95caccc10044c5",
-        "version" : "5.10.2"
+        "revision" : "d7bbc6c286f3ace93088def720975198dade86e9",
+        "version" : "2.1.0"
+      }
+    },
+    {
+      "identity" : "cxxtaglib",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sbooth/CXXTagLib",
+      "state" : {
+        "revision" : "9e499ea0a69d107791ac0a2fe9d6a59cf401c6f9",
+        "version" : "2.3.2"
       }
     },
     {
@@ -24,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/socketio/socket.io-client-swift",
       "state" : {
-        "branch" : "master",
-        "revision" : "42da871d9369f290d6ec4930636c40672143905b"
+        "revision" : "42da871d9369f290d6ec4930636c40672143905b",
+        "version" : "16.1.1"
       }
     },
     {
@@ -53,15 +62,6 @@
       "state" : {
         "revision" : "c62d8622ffbdef00218c1d5b93b32074ac0fbdcb",
         "version" : "1.0.1"
-      }
-    },
-    {
-      "identity" : "swiftyjson",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/SwiftyJSON/SwiftyJSON.git",
-      "state" : {
-        "revision" : "af76cf3ef710b6ca5f8c05f3a31307d44a3c5828",
-        "version" : "5.0.2"
       }
     }
   ],
